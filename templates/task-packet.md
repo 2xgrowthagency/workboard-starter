@@ -11,6 +11,12 @@ heartbeat_after_minutes: 30
 requires_network: true
 requires_auth: false
 requires_local_gui: false
+requires_browser: false
+requires_computer_use: false
+requires_google_drive: false
+requires_google_docs: false
+requires_screenshot: false
+required_skills: []
 repo:
 target_project_id: workboard
 target_project_name: Workboard
@@ -57,6 +63,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Required proof
 
+- [ ] Tool/capability proof if `requires_*` or `required_skills` is set
 - [ ] Current working directory and git branch/HEAD captured
 - [ ] Commands/tests run, with result
 - [ ] Diff/PR/commit link, if code changed
@@ -73,6 +80,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Orchestration notes
 
 - Root/orchestrator claims and monitors; worker executes.
+- If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Use medium worker reasoning unless this task explicitly justifies escalation.
 - Keep all context task-local. No private memory dumps and no secrets.

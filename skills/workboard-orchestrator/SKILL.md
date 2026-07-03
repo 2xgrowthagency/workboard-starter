@@ -26,6 +26,15 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
 - Commit and push every transition.
 
+## Tool enforcement
+
+If a packet declares `required_skills` or `requires_*` capability fields, the orchestrator must:
+
+1. Verify the worker can access the tool/capability before delegation.
+2. Include the requirement in the worker handoff.
+3. Require proof that the worker used the tool or a safe substitute.
+4. Block instead of silently skipping required tooling.
+
 ## Hard stops
 
 Stop before secrets, production data, billing/account settings, deployment, publishing, destructive actions, ambiguous acceptance criteria, or unknown project paths.

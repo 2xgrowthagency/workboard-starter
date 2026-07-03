@@ -22,6 +22,21 @@ One person/agent can play multiple roles, but keep the responsibilities separate
 
 State changes are file moves plus packet status-log updates. Commit/push each meaningful transition so everyone sees the same board.
 
+
+## Tool and skill preflight
+
+Task packets may declare required capabilities: `requires_browser`, `requires_computer_use`, `requires_google_drive`, `requires_google_docs`, `requires_screenshot`, and `required_skills`.
+
+Before claiming/delegating a tool-required packet:
+
+1. Confirm the intended worker surface can use the required tool/capability.
+2. Read the relevant local skill/SOP when available.
+3. Add the requirement to the worker handoff prompt.
+4. Define the proof the worker must return, such as screenshot path, browser URL/status, Google Doc/Drive file ID, or explicit reason a safe substitute was used.
+5. If the tool is unavailable, move the packet to `tasks/blocked/` with the missing capability and what the operator must do next.
+
+Do not silently skip required tools. A packet with unmet tool proof cannot move to `tasks/review/`.
+
 ## Polling loop
 
 1. `cd` into the Workboard repo.

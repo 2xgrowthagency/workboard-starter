@@ -38,6 +38,21 @@ Default max active worker claims: 3.
 
 Count existing files in `tasks/claimed/` before claiming more. A claimed packet already owns a worker slot unless it is clearly stale/abandoned and the retry is documented.
 
+## Tool preflight
+
+Packets may declare required tools/capabilities, for example:
+
+- `requires_browser: true`
+- `requires_computer_use: true`
+- `requires_google_drive: true`
+- `requires_google_docs: true`
+- `requires_screenshot: true`
+- `required_skills: [browser-automation, google-drive]`
+
+Before claiming or delegating, verify the intended worker can use the required capability. If not, block with a concrete missing-tool note. If yes, include the tool requirement in the worker handoff and require proof that the worker used the tool or explained a safe substitute.
+
+Tool-required work cannot move to `tasks/review/` unless the packet proof includes the requested tool evidence.
+
 ## Worker routing
 
 Use `projects.yaml` as the routing source of truth.

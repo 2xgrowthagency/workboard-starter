@@ -85,6 +85,22 @@ tasks/
 projects.example.yaml       # copy to projects.yaml and customize
 ```
 
+
+## Tool requirements in task packets
+
+When a task needs browser automation, computer use, Google Drive/Docs, screenshots, or another plugin/skill, declare it in the packet metadata instead of hoping the worker remembers.
+
+Supported fields in `templates/task-packet.md` include:
+
+- `requires_browser`
+- `requires_computer_use`
+- `requires_google_drive`
+- `requires_google_docs`
+- `requires_screenshot`
+- `required_skills`
+
+The orchestrator must preflight these before delegation and require proof before moving the packet to `tasks/review/`.
+
 ## Minimum rules
 
 - No secrets in this repo.
