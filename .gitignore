@@ -1,0 +1,12 @@
+# Local/private state
+.env*
+*.log
+.DS_Store
+.openclaw/
+.claude/
+.codex/
+.local/
+
+# Temporary work
+/tmp/
+tmp/

@@ -1,0 +1,36 @@
+# Workboard Project Registry
+# Copy to projects.yaml and edit for your machine/team.
+# Do not commit secrets. Paths are local to the machine running the orchestrator.
+
+version: 0.1
+updated_at: YYYY-MM-DDTHH:MM:SSZ
+rules:
+  default_project_for_projectless_workboard_tasks: workboard
+  worker_default_reasoning: medium
+  orchestrator_default_reasoning: high
+  no_thread_reparenting: true
+  no_subworkers_by_default: true
+  max_active_worker_claims: 3
+
+projects:
+  workboard:
+    name: Workboard
+    role: orchestrator
+    status: active
+    local_path: /Users/YOU/dev/workboard
+    repo: git@github.com:YOUR-ORG/YOUR-WORKBOARD.git
+    orchestrator_surface: "Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another local agent"
+    default_reasoning: high
+    notes: "Projectless/control-plane tasks run here. Do not route project work here just because the registry is missing a target."
+
+  example-app:
+    name: Example App
+    role: worker
+    status: active
+    local_path: /Users/YOU/dev/example-app
+    repo: git@github.com:YOUR-ORG/example-app.git
+    codex_project_name: Example App
+    claude_project_name: Example App
+    default_reasoning: medium
+    escalation_reasoning: high
+    notes: "Replace with your real project. Unknown paths should block, not guess."
