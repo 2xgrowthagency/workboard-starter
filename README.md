@@ -71,6 +71,9 @@ docs/
   orchestrator-protocol.md  # standing instructions for the root loop
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
+ORCHESTRATOR.md              # first file for the local root orchestrator
+skills/
+  workboard-orchestrator/    # optional portable skill instructions
 templates/
   task-packet.md            # copy this into tasks/ready/
 tasks/
@@ -107,6 +110,7 @@ That dry run teaches the whole loop without risking a real project.
 
 Start here:
 
+- `ORCHESTRATOR.md` — first-read instructions for the local root orchestrator
 - `docs/orchestrator-protocol.md`
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
