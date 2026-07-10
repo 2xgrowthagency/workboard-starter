@@ -8,7 +8,8 @@ Use this document as the standing instruction for your local orchestrator, wheth
 - **Intake agent** turns requests into task packets in `tasks/ready/`.
 - **Root orchestrator** runs the loop: pull, inspect, claim, delegate, monitor, update, push.
 - **Worker thread** does one bounded task in one target project/path.
-- **Verifier** reviews proof and moves packets from `tasks/review/` to `tasks/done/` or back to `tasks/ready/`/`tasks/blocked`.
+- **QA companion** independently verifies QA-required work from raw evidence and returns `PASS`, `FAIL`, or `BLOCKED` without quietly fixing it.
+- **Human/context-owner verifier** reviews the verified outcome and moves packets from `tasks/review/` to `tasks/done/` or back to `tasks/ready/`/`tasks/blocked`.
 
 One person/agent can play multiple roles, but keep the responsibilities separate. The root orchestrator should not become a free-roaming implementation agent unless the packet explicitly says the work is a Workboard/control-plane task.
 
@@ -16,8 +17,9 @@ One person/agent can play multiple roles, but keep the responsibilities separate
 
 - `tasks/ready/` — execution-ready packets waiting to be claimed.
 - `tasks/claimed/` — active work owned by an orchestrator/worker.
+- `tasks/qa/` — implementation-complete work with independent QA pending or active.
 - `tasks/blocked/` — waiting on access, decision, dependency, or safe stopping condition.
-- `tasks/review/` — worker says done; proof awaits verification.
+- `tasks/review/` — QA-passed or QA-not-required work awaiting final review.
 - `tasks/done/` — verified complete.
 
 State changes are file moves plus packet status-log updates. Commit/push each meaningful transition so everyone sees the same board.
@@ -35,7 +37,7 @@ Before claiming/delegating a tool-required packet:
 4. Define the proof the worker must return, such as screenshot path, browser URL/status, Google Doc/Drive file ID, or explicit reason a safe substitute was used.
 5. If the tool is unavailable, move the packet to `tasks/blocked/` with the missing capability and what the operator must do next.
 
-Do not silently skip required tools. A packet with unmet tool proof cannot move to `tasks/review/`.
+Do not silently skip required tools. A packet with unmet builder proof cannot move to `tasks/qa/` or `tasks/review/`, and QA-required work cannot move to `tasks/review/` without an independent `PASS`.
 
 ## Polling loop
 
@@ -43,7 +45,7 @@ Do not silently skip required tools. A packet with unmet tool proof cannot move 
 2. Pull latest `main` with fast-forward only.
 3. Read `projects.yaml` if present, otherwise copy/edit `projects.example.yaml` first.
 4. Inspect `tasks/claimed/` before claiming new work.
-5. Monitor active claims: update stale work, move completed work to `tasks/review`, move exact blockers to `tasks/blocked`.
+5. Monitor active claims: update stale work, route implementation-complete QA-required work to `tasks/qa`, move QA-not-required work to `tasks/review`, and move exact blockers to `tasks/blocked`.
 6. Compute capacity. Default: max 3 active worker claims.
 7. Inspect `tasks/ready/` by priority and age.
 8. Claim only independent eligible tasks. Avoid two active workers in the same repo/path unless both packets say they are parallel-safe.
@@ -51,8 +53,10 @@ Do not silently skip required tools. A packet with unmet tool proof cannot move 
 10. Create or reuse a visible worker thread/project with the correct target path from the start.
 11. Give the worker the full task packet plus the worker handoff prompt below.
 12. Monitor worker output and write proof/status back into the packet.
-13. Move packets to `tasks/review` when proof is ready, or `tasks/blocked` with a concrete blocker.
-14. Commit/push every state transition.
+13. Inspect `tasks/qa/`. For each pending packet, launch one separate project-scoped QA task against a pinned commit or immutable artifact.
+14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
+15. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
+16. Commit/push every state transition.
 
 ## Concurrency policy
 
@@ -60,6 +64,8 @@ Do not silently skip required tools. A packet with unmet tool proof cannot move 
 - Up to 3 active workers by default.
 - Prefer parallelism across different repos/projects.
 - One worker per packet.
+- One separate QA task per QA packet; the builder does not self-verify.
+- QA is read-only by default and reports failures instead of fixing them.
 - Workers do not spawn workers by default.
 - A packet may allow a bounded read-only swarm for research/QA discovery, but it must state limits, merge format, and stop conditions.
 - Never use parallelism to bypass a blocker or approval.
@@ -96,6 +102,32 @@ Required proof:
 - Final recommendation: ready_for_review or blocked.
 ```
 
+## QA handoff prompt
+
+```text
+You are an independent Workboard QA companion. Verify exactly one packet.
+
+Rules:
+- Treat the builder's summary as a claim, not evidence.
+- Verify the pinned commit or immutable artifact named by the packet.
+- Work read-only by default. Do not fix code, merge, publish, deploy, or mutate production data.
+- Use the packet's required tools, interactions, viewports, and artifact directory.
+- Record unsupported checks explicitly rather than weakening the acceptance criteria.
+- Keep screenshots and reports local unless the packet explicitly allows sharing.
+
+Return exactly one verdict:
+- PASS: every required criterion is independently supported.
+- FAIL: at least one criterion is violated; include rework guidance.
+- BLOCKED: a required input, capability, authorization, or safe test surface is missing.
+
+Required proof:
+- Target commit/artifact identity.
+- Checks performed and criterion-level results.
+- Test, browser, console, network, screenshot, or file evidence as applicable.
+- Absolute local artifact paths.
+- Final repository status proving QA did not edit the target.
+```
+
 ## Completion standard
 
-“Done” means verified, not merely attempted. The verifier should inspect artifacts directly: git status, diff, tests, build, screenshots, PR state, deployed URL, or direct file review as appropriate.
+“Done” means independently verified and contextually approved, not merely attempted. QA should inspect raw artifacts directly: git status, diff, tests, build, screenshots, PR state, deployed URL, or direct file review as appropriate. Final review decides whether that verified result solves the actual task.

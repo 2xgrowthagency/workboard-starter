@@ -11,6 +11,8 @@ rules:
   no_thread_reparenting: true
   no_subworkers_by_default: true
   max_active_worker_claims: 3
+  qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
+  qa_read_only_by_default: true
 
 projects:
   workboard:
@@ -21,6 +23,12 @@ projects:
     repo: git@github.com:YOUR-ORG/YOUR-WORKBOARD.git
     orchestrator_surface: "Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another local agent"
     default_reasoning: high
+    qa_codex_project_name: Workboard QA
+    qa_default_reasoning: high
+    qa_requires_browser: true
+    qa_requires_computer_use: false
+    qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs/workboard
+    qa_status: pending_validation
     notes: "Projectless/control-plane tasks run here. Do not route project work here just because the registry is missing a target."
 
   example-app:
@@ -33,4 +41,10 @@ projects:
     claude_project_name: Example App
     default_reasoning: medium
     escalation_reasoning: high
+    qa_codex_project_name: Example App QA
+    qa_default_reasoning: high
+    qa_requires_browser: false
+    qa_requires_computer_use: false
+    qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs/example-app
+    qa_status: pending_validation
     notes: "Replace with your real project. Unknown paths should block, not guess."

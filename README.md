@@ -12,10 +12,49 @@ Workboard is a shared filesystem/Git protocol:
 2. A root orchestrator claims eligible work into `tasks/claimed/`.
 3. The orchestrator delegates each packet to a correctly-scoped worker thread/project.
 4. Workers update proof and outcomes.
-5. Finished work moves to `tasks/review/`.
-6. A verifier checks the proof and moves it to `tasks/done/`.
+5. Work that requires independent verification moves to `tasks/qa/` and a separate QA companion returns `PASS`, `FAIL`, or `BLOCKED`.
+6. QA-passed work, or work that does not require QA, moves to `tasks/review/`.
+7. A human or context owner checks the verified outcome and moves it to `tasks/done/`.
 
 It does not require OpenClaw. It works with Codex Desktop, Claude Desktop, Claude Code, Codex CLI, OpenClaw, or any local agent that can read files, run commands, and use Git.
+
+## How the roles fit together
+
+```mermaid
+flowchart LR
+    H["Human<br/>request or decision"]
+
+    subgraph CP["Control plane"]
+        A["Assistant or intake agent<br/>context and task shaping"]
+        O["Workboard root<br/>orchestrator and state manager"]
+        R["Human or context-owner review<br/>business judgment"]
+    end
+
+    subgraph EP["Execution plane"]
+        W["Builder worker<br/>one task and one target"]
+        Q["QA companion<br/>independent read-only verification"]
+    end
+
+    H --> A
+    A -->|"scope and create packet"| O
+    O -->|"claim and delegate"| W
+    W -->|"implementation and proof"| O
+    O -->|"QA required"| Q
+    O -->|"QA not required"| R
+    Q -->|"PASS"| R
+    Q -->|"FAIL: rework"| O
+    Q -->|"BLOCKED: decision or capability"| A
+    R -->|"approved"| X["Done"]
+    R -->|"changes needed"| O
+```
+
+These are responsibility boundaries, not necessarily different vendors or models. Keep each role in a separate task with the minimum context and permissions it needs:
+
+- the assistant understands intent and business context;
+- the root orchestrator owns queue state and routing;
+- the builder changes one target project;
+- the QA companion verifies fresh evidence without fixing or trusting the builder's conclusion;
+- the human or context owner makes the final judgment.
 
 ## Why use it
 
@@ -34,7 +73,7 @@ Chat threads are bad source-of-truth. Workboard gives you:
 git clone <YOUR_WORKBOARD_REPO_URL> workboard
 cd workboard
 cp projects.example.yaml projects.yaml
-mkdir -p tasks/{ready,claimed,blocked,review,done}
+mkdir -p tasks/{ready,claimed,qa,blocked,review,done}
 git add projects.yaml tasks/*/.gitkeep
 git commit -m "Configure local workboard"
 ```
@@ -62,6 +101,8 @@ The root orchestrator is air traffic control. It should:
 
 Workers are pilots. Each worker gets one packet, one target path, and clear proof requirements.
 
+QA companions are inspectors. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
+
 Do not turn the root orchestrator into a roaming implementation agent. That is how boards become soup.
 
 ## Repo layout
@@ -79,8 +120,9 @@ templates/
 tasks/
   ready/                    # ready to claim
   claimed/                  # active work
+  qa/                       # implementation-complete, independent QA pending/active
   blocked/                  # blocked with reason/proof
-  review/                   # worker-complete, verifier-needed
+  review/                   # QA-passed or QA-not-required, final review pending
   done/                     # verified complete
 projects.example.yaml       # copy to projects.yaml and customize
 ```
@@ -98,8 +140,15 @@ Supported fields in `templates/task-packet.md` include:
 - `requires_google_docs`
 - `requires_screenshot`
 - `required_skills`
+- `qa_required`
+- `qa_status`
+- `qa_codex_project`
+- `qa_model`
+- `qa_artifacts_dir`
+- `qa_thread_id`
+- `qa_result`
 
-The orchestrator must preflight these before delegation and require proof before moving the packet to `tasks/review/`.
+The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
 
 ## Minimum rules
 
@@ -108,6 +157,7 @@ The orchestrator must preflight these before delegation and require proof before
 - One root orchestrator loop at a time.
 - Default max active workers: 3.
 - One worker per packet.
+- QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.
 - Unknown project/path means block and ask, not guess.
 - Done requires proof.
@@ -117,8 +167,9 @@ The orchestrator must preflight these before delegation and require proof before
 1. Add one harmless task packet, such as “inspect this repo and suggest one README improvement.”
 2. Have the root orchestrator claim it.
 3. Start one worker in the Workboard project/path.
-4. Have the worker write proof and move it to `tasks/review/`.
-5. Verify manually and move it to `tasks/done/`.
+4. Have the worker write proof and route the packet to `tasks/qa/`.
+5. Start a separate read-only QA task and record a `PASS`, `FAIL`, or `BLOCKED` result.
+6. Route a pass to `tasks/review/`, inspect the result, and move it to `tasks/done/`.
 
 That dry run teaches the whole loop without risking a real project.
 

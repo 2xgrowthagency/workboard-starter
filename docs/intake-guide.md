@@ -10,6 +10,7 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 - Allowed and forbidden actions.
 - Acceptance criteria the worker can verify.
 - Required proof.
+- Whether independent QA is required and what it must verify.
 - Stop conditions.
 - Links or pasted task-local context.
 
@@ -34,3 +35,17 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 3. Check that `target_project_id` exists in `projects.yaml`.
 4. Commit and push.
 5. Let the root orchestrator claim it during the next loop.
+
+## When to require independent QA
+
+Set `qa_required: true` when completion should not rely on the builder's own verification—for example UI/browser behavior, important code paths, documents or data artifacts, deployment/operational proof, or any task where silent failure would be costly.
+
+Define the QA contract in the packet:
+
+- the pinned commit or immutable artifact to inspect;
+- acceptance criteria and expected behavior;
+- required tools, URLs, viewports, and interactions;
+- local artifact directory and screenshot policy;
+- checks that may return `BLOCKED` rather than being skipped.
+
+The QA companion reports `PASS`, `FAIL`, or `BLOCKED`. It does not quietly fix the implementation.

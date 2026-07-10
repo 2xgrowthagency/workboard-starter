@@ -18,8 +18,9 @@ Instructions:
 6. Commit/push claim transitions before delegation.
 7. Delegate each claimed task to a correctly-rooted worker thread/project.
 8. Monitor worker results and update packets with proof.
-9. Move completed packets to tasks/review, exact blockers to tasks/blocked.
-10. Commit/push every transition.
+9. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
+10. Launch separate QA tasks from tasks/qa and route PASS to review, FAIL to ready, or BLOCKED to blocked.
+11. Commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```

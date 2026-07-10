@@ -18,9 +18,12 @@ You should:
 6. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
 7. Start or assign one correctly-scoped worker thread per claimed packet.
 8. Keep workers inside the packet `target_path`.
-9. Move worker-complete packets to `tasks/review/` with proof.
-10. Move blocked packets to `tasks/blocked/` with exact blocker/proof.
-11. Commit and push every state transition.
+9. Route worker-complete packets that still require independent QA to `tasks/qa/`.
+10. Start a separate, read-only QA companion with the acceptance criteria and pinned target evidence.
+11. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
+12. Move QA-not-required worker completions directly to `tasks/review/` with proof.
+13. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
+14. Commit and push every state transition.
 
 ## What you should not do
 
@@ -31,6 +34,8 @@ You should:
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.
 - Do not let workers spawn workers unless a packet explicitly authorizes a bounded read-only swarm.
+- Do not let a builder verify or approve its own work when the packet requires independent QA.
+- Do not let QA quietly fix the implementation; it reports evidence and a verdict.
 
 ## Capacity
 
@@ -51,7 +56,7 @@ Packets may declare required tools/capabilities, for example:
 
 Before claiming or delegating, verify the intended worker can use the required capability. If not, block with a concrete missing-tool note. If yes, include the tool requirement in the worker handoff and require proof that the worker used the tool or explained a safe substitute.
 
-Tool-required work cannot move to `tasks/review/` unless the packet proof includes the requested tool evidence.
+Tool-required work cannot move to `tasks/qa/` or `tasks/review/` unless the packet proof includes the requested builder evidence. QA-required work cannot move to `tasks/review/` until the separate QA task has returned `PASS` with its own evidence.
 
 ## Worker routing
 
@@ -68,9 +73,17 @@ If the target project/path is missing, block and ask. Do not improvise.
 
 Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task packet below it.
 
+## QA handoff
+
+QA is a separate project-scoped task, not a second orchestrator. Give it the full packet, immutable target commit or artifact, expected behavior, required tools, interactions/viewports when relevant, and artifact directory.
+
+Require exactly one verdict: `PASS`, `FAIL`, or `BLOCKED`. QA must inspect raw evidence itself, remain read-only unless the packet explicitly says otherwise, and leave fixes to a rework packet.
+
 ## Completion
 
-Worker-complete means `tasks/review/`.
+Worker-complete with required QA still missing means `tasks/qa/`.
+
+QA-passed, or explicitly QA-not-required, means `tasks/review/`.
 
 Verified complete means `tasks/done/`.
 

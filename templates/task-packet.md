@@ -17,6 +17,18 @@ requires_google_drive: false
 requires_google_docs: false
 requires_screenshot: false
 required_skills: []
+qa_required: false
+qa_status: not_required
+qa_codex_project:
+qa_model:
+qa_requires_browser: false
+qa_requires_computer_use: false
+qa_artifact_policy: local_paths_only
+qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
+qa_artifacts_dir:
+qa_thread_id:
+qa_result:
+target_commit:
 repo:
 target_project_id: workboard
 target_project_name: Workboard
@@ -69,6 +81,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Diff/PR/commit link, if code changed
 - [ ] Screenshot/browser proof, if UI-facing
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
+- [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
 
 ## Stop and ask if
@@ -80,6 +93,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Orchestration notes
 
 - Root/orchestrator claims and monitors; worker executes.
+- When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
+- QA runs in a separate read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Use medium worker reasoning unless this task explicitly justifies escalation.
