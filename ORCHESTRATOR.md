@@ -19,7 +19,7 @@ You should:
 7. Start or assign one correctly-scoped worker thread per claimed packet.
 8. Keep workers inside the packet `target_path`.
 9. Route worker-complete packets that still require independent QA to `tasks/qa/`.
-10. Start a separate, read-only QA companion with the acceptance criteria and pinned target evidence.
+10. Start a separate, read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
 11. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
 12. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 13. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
@@ -75,7 +75,7 @@ Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task pa
 
 ## QA handoff
 
-QA is a separate project-scoped task, not a second orchestrator. Give it the full packet, immutable target commit or artifact, expected behavior, required tools, interactions/viewports when relevant, and artifact directory.
+QA is a separate task inside the existing target project, not a second orchestrator or a separate empty-folder project. Give it the full packet, immutable target commit or artifact, expected behavior, required tools, interactions/viewports when relevant, and artifact directory.
 
 Require exactly one verdict: `PASS`, `FAIL`, or `BLOCKED`. QA must inspect raw evidence itself, remain read-only unless the packet explicitly says otherwise, and leave fixes to a rework packet.
 

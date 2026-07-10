@@ -53,7 +53,7 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 10. Create or reuse a visible worker thread/project with the correct target path from the start.
 11. Give the worker the full task packet plus the worker handoff prompt below.
 12. Monitor worker output and write proof/status back into the packet.
-13. Inspect `tasks/qa/`. For each pending packet, launch one separate project-scoped QA task against a pinned commit or immutable artifact.
+13. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
 14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 15. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 16. Commit/push every state transition.

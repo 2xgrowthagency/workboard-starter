@@ -13,6 +13,7 @@ rules:
   max_active_worker_claims: 3
   qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
   qa_read_only_by_default: true
+  qa_uses_existing_target_project: true
 
 projects:
   workboard:
@@ -21,9 +22,9 @@ projects:
     status: active
     local_path: /Users/YOU/dev/workboard
     repo: git@github.com:YOUR-ORG/YOUR-WORKBOARD.git
+    codex_project_name: Workboard
     orchestrator_surface: "Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another local agent"
     default_reasoning: high
-    qa_codex_project_name: Workboard QA
     qa_default_reasoning: high
     qa_requires_browser: true
     qa_requires_computer_use: false
@@ -41,7 +42,6 @@ projects:
     claude_project_name: Example App
     default_reasoning: medium
     escalation_reasoning: high
-    qa_codex_project_name: Example App QA
     qa_default_reasoning: high
     qa_requires_browser: false
     qa_requires_computer_use: false

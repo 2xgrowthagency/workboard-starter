@@ -101,7 +101,7 @@ The root orchestrator is air traffic control. It should:
 
 Workers are pilots. Each worker gets one packet, one target path, and clear proof requirements.
 
-QA companions are inspectors. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
+QA companions are inspectors. They run as separate `[qa] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
 
 Do not turn the root orchestrator into a roaming implementation agent. That is how boards become soup.
 
@@ -158,6 +158,7 @@ The orchestrator must preflight these before delegation and require proof before
 - Default max active workers: 3.
 - One worker per packet.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
+- Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.
 - Unknown project/path means block and ask, not guess.
 - Done requires proof.

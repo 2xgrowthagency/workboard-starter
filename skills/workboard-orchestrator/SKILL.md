@@ -23,7 +23,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Delegate one worker per packet in the correct target project/path.
 - Record worker thread/session identity and proof in the packet.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
-- Launch one separate, read-only QA companion per pending QA packet against a pinned commit or immutable artifact.
+- Launch one separate, read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
 - Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
@@ -38,7 +38,7 @@ If a packet declares `required_skills` or `requires_*` capability fields, the or
 3. Require proof that the worker used the tool or a safe substitute.
 4. Block instead of silently skipping required tooling.
 
-If a packet declares `qa_required: true`, the orchestrator must also preflight the configured QA project/tool surface, record `qa_thread_id`, require a `PASS`, `FAIL`, or `BLOCKED` verdict with durable evidence, and prevent the builder from self-verifying.
+If a packet declares `qa_required: true`, the orchestrator must also preflight the existing target project/tool surface, record `qa_thread_id`, require a `PASS`, `FAIL`, or `BLOCKED` verdict with durable evidence, and prevent the builder from self-verifying.
 
 ## Hard stops
 
