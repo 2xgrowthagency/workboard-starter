@@ -63,7 +63,11 @@ function parseArgs(argv) {
 }
 
 function allowedResults(options) {
-  if (options.sourceHandoffKind === 'qa') return new Set(['pass', 'fail', 'blocked']);
+  if (options.sourceHandoffKind === 'qa') {
+    return options.sourceQaRequired === 'true'
+      ? new Set(['pass', 'fail', 'blocked'])
+      : new Set();
+  }
   return new Set([
     options.sourceQaRequired === 'true' ? 'ready_for_qa' : 'ready_for_review',
     'blocked',

@@ -126,23 +126,38 @@ test('builder callbacks cannot use QA verdicts to bypass required QA', () => {
   assert.match(output, /Callback%20result%20is%20invalid%20for%20source%20handoff/);
 });
 
-test('builder callback result follows the source QA requirement', () => {
-  let callback = replaceValue(canonical, '--source-qa-required', 'false');
-  callback = replaceValue(callback, '--callback-result', 'ready_for_review');
-  callback = replaceValue(callback, '--callback-next-lane', 'tasks/review');
-  assert.match(check(callback), /^CALLBACK_STATUS=ROUTABLE /);
+test('role, QA requirement, result, and lane cross-product follows the protocol', () => {
+  const roles = ['builder', 'qa'];
+  const qaRequirements = ['false', 'true'];
+  const results = ['ready_for_qa', 'ready_for_review', 'pass', 'fail', 'blocked'];
+  const lanes = ['tasks/qa', 'tasks/review', 'tasks/ready', 'tasks/blocked'];
+  const validRoutes = new Set([
+    'builder:false:ready_for_review:tasks/review',
+    'builder:false:blocked:tasks/blocked',
+    'builder:true:ready_for_qa:tasks/qa',
+    'builder:true:blocked:tasks/blocked',
+    'qa:true:pass:tasks/review',
+    'qa:true:fail:tasks/ready',
+    'qa:true:blocked:tasks/blocked',
+  ]);
 
-  const bypass = replaceValue(callback, '--callback-result', 'ready_for_qa');
-  assert.match(check(replaceValue(bypass, '--callback-next-lane', 'tasks/qa'), 2), /CHECK_FAILED/);
-});
+  for (const role of roles) {
+    for (const qaRequired of qaRequirements) {
+      for (const result of results) {
+        for (const lane of lanes) {
+          const route = `${role}:${qaRequired}:${result}:${lane}`;
+          let callback = replaceValue(canonical, '--source-handoff-kind', role);
+          callback = replaceValue(callback, '--source-qa-required', qaRequired);
+          callback = replaceValue(callback, '--callback-result', result);
+          callback = replaceValue(callback, '--callback-next-lane', lane);
 
-test('QA callbacks accept verdicts but reject builder completion results', () => {
-  let callback = replaceValue(canonical, '--source-handoff-kind', 'qa');
-  callback = replaceValue(callback, '--callback-result', 'fail');
-  callback = replaceValue(callback, '--callback-next-lane', 'tasks/ready');
-  assert.match(check(callback), /^CALLBACK_STATUS=ROUTABLE /);
-
-  callback = replaceValue(callback, '--callback-result', 'ready_for_qa');
-  callback = replaceValue(callback, '--callback-next-lane', 'tasks/qa');
-  assert.match(check(callback, 2), /CHECK_FAILED/);
+          if (validRoutes.has(route)) {
+            assert.match(check(callback), /^CALLBACK_STATUS=ROUTABLE /, route);
+          } else {
+            assert.match(check(callback, 2), /CALLBACK_STATUS=CHECK_FAILED/, route);
+          }
+        }
+      }
+    }
+  }
 });
