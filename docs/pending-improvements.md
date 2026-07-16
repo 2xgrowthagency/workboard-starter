@@ -4,6 +4,17 @@ This backlog tracks production hardening proven in an operational Workboard that
 
 Last reviewed: 2026-07-16.
 
+## Known Issue Records
+
+These records describe observed platform and runtime failures. The `ST-*` issues below track the portable Workboard mitigations.
+
+- [App-native task calls can stall or time out](https://github.com/2xgrowthagency/workboard-starter/issues/15)
+- [Task creation may succeed after an ambiguous timeout](https://github.com/2xgrowthagency/workboard-starter/issues/16)
+- [Standalone task mutations may not refresh the live Desktop UI](https://github.com/2xgrowthagency/workboard-starter/issues/17)
+- [Completion callbacks may fail after successful work](https://github.com/2xgrowthagency/workboard-starter/issues/18)
+- [Browser, preview, or specialist tooling may be unavailable](https://github.com/2xgrowthagency/workboard-starter/issues/19)
+- [Git authentication or synchronization may fail before classification](https://github.com/2xgrowthagency/workboard-starter/issues/20)
+
 ## Already Present
 
 The starter already includes the core folder-state protocol, tool preflight, separate immutable QA, state-first worker naming, GitHub QA result publication, and a task-packet template. The items below extend those foundations rather than replacing them.
