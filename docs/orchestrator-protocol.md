@@ -24,6 +24,35 @@ One person/agent can play multiple roles, but keep the responsibilities separate
 
 State changes are file moves plus packet status-log updates. Commit/push each meaningful transition so everyone sees the same board.
 
+## Queue-first classifier
+
+Run the read-only classifier before reading `projects.yaml`, packet bodies,
+blocked/backlog narratives, task history, or old automation memory:
+
+```bash
+node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>
+```
+
+The classifier inspects only Git state and the queue metadata needed for counts,
+QA state, and target locks. It never fetches, merges, rebases, pushes, moves
+packets, creates task directories, or writes automation state.
+
+Use the result to open the smallest required lane:
+
+- `NOTHING_TO_CLAIM`: report the counts and stop.
+- `WORK_IN_PROGRESS`: continue only into the active-work handling allowed by the current protocol.
+- `READY_WORK_AVAILABLE`: read the registry and only the ready packets needed for routing.
+- `QA_WORK_AVAILABLE`: read the registry and only the pending QA packets needed for routing. Pending QA takes precedence when ready implementation work also exists; rerun the classifier after routing QA to expose the remaining ready lane.
+- `QA_RESULT_AVAILABLE`: read only the emitted completed-QA packets, verify the recorded evidence, and route `PASS` to review, `FAIL` to ready, or `BLOCKED` to blocked. Do not launch another QA task.
+- `PROMOTION_REVIEW_NEEDED`: use the separate promotion policy/scanner workflow.
+- `WORKBOARD_SYNC_NEEDED`: stop until a clean checkout is safely fast-forwarded.
+- `WORKBOARD_REQUIRES_JUDGMENT`: stop for dirty, ahead, diverged, non-main, malformed packet metadata, or unrecognized QA state/result.
+- `CHECK_FAILED`: report the exact classifier failure and stop.
+
+Claimed and active-QA lock values are metadata summaries in the form
+`packet_id|target_project_id|target_path`. They are routing inputs, not permission
+to open worker history.
+
 
 ## Tool and skill preflight
 
@@ -42,22 +71,24 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 ## Polling loop
 
 1. `cd` into the Workboard repo.
-2. Pull latest `main` with fast-forward only.
-3. Read `projects.yaml` if present, otherwise copy/edit `projects.example.yaml` first.
-4. Inspect `tasks/claimed/` before claiming new work.
-5. Monitor active claims: update stale work, route implementation-complete QA-required work to `tasks/qa`, move QA-not-required work to `tasks/review`, and move exact blockers to `tasks/blocked`.
-6. Compute capacity. Default: max 3 active worker claims.
-7. Inspect `tasks/ready/` by priority and age.
-8. Claim only independent eligible tasks. Avoid two active workers in the same repo/path unless both packets say they are parallel-safe.
-9. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
-10. Create or reuse a visible worker thread/project with the correct target path from the start.
-11. Give the worker the full task packet plus the worker handoff prompt below.
-12. Monitor worker output and write proof/status back into the packet.
-13. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
-14. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
-15. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
-16. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
-17. Commit/push every state transition.
+2. Inspect and synchronize Git using the environment's explicit safe preflight.
+3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`.
+4. Stop immediately on synchronization, judgment, or classifier failure statuses.
+5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context.
+6. Inspect `tasks/claimed/` before claiming new work when the returned lane requires active-work handling.
+7. Monitor active claims: update stale work, route implementation-complete QA-required work to `tasks/qa`, move QA-not-required work to `tasks/review`, and move exact blockers to `tasks/blocked`.
+8. Compute capacity. Default: max 3 active worker claims.
+9. Inspect `tasks/ready/` by priority and age.
+10. Claim only independent eligible tasks. Avoid two active workers in the same repo/path unless both packets say they are parallel-safe.
+11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
+12. Create or reuse a visible worker thread/project with the correct target path from the start.
+13. Give the worker the full task packet plus the worker handoff prompt below.
+14. Monitor worker output and write proof/status back into the packet.
+15. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
+16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
+17. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
+18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
+19. Commit/push every state transition.
 
 ## Concurrency policy
 

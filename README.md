@@ -114,6 +114,8 @@ docs/
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   pending-improvements.md   # production hardening backlog for the starter
 ORCHESTRATOR.md              # first file for the local root orchestrator
+scripts/
+  check-workboard-queue.mjs # read-only queue and checkout classifier
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
@@ -126,6 +128,26 @@ tasks/
   review/                   # QA-passed or QA-not-required, final review pending
   done/                     # verified complete
 projects.example.yaml       # copy to projects.yaml and customize
+tests/
+  check-workboard-queue.test.mjs
+```
+
+## Queue-first check
+
+Before loading project registries, packet bodies, or task history, run the
+dependency-free classifier:
+
+```bash
+node scripts/check-workboard-queue.mjs --repo "$PWD"
+```
+
+It does not fetch, merge, rebase, push, move packets, create directories, or
+write automation memory. It reports checkout safety, queue counts, claimed and
+active-QA target locks, completed QA results needing reconciliation, and one
+routing status. Run its tests with:
+
+```bash
+node --test tests/check-workboard-queue.test.mjs
 ```
 
 
