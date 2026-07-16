@@ -1,6 +1,7 @@
 ---
 recovery_id: YYYYMMDD-001-task-creation-recovery
 recovery_status: investigating
+recovery_outcome: investigating
 source_packet_id: <packet-id>
 root_task_id: <persistent-root-task-id>
 worker_creation_attempt_id: <original-creation-attempt-id>
@@ -132,6 +133,26 @@ it as a duplicate. Preserve useful history: only supported `stand_down` or
 DUPLICATE_STATE: none_found|handled
 DUPLICATE_SEARCH_RECEIPT:
 DUPLICATE_RECEIPT: {"task_id":"<id>","surface":"<worker-creation-surface>","action":"archive|stand_down","action_call":"<exact-call>","readback_call":"<exact-call>","readback_state":"archived|stood_down"}
+```
+
+## No-canonical resolution
+
+Use only when completed recovery conclusively proves no usable worker remains.
+The source may move to `tasks/blocked/` only after this same live app-native
+surface proves absence or unusability and records an exact operator next action.
+
+```text
+NO_CANONICAL_SURFACE:
+NO_CANONICAL_LIST_CALL:
+NO_CANONICAL_LIST_AT:
+NO_CANONICAL_LIST_RESULT:
+NO_CANONICAL_READ_CALL:
+NO_CANONICAL_READ_AT:
+NO_CANONICAL_READ_RESULT:
+NO_CANONICAL_STATE: absent|unusable
+NO_CANONICAL_DECIDED_AT:
+NO_CANONICAL_EVIDENCE:
+NEXT_ACTION:
 ```
 
 ## Recovery completion reruns

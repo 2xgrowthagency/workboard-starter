@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const allowedStatuses = new Set(['investigating', 'reconciled', 'completed']);
+const allowedOutcomes = new Set(['investigating', 'canonical_worker', 'no_usable_worker']);
 const allowedReplacementBases = new Set(['none', 'original_absent', 'original_unusable']);
 const allowedAppNativeSurfaces = new Set(['app-native task tools']);
 const negativeReceipt = /\b(?:not[\s_-]*(?:run|executed|found)|no[\s_-]*usable|unusable|skipped|pending|failed|failure|error|unknown|todo|placeholder|n\/a)\b/i;
@@ -13,7 +14,7 @@ const absentReadResult = /\b(?:not[\s_-]*found|absent|no[\s_-]*matching[\s_-]*ta
 const unusableReadResult = /\b(?:unusable|cannot[\s_-]*(?:accept|execute)|unable[\s_-]*to[\s_-]*(?:accept|execute)|terminal|archived|stood[\s_-]*down)\b/i;
 const destructiveDisposition = /\b(?:hard[- ]?delete|delete|destroy|drop|purge|remove(?:d)? row)\b/i;
 const requiredMetadata = [
-  'recovery_id', 'recovery_status', 'source_packet_id', 'root_task_id',
+  'recovery_id', 'recovery_status', 'recovery_outcome', 'source_packet_id', 'root_task_id',
   'worker_creation_attempt_id', 'requested_title', 'target_project_id',
   'target_path', 'worker_creation_surface', 'requested_model', 'requested_reasoning',
   'creation_started_at', 'creation_outcome_at', 'raw_task_id',
@@ -22,7 +23,8 @@ const requiredMetadata = [
 const requiredSections = [
   'Creation attempt log', 'App-native reconciliation log',
   'Replacement authorization evidence', 'Canonical selection',
-  'Duplicate disposition', 'Recovery completion reruns', 'Status log',
+  'Duplicate disposition', 'No-canonical resolution',
+  'Recovery completion reruns', 'Status log',
 ];
 
 function parseScalar(value) {
@@ -213,6 +215,9 @@ export function validateRecoveryPacket(source) {
   if (!allowedStatuses.has(metadata.recovery_status)) {
     errors.push(`invalid recovery_status: ${metadata.recovery_status || '<empty>'}`);
   }
+  if (!allowedOutcomes.has(metadata.recovery_outcome)) {
+    errors.push(`invalid recovery_outcome: ${metadata.recovery_outcome || '<empty>'}`);
+  }
   if (!allowedReplacementBases.has(metadata.replacement_basis)) {
     errors.push(`invalid replacement_basis: ${metadata.replacement_basis || '<empty>'}`);
   }
@@ -248,6 +253,9 @@ export function validateRecoveryPacket(source) {
   let replacementAuthorizedAt = null;
   let replacementCreatedAt = null;
   if (metadata.recovery_status === 'investigating') {
+    if (metadata.recovery_outcome !== 'investigating') {
+      errors.push('investigating recovery requires recovery_outcome: investigating');
+    }
     if (replacementAuthorized) errors.push('investigating recovery cannot authorize replacement');
     for (const key of ['canonical_task_id', 'canonical_worker_creation_attempt_id',
       'canonical_selected_at', 'replacement_authorization_id',
@@ -339,7 +347,17 @@ export function validateRecoveryPacket(source) {
   }
 
   let canonicalSelected = null;
-  if (['reconciled', 'completed'].includes(metadata.recovery_status)) {
+  if (metadata.recovery_status === 'reconciled' && metadata.recovery_outcome !== 'canonical_worker') {
+    errors.push('reconciled recovery requires recovery_outcome: canonical_worker');
+  }
+  if (metadata.recovery_status === 'completed' && metadata.recovery_outcome === 'investigating') {
+    errors.push('completed recovery requires a terminal recovery_outcome');
+  }
+
+  if (
+    ['reconciled', 'completed'].includes(metadata.recovery_status) &&
+    metadata.recovery_outcome === 'canonical_worker'
+  ) {
     if (!supportsCanonicalDesktopReconciliation(metadata.worker_creation_surface)) {
       errors.push(
         'worker_creation_surface must declare live app-native Desktop create/list/read capability',
@@ -406,6 +424,53 @@ export function validateRecoveryPacket(source) {
     validateDuplicateDisposition(errors, sections['Duplicate disposition'] || '', metadata);
   }
 
+  let noCanonicalDecided = null;
+  if (
+    metadata.recovery_status === 'completed' &&
+    metadata.recovery_outcome === 'no_usable_worker'
+  ) {
+    if (!supportsCanonicalDesktopReconciliation(metadata.worker_creation_surface)) {
+      errors.push(
+        'worker_creation_surface must declare live app-native Desktop create/list/read capability',
+      );
+    }
+    for (const key of ['canonical_task_id', 'canonical_worker_creation_attempt_id', 'canonical_selected_at']) {
+      if (metadata[key]) errors.push(`no-usable-worker recovery must not set ${key}`);
+    }
+    const resolution = sections['No-canonical resolution'] || '';
+    requireMatch(errors, resolution, 'NO_CANONICAL_SURFACE', metadata.worker_creation_surface,
+      'NO_CANONICAL_SURFACE must match worker_creation_surface');
+    requireValue(errors, resolution, 'NO_CANONICAL_LIST_CALL');
+    const listedAt = timestampValue(errors, recordedValue(resolution, 'NO_CANONICAL_LIST_AT'),
+      'NO_CANONICAL_LIST_AT');
+    requireReceipt(errors, resolution, 'NO_CANONICAL_LIST_RESULT');
+    requireValue(errors, resolution, 'NO_CANONICAL_READ_CALL');
+    const readAt = timestampValue(errors, recordedValue(resolution, 'NO_CANONICAL_READ_AT'),
+      'NO_CANONICAL_READ_AT');
+    const readResult = requireValue(errors, resolution, 'NO_CANONICAL_READ_RESULT');
+    const state = requireValue(errors, resolution, 'NO_CANONICAL_STATE');
+    noCanonicalDecided = timestampValue(errors,
+      recordedValue(resolution, 'NO_CANONICAL_DECIDED_AT'), 'NO_CANONICAL_DECIDED_AT');
+    requireValue(errors, resolution, 'NO_CANONICAL_EVIDENCE');
+    requireValue(errors, resolution, 'NEXT_ACTION');
+    if (!['absent', 'unusable'].includes(state)) {
+      errors.push('NO_CANONICAL_STATE must be absent or unusable');
+    }
+    if (readResult && inconclusiveReadResult.test(readResult)) {
+      errors.push('NO_CANONICAL_READ_RESULT must be conclusive');
+    }
+    const expectedReadResult = state === 'absent' ? absentReadResult : unusableReadResult;
+    if (readResult && state && !expectedReadResult.test(readResult)) {
+      errors.push(`NO_CANONICAL_READ_RESULT must prove ${state}`);
+    }
+    assertOrder(errors, recoveryStarted, listedAt,
+      'NO_CANONICAL_LIST_AT must not precede recovery_started_at');
+    assertOrder(errors, listedAt, readAt,
+      'NO_CANONICAL_READ_AT must not precede NO_CANONICAL_LIST_AT');
+    assertOrder(errors, readAt, noCanonicalDecided,
+      'NO_CANONICAL_DECIDED_AT must not precede NO_CANONICAL_READ_AT');
+  }
+
   if (metadata.recovery_status === 'reconciled') {
     for (const key of ['recovery_completed_at', 'promotion_rerun_at', 'queue_classification_rerun_at']) {
       if (metadata[key]) errors.push(`reconciled recovery must not set ${key}`);
@@ -416,7 +481,11 @@ export function validateRecoveryPacket(source) {
     const promotionAt = timestampValue(errors, metadata.promotion_rerun_at, 'promotion_rerun_at');
     const queueAt = timestampValue(errors, metadata.queue_classification_rerun_at, 'queue_classification_rerun_at');
     const completedAt = timestampValue(errors, metadata.recovery_completed_at, 'recovery_completed_at');
-    assertOrder(errors, canonicalSelected, promotionAt, 'promotion_rerun_at must not precede canonical_selected_at');
+    const resolutionAt = metadata.recovery_outcome === 'canonical_worker'
+      ? canonicalSelected
+      : noCanonicalDecided;
+    assertOrder(errors, resolutionAt, promotionAt,
+      'promotion_rerun_at must not precede recovery resolution');
     assertOrder(errors, promotionAt, queueAt, 'queue_classification_rerun_at must not precede promotion_rerun_at');
     assertOrder(errors, queueAt, completedAt, 'recovery_completed_at must not precede queue_classification_rerun_at');
 
@@ -450,7 +519,11 @@ export function validateRecoveryPacket(source) {
 
   const latestStatusEvent = metadata.recovery_status === 'completed'
     ? timestampValue([], metadata.recovery_completed_at, 'recovery_completed_at')
-    : metadata.recovery_status === 'reconciled' ? canonicalSelected : recoveryStarted;
+    : metadata.recovery_status === 'reconciled'
+      ? canonicalSelected
+      : metadata.recovery_outcome === 'no_usable_worker'
+        ? noCanonicalDecided
+        : recoveryStarted;
   assertOrder(errors, latestStatusEvent, statusUpdated, 'status UPDATED_AT must not precede the current recovery state');
   return errors;
 }

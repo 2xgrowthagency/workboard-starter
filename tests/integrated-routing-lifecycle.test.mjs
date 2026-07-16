@@ -63,6 +63,7 @@ function recoveryPacket({ replacement = false, surface = 'app-native task tools'
   };
   const metadata = {
     recovery_id: 'recovery-1', recovery_status: 'reconciled',
+    recovery_outcome: 'canonical_worker',
     source_packet_id: 'packet-1', root_task_id: 'root-1',
     worker_creation_attempt_id: 'attempt-1', requested_title: '[claimed] Example',
     target_project_id: 'project-1', target_path: '/workspace/project-1',
@@ -116,6 +117,7 @@ function recoveryPacket({ replacement = false, surface = 'app-native task tools'
     'CANONICAL_SELECTION_EVIDENCE: complete live app-native list/read proof',
     '## Duplicate disposition', 'DUPLICATE_STATE: none_found',
     'DUPLICATE_SEARCH_RECEIPT: live list returned no additional matching task IDs',
+    '## No-canonical resolution',
     '## Recovery completion reruns', '## Status log',
     `STATUS: reconciled\nUPDATED_AT: ${times.selected}`, '',
   ].join('\n');

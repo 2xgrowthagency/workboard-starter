@@ -228,7 +228,9 @@ node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>
 
 Recovery completion records and reruns both dependency promotion and queue
 classification before routing resumes. The full checklist is in
-`docs/orchestrator-protocol.md`.
+`docs/orchestrator-protocol.md`. Recovery records distinguish a verified
+`canonical_worker` from a conclusively proven `no_usable_worker`; only the
+latter permits a blocked transition and lock release without canonicalization.
 
 ## Minimum rules
 

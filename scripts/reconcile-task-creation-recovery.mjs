@@ -65,6 +65,9 @@ export function validateSourceRecoveryMapping(source, recovery) {
   if (!['reconciled', 'completed'].includes(recoveryFields.recovery_status)) {
     errors.push('recovery must be reconciled or completed before canonicalization');
   }
+  if (recoveryFields.recovery_outcome !== 'canonical_worker') {
+    errors.push('canonicalization requires recovery_outcome: canonical_worker');
+  }
   return errors;
 }
 

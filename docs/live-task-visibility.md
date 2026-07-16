@@ -113,10 +113,12 @@ or mismatch:
 Recovery has two terminal paths:
 
 - **Canonical worker found:** complete canonical writeback, set
+  recovery-record `recovery_outcome: canonical_worker`, set source
   `recovery_status: completed` and `recovery_pending: false`, and keep the source
   packet claimed for the active worker.
 - **No usable worker remains:** only after recovery proves the ambiguity resolved
   and proves there is no usable/canonical worker, set
+  recovery-record `recovery_outcome: no_usable_worker`, set source
   `recovery_status: completed`, `recovery_pending: false`, record the exact next
   action in `worker_routing_blocker` and the status log, then move the source
   packet to `tasks/blocked/`. That move releases its target lock and capacity

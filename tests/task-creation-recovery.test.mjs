@@ -43,6 +43,7 @@ const replacementIdentity = {
 function packet(overrides = {}, sections = {}) {
   const metadata = {
     recovery_id: '20260716-001-recovery', recovery_status: 'investigating',
+    recovery_outcome: 'investigating',
     source_packet_id: 'packet-1', root_task_id: 'root-task-1',
     worker_creation_attempt_id: 'creation-attempt-1',
     requested_title: '[claimed] Example task', target_project_id: 'example',
@@ -69,6 +70,7 @@ function packet(overrides = {}, sections = {}) {
     ].join('\n'),
     'App-native reconciliation log': '', 'Replacement authorization evidence': '',
     'Canonical selection': '', 'Duplicate disposition': '',
+    'No-canonical resolution': '',
     'Recovery completion reruns': '',
     'Status log': `STATUS: ${metadata.recovery_status}\nUPDATED_AT: ${times.recoveryStarted}`,
     ...sections,
@@ -82,7 +84,8 @@ function reconciledPacket(overrides = {}, sections = {}) {
   const canonicalAttemptId = overrides.canonical_worker_creation_attempt_id ||
     overrides.replacement_worker_creation_attempt_id || 'creation-attempt-1';
   return packet({
-    recovery_status: 'reconciled', canonical_task_id: canonicalTaskId,
+    recovery_status: 'reconciled', recovery_outcome: 'canonical_worker',
+    canonical_task_id: canonicalTaskId,
     canonical_worker_creation_attempt_id: canonicalAttemptId,
     canonical_selected_at: times.canonicalSelected, ...overrides,
   }, {
@@ -136,6 +139,41 @@ function completedPacket(overrides = {}, sections = {}) {
   });
 }
 
+function completedNoCanonicalPacket(overrides = {}, sections = {}) {
+  return packet({
+    recovery_status: 'completed', recovery_outcome: 'no_usable_worker',
+    raw_task_id: 'task-original', recovery_completed_at: times.completed,
+    promotion_rerun_at: times.promotion, queue_classification_rerun_at: times.queue,
+    ...overrides,
+  }, {
+    'No-canonical resolution': [
+      'NO_CANONICAL_SURFACE: app-native task tools',
+      'NO_CANONICAL_LIST_CALL: list_tasks({project: "example"})',
+      `NO_CANONICAL_LIST_AT: ${times.listed}`,
+      'NO_CANONICAL_LIST_RESULT: candidate search completed successfully',
+      'NO_CANONICAL_READ_CALL: read_task({id: "task-original"})',
+      `NO_CANONICAL_READ_AT: ${times.canonicalRead}`,
+      'NO_CANONICAL_READ_RESULT: task not found',
+      'NO_CANONICAL_STATE: absent',
+      `NO_CANONICAL_DECIDED_AT: ${times.canonicalSelected}`,
+      'NO_CANONICAL_EVIDENCE: live app-native list/read proved no usable worker remains',
+      'NEXT_ACTION: move source packet to tasks/blocked with this proof',
+    ].join('\n'),
+    'Recovery completion reruns': [
+      'PROMOTION_CALL: node configured-promotion-scanner.mjs --repo <WORKBOARD_PATH>',
+      `PROMOTION_RERUN_AT: ${times.promotion}`,
+      'PROMOTION_STATUS: success',
+      'PROMOTION_RECEIPT: PROMOTION_STATUS=NONE COUNT=0',
+      'QUEUE_CLASSIFICATION_CALL: node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>',
+      `QUEUE_CLASSIFICATION_RERUN_AT: ${times.queue}`,
+      'QUEUE_CLASSIFICATION_STATUS: success',
+      'QUEUE_CLASSIFICATION_RECEIPT: QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=1',
+    ].join('\n'),
+    'Status log': `STATUS: completed\nUPDATED_AT: ${times.completed}`,
+    ...sections,
+  });
+}
+
 function withReconciliationSurfaces(source, { worker, reconciliation, canonical }) {
   return source
     .replace(/^worker_creation_surface:.*$/m, `worker_creation_surface: ${worker}`)
@@ -162,7 +200,7 @@ function sourcePacket(overrides = {}) {
 
 test('portable template exposes every structured recovery receipt', () => {
   for (const field of [
-    'source_packet_id', 'root_task_id', 'worker_creation_attempt_id',
+    'recovery_outcome', 'source_packet_id', 'root_task_id', 'worker_creation_attempt_id',
     'requested_title', 'target_project_id', 'target_path',
     'worker_creation_surface', 'requested_model', 'requested_reasoning', 'raw_task_id',
     'canonical_task_id', 'replacement_authorized', 'replacement_basis',
@@ -505,6 +543,32 @@ test('completed recovery requires successful promotion and queue receipts', () =
     assert.ok(errors.includes('QUEUE_CLASSIFICATION_RECEIPT must record a successful receipt'));
   }
   assert.deepEqual(validateRecoveryPacket(completedPacket()), []);
+});
+
+test('completed recovery can conclusively resolve with no canonical worker', () => {
+  const resolved = completedNoCanonicalPacket();
+  assert.deepEqual(validateRecoveryPacket(resolved), []);
+  assert.throws(
+    () => canonicalizeSourcePacket(sourcePacket(), resolved),
+    /canonicalization requires recovery_outcome: canonical_worker/,
+  );
+
+  const inconclusive = completedNoCanonicalPacket({}, {
+    'No-canonical resolution': [
+      'NO_CANONICAL_SURFACE: app-native task tools',
+      'NO_CANONICAL_LIST_CALL: list_tasks()', `NO_CANONICAL_LIST_AT: ${times.listed}`,
+      'NO_CANONICAL_LIST_RESULT: search completed successfully',
+      'NO_CANONICAL_READ_CALL: read_task(task-original)',
+      `NO_CANONICAL_READ_AT: ${times.canonicalRead}`,
+      'NO_CANONICAL_READ_RESULT: connection timed out',
+      'NO_CANONICAL_STATE: absent', `NO_CANONICAL_DECIDED_AT: ${times.canonicalSelected}`,
+      'NO_CANONICAL_EVIDENCE: read did not prove absence',
+      'NEXT_ACTION: keep source claimed',
+    ].join('\n'),
+  });
+  assert.ok(validateRecoveryPacket(inconclusive).includes(
+    'NO_CANONICAL_READ_RESULT must be conclusive',
+  ));
 });
 
 test('completed rerun timestamps must match their structured receipts', () => {

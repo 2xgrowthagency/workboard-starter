@@ -53,7 +53,9 @@ through structured live app-native list/read, write it back to source
 `worker_thread_id` with proof, and archive or stand down only proven duplicates.
 Callbacks route only when canonical task and creation-attempt IDs both match;
 others are recovery evidence. Completion requires validator success, promotion
-rerun, and queue-classification rerun.
+rerun, and queue-classification rerun. If conclusive live proof finds no usable
+worker, validate `recovery_outcome: no_usable_worker`, move the source to blocked
+with the exact next action, and release the lock without calling canonicalize.
 
 ## Tool enforcement
 
