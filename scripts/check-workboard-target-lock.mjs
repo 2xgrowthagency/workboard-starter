@@ -32,11 +32,14 @@ function parseArgs(argv) {
 
   if (options.targetProjectId === null) throw new Error('Missing --target-project-id');
   if (options.targetPath === null) throw new Error('Missing --target-path');
-  if (options.targetProjectId.trim() === '') {
-    throw new Error('Empty --target-project-id');
-  }
-  if (options.targetPath.trim() === '') throw new Error('Empty --target-path');
+  validateComponent(options.targetProjectId, '--target-project-id');
+  validateComponent(options.targetPath, '--target-path');
   return options;
+}
+
+function validateComponent(value, label) {
+  if (value.trim() === '') throw new Error(`Empty ${label}`);
+  if (value.includes('\uFFFD')) throw new Error(`Unicode replacement character in ${label}`);
 }
 
 function decode(value, source) {
@@ -58,6 +61,9 @@ function parseLocks(value, source) {
     const [packetId, targetProjectId, targetPath] = components.map((component) =>
       decode(component, source),
     );
+    validateComponent(packetId, `packet_id in ${source}`);
+    validateComponent(targetProjectId, `target_project_id in ${source}`);
+    validateComponent(targetPath, `target_path in ${source}`);
     return { packetId, targetProjectId, targetPath, source };
   });
 }

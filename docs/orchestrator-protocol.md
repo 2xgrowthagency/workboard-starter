@@ -30,8 +30,12 @@ Run the read-only classifier before reading `projects.yaml`, packet bodies,
 blocked/backlog narratives, task history, or old automation memory:
 
 ```bash
-node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>
+node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>
 ```
+
+`--capacity` defaults to `3` when omitted. If the local automation uses another
+limit, pass that configured value directly; do not read packet bodies or worker
+history to compute it.
 
 The classifier inspects only Git state and the queue metadata needed for counts,
 QA state, and target locks. It never fetches, merges, rebases, pushes, moves
@@ -40,7 +44,7 @@ packets, creates task directories, or writes automation state.
 Use the result to open the smallest required lane:
 
 - `NOTHING_TO_CLAIM`: report the counts and stop.
-- `WORK_IN_PROGRESS`: report the lock/count snapshot and stop. Do not open packet or worker history.
+- `WORK_IN_PROGRESS`: report the lock/count/capacity snapshot and stop. This is returned when active work reaches capacity even if ready or pending-QA inventory exists. Do not open packet or worker history.
 - `READY_WORK_AVAILABLE`: read the registry and only the ready packets needed for routing.
 - `QA_WORK_AVAILABLE`: read the registry and only the pending QA packets needed for routing. Pending QA takes precedence when ready implementation work also exists; rerun the classifier after routing QA to expose the remaining ready lane.
 - `QA_RESULT_AVAILABLE`: read only the emitted completed-QA packets, verify the recorded evidence, and route `PASS` to review, `FAIL` to ready, or `BLOCKED` to blocked. Do not launch another QA task.
@@ -69,9 +73,12 @@ node scripts/check-workboard-target-lock.mjs \
   --qa-active-locks "$QA_ACTIVE_LOCKS"
 ```
 
-Malformed or undecodable lock input fails closed. Do not normalize case,
-resolve symlinks, trim path segments, or use substring matching in the routing
-decision; packets and locks must use the canonical registry values.
+Malformed or undecodable lock input fails closed. Every component is decoded
+strictly; empty or whitespace-only decoded components, malformed UTF-8, and the
+Unicode replacement character are rejected. Do not normalize case, resolve
+symlinks, trim path segments, or use substring matching in the routing decision;
+packets and locks must use the canonical registry values. The queue classifier
+applies the same UTF-8/replacement-character checks to packet frontmatter.
 
 
 ## Tool and skill preflight
@@ -92,31 +99,34 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 
 1. `cd` into the Workboard repo.
 2. Inspect and synchronize Git using the environment's explicit safe preflight.
-3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`.
+3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; omit `--capacity` only when using the default of 3.
 4. Stop immediately on synchronization, judgment, or classifier failure statuses.
 5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context.
 6. Treat claimed and active-QA packets only as capacity usage and per-target locks. Never inspect, monitor, heartbeat, or babysit their task history during an ordinary poll.
-7. Compute capacity. Default: max 3 active claimed or active-QA tasks.
-8. If ready work exists and capacity remains, inspect `tasks/ready/` by priority and age even when another target is active.
+7. Trust the classifier's `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED` fields. `WORK_IN_PROGRESS` machine-enforces a stop when available capacity is zero.
+8. If the classifier returns a routable lane and capacity remains, inspect `tasks/ready/` by priority and age even when another target is active.
 9. Decode the emitted locks and reject every ready packet whose exact `target_project_id` and `target_path` tuple is locked. `parallel_safe` does not override a target lock.
 10. Claim only independent eligible packets for unlocked targets, up to remaining capacity.
 11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
-12. Create or reuse a visible worker thread/project with the correct target path from the start.
-13. Give the worker the full task packet plus the worker handoff prompt below.
+12. For each creation attempt, mint and persist `worker_creation_attempt_id`; set `worker_thread_id` to the created task ID as the packet's current canonical live-read task. Preserve the original builder as `builder_thread_id` before replacing the canonical ID for QA.
+13. Give the worker the full task packet plus the worker handoff prompt below, including unchanged `root_task_id`, `target_project_id`, `target_path`, canonical `worker_thread_id`, and `worker_creation_attempt_id`.
 14. Do not monitor the worker. Wait for its one final completion callback.
 15. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
 16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
 17. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
-19. A valid completion callback authorizes one bounded read of the named worker/QA task and exact packet to reconcile its immutable proof and requested next lane. It does not authorize later or periodic reads.
+19. Validate the callback with `scripts/check-workboard-callback.mjs`. Only `CALLBACK_STATUS=ROUTABLE` authorizes one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
 20. Commit/push every state transition.
 
 ## Completion callback contract
 
 Every builder and QA handoff must include the packet's persistent
-`root_task_id`, packet ID, and the current worker or QA task ID. The root task ID
-is created once by the source root task and must survive builder, QA, rework,
-and review handoffs.
+`root_task_id`, packet ID, canonical `worker_thread_id`, persistent
+`worker_creation_attempt_id`, `target_project_id`, and `target_path`.
+`root_task_id` is created once by the source root task and survives builder, QA,
+rework, and review handoffs. `worker_thread_id` is always the current canonical
+live-read task; `worker_creation_attempt_id` is minted once for that task-creation
+attempt and copied unchanged into its handoff and callback.
 
 Each builder or QA task sends exactly one final callback to `root_task_id` after
 it has stopped mutating its target. The callback is a single envelope:
@@ -126,6 +136,7 @@ WORKBOARD_COMPLETION_CALLBACK
 packet_id: <packet-id>
 result: <ready_for_qa|ready_for_review|pass|fail|blocked>
 worker_task_id: <current-builder-or-qa-task-id>
+worker_creation_attempt_id: <current-creation-attempt-id>
 immutable_proof: <commit-sha-pr-url-artifact-digest-or-other-immutable-reference>
 next_lane: <tasks/qa|tasks/review|tasks/ready|tasks/blocked>
 ```
@@ -137,6 +148,34 @@ The callback requests routing; only the root moves the packet. Progress notices
 are not callbacks, and a task must not send a second final callback to amend the
 first one.
 
+Before any lane move, run the callback validator with the current source packet
+fields and callback envelope:
+
+```bash
+node scripts/check-workboard-callback.mjs \
+  --source-packet-id "$PACKET_ID" \
+  --source-handoff-kind "$SOURCE_HANDOFF_KIND" \
+  --source-qa-required "$QA_REQUIRED" \
+  --source-worker-thread-id "$WORKER_THREAD_ID" \
+  --source-worker-creation-attempt-id "$WORKER_CREATION_ATTEMPT_ID" \
+  --callback-packet-id "$CALLBACK_PACKET_ID" \
+  --callback-result "$CALLBACK_RESULT" \
+  --callback-worker-task-id "$CALLBACK_WORKER_TASK_ID" \
+  --callback-worker-creation-attempt-id "$CALLBACK_WORKER_CREATION_ATTEMPT_ID" \
+  --callback-immutable-proof "$CALLBACK_IMMUTABLE_PROOF" \
+  --callback-next-lane "$CALLBACK_NEXT_LANE"
+```
+
+Set `source-handoff-kind` from the canonical handoff (`builder` or `qa`) and
+`source-qa-required` from the source packet. Builders may return
+`ready_for_qa` only when QA is required, `ready_for_review` only when it is not,
+or `blocked`; QA may return only `pass`, `fail`, or `blocked`. Only
+`CALLBACK_STATUS=ROUTABLE` may move the packet. A packet-ID, task-ID, or
+attempt-ID mismatch returns `CALLBACK_STATUS=RECOVERY_EVIDENCE`. This includes
+late callbacks from superseded creation attempts: retain the envelope in the
+status log, but do not move the packet or treat it as live-read authorization.
+Malformed envelopes return `CALLBACK_STATUS=CHECK_FAILED` and also cannot route.
+
 If the callback capability is unavailable or the send fails, emit this marker
 in the task's final output and any packet-local status surface already
 authorized by the handoff:
@@ -146,6 +185,7 @@ ROOT_RECONCILIATION_REQUIRED
 packet_id: <packet-id>
 result: <same-result>
 worker_task_id: <same-task-id>
+worker_creation_attempt_id: <same-attempt-id>
 immutable_proof: <same-proof>
 next_lane: <same-next-lane>
 ```
@@ -188,7 +228,10 @@ You are a Workboard worker. Work on exactly one packet.
 Handoff identity:
 - root_task_id: <persistent-source-root-task-id>
 - packet_id: <packet-id>
-- worker_task_id: <current-builder-task-id>
+- worker_thread_id: <canonical-current-builder-task-id>
+- worker_creation_attempt_id: <current-creation-attempt-id>
+- target_project_id: <canonical-target-project-id>
+- target_path: <canonical-target-path>
 
 Rules:
 - Work only inside the task target_path, except you may append proof/status to the Workboard packet.
@@ -197,7 +240,7 @@ Rules:
 - Do not create subworkers unless the packet explicitly authorizes a bounded read-only swarm.
 - Keep context task-local. Do not import private memory or unrelated chat history.
 - Stop and ask if acceptance criteria are ambiguous or verification is impossible.
-- Send exactly one final callback to the supplied root_task_id. If callback delivery is unavailable or fails, emit ROOT_RECONCILIATION_REQUIRED with the identical packet ID, result, worker task ID, immutable proof, and next lane. Do not request periodic monitoring.
+- Send exactly one final callback to the supplied root_task_id. Copy worker_thread_id into callback worker_task_id and include the unchanged worker_creation_attempt_id. If callback delivery is unavailable or fails, emit ROOT_RECONCILIATION_REQUIRED with the identical packet ID, result, canonical worker_thread_id as worker_task_id, worker_creation_attempt_id, immutable proof, and next lane. Do not request periodic monitoring.
 
 Required proof:
 - Current working directory.
@@ -219,7 +262,10 @@ You are an independent Workboard QA companion. Verify exactly one packet.
 Handoff identity:
 - root_task_id: <same-persistent-source-root-task-id>
 - packet_id: <packet-id>
-- worker_task_id: <current-QA-task-id>
+- worker_thread_id: <canonical-current-QA-task-id>
+- worker_creation_attempt_id: <current-QA-creation-attempt-id>
+- target_project_id: <canonical-target-project-id>
+- target_path: <canonical-target-path>
 
 Rules:
 - Treat the builder's summary as a claim, not evidence.
@@ -230,7 +276,7 @@ Rules:
 - Keep screenshots and reports local unless the packet explicitly allows sharing.
 - Publish only to verified packet-linked GitHub targets. Use a stable marker to update/skip duplicate comments; never upload local-only artifacts or expose absolute local paths.
 - Notify the original worker only according to packet policy; the notice must forbid fixes until root requeues the packet.
-- Send exactly one final callback to the supplied root_task_id. If callback delivery is unavailable or fails, emit ROOT_RECONCILIATION_REQUIRED with the identical packet ID, verdict, QA task ID as worker_task_id, immutable proof, and next lane. Do not request periodic monitoring.
+- Send exactly one final callback to the supplied root_task_id. Copy worker_thread_id into callback worker_task_id and include the unchanged worker_creation_attempt_id. If callback delivery is unavailable or fails, emit ROOT_RECONCILIATION_REQUIRED with the identical packet ID, verdict, canonical worker_thread_id as worker_task_id, worker_creation_attempt_id, immutable proof, and next lane. Do not request periodic monitoring.
 
 Return exactly one verdict:
 - PASS: every required criterion is independently supported.

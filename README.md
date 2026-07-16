@@ -107,8 +107,11 @@ Ordinary polls never inspect, monitor, heartbeat, or babysit active task history
 Claimed and active-QA packets consume capacity and lock their exact decoded
 `target_project_id` + `target_path` tuple. Ready work for other targets keeps
 routing up to capacity. Every builder and QA task receives the persistent source
-`root_task_id` and sends exactly one final callback; callback failure emits
-`ROOT_RECONCILIATION_REQUIRED` with the same immutable proof.
+`root_task_id`, canonical `worker_thread_id`, and persistent
+`worker_creation_attempt_id`, then sends exactly one final callback. Only a
+callback matching the packet's current task and attempt can route; delayed or
+noncanonical callbacks are recovery evidence. Callback failure emits
+`ROOT_RECONCILIATION_REQUIRED` with the same immutable proof and attempt ID.
 
 QA companions are inspectors. They run as separate `[qa] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
 
@@ -126,6 +129,7 @@ ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
   check-workboard-target-lock.mjs # exact decoded target-lock check
+  check-workboard-callback.mjs # canonical callback identity/role/lane check
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
@@ -139,6 +143,7 @@ tasks/
   done/                     # verified complete
 projects.example.yaml       # copy to projects.yaml and customize
 tests/
+  check-workboard-callback.test.mjs
   check-workboard-queue.test.mjs
   check-workboard-target-lock.test.mjs
 ```
@@ -149,13 +154,14 @@ Before loading project registries, packet bodies, or task history, run the
 dependency-free classifier:
 
 ```bash
-node scripts/check-workboard-queue.mjs --repo "$PWD"
+node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 ```
 
 It does not fetch, merge, rebase, push, move packets, create directories, or
 write automation memory. It reports checkout safety, queue counts, claimed and
-active-QA target locks, completed QA results needing reconciliation, and one
-routing status. Run its tests with:
+active-QA target locks, completed QA results, configured/available capacity,
+and one routing status. Capacity defaults to 3; at capacity it reports
+`WORK_IN_PROGRESS` even when ready work is waiting. Run its tests with:
 
 ```bash
 node --test tests/check-workboard-queue.test.mjs
@@ -193,7 +199,8 @@ Supported fields in `templates/task-packet.md` include:
 - `qa_artifacts_dir`
 - `qa_thread_id`
 - `qa_result`
-- `root_task_id` and completion callback receipt/error fields
+- persistent `root_task_id`, canonical `worker_thread_id`, and per-creation `worker_creation_attempt_id`
+- completion callback task/attempt identity, receipt, and error fields
 
 The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
 
@@ -202,11 +209,11 @@ The orchestrator must preflight these before delegation and require proof before
 - No secrets in this repo.
 - No raw private memory dumps.
 - One root orchestrator loop at a time.
-- Default max active workers: 3.
+- Default max active claimed or active-QA tasks: 3.
 - One worker per packet.
 - Claimed and active-QA packets lock only their exact target tuple; unrelated targets continue up to capacity.
 - Active workers are event-driven: no periodic history reads, monitoring, or heartbeats.
-- Each builder/QA task sends exactly one final callback to the persistent root task; callback failure emits `ROOT_RECONCILIATION_REQUIRED`.
+- Each builder/QA task sends exactly one final callback to persistent `root_task_id`. Only callback `worker_task_id` matching canonical `worker_thread_id` and matching `worker_creation_attempt_id` can route; noncanonical callbacks are recovery evidence. Callback failure emits `ROOT_RECONCILIATION_REQUIRED`.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.

@@ -10,12 +10,13 @@ import {
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { TextDecoder } from 'node:util';
 
 function usage() {
   console.error(
     'Usage: node scripts/check-workboard-queue.mjs [--repo /path/to/workboard] ' +
       '[--promotion-script /path/to/scanner.mjs] [--no-action-streak count] ' +
-      '[--idle-pause-threshold count]',
+      '[--idle-pause-threshold count] [--capacity count]',
   );
 }
 
@@ -25,6 +26,7 @@ function parseArgs(argv) {
     promotionScript: null,
     noActionStreak: 0,
     idlePauseThreshold: 0,
+    capacity: 3,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -50,6 +52,9 @@ function parseArgs(argv) {
       case '--idle-pause-threshold':
         options.idlePauseThreshold = parseCount(value, flag);
         break;
+      case '--capacity':
+        options.capacity = parsePositiveCount(value, flag);
+        break;
       default:
         throw new Error(`Unknown argument: ${flag}`);
     }
@@ -66,6 +71,14 @@ function parseArgs(argv) {
 function parseCount(value, flag) {
   if (!/^\d+$/.test(value)) throw new Error(`${flag} must be a non-negative integer`);
   return Number(value);
+}
+
+function parsePositiveCount(value, flag) {
+  const parsed = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed) || parsed === 0) {
+    throw new Error(`${flag} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function sanitize(value) {
@@ -155,9 +168,8 @@ function readFrontmatter(file) {
   const descriptor = openSync(file, 'r');
   const chunk = Buffer.alloc(512);
   const maxBytes = 64 * 1024;
-  let content = '';
+  let bytes = Buffer.alloc(0);
   let bytesRead = 0;
-  let match = null;
 
   try {
     while (bytesRead < maxBytes) {
@@ -170,21 +182,38 @@ function readFrontmatter(file) {
       );
       if (count === 0) break;
       bytesRead += count;
-      content += chunk.toString('utf8', 0, count);
+      bytes = Buffer.concat([bytes, chunk.subarray(0, count)]);
 
-      if (
-        content.length >= 4 &&
-        !content.startsWith('---\n') &&
-        !content.startsWith('---\r\n')
-      ) {
+      const lfEnd = bytes.indexOf('\n---\n', 4);
+      const crlfEnd = bytes.indexOf('\n---\r\n', 4);
+      const ends = [
+        lfEnd >= 0 ? lfEnd + Buffer.byteLength('\n---\n') : -1,
+        crlfEnd >= 0 ? crlfEnd + Buffer.byteLength('\n---\r\n') : -1,
+      ].filter((end) => end >= 0);
+      if (ends.length > 0) {
+        bytes = bytes.subarray(0, Math.min(...ends));
         break;
       }
-      match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-      if (match) break;
     }
   } finally {
     closeSync(descriptor);
   }
+
+  let content;
+  try {
+    content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_packet_encoding',
+        DETAIL: sanitize(`${basename(file)}_invalid_utf8_frontmatter`),
+      },
+      1,
+    );
+  }
+
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
 
   if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) {
     emit(
@@ -208,6 +237,17 @@ function readFrontmatter(file) {
     );
   }
 
+  if (match[1].includes('\uFFFD')) {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_packet_encoding',
+        DETAIL: sanitize(`${basename(file)}_unicode_replacement_character_in_frontmatter`),
+      },
+      1,
+    );
+  }
+
   const fields = {};
   for (const line of match[1].split(/\r?\n/)) {
     const fieldMatch = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
@@ -218,6 +258,30 @@ function readFrontmatter(file) {
 
 function packetId(file, fields) {
   return fields.id || basename(file, '.md');
+}
+
+function validateLockComponent(file, field, value) {
+  if (String(value ?? '').trim() === '') {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_target_lock_metadata',
+        DETAIL: sanitize(`${basename(file)}_blank_${field}`),
+      },
+      1,
+    );
+  }
+  if (value.includes('\uFFFD')) {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_packet_encoding',
+        DETAIL: sanitize(`${basename(file)}_unicode_replacement_character_in_${field}`),
+      },
+      1,
+    );
+  }
+  return value;
 }
 
 function lockFor(file) {
@@ -233,10 +297,17 @@ function lockFor(file) {
       1,
     );
   }
-  return [
-    packetId(file, fields),
+  const id = validateLockComponent(file, 'id', packetId(file, fields));
+  const targetProjectId = validateLockComponent(
+    file,
+    'target_project_id',
     fields.target_project_id,
-    fields.target_path,
+  );
+  const targetPath = validateLockComponent(file, 'target_path', fields.target_path);
+  return [
+    id,
+    targetProjectId,
+    targetPath,
   ]
     .map(encodeComponent)
     .join('|');
@@ -440,6 +511,9 @@ const common = {
   QA_PENDING: qa.pending.length,
   QA_COMPLETE: qa.terminal.length,
   READY: readyFiles.length,
+  CAPACITY: options.capacity,
+  AVAILABLE_CAPACITY: Math.max(options.capacity - activeCount, 0),
+  CAPACITY_REACHED: activeCount >= options.capacity ? 1 : 0,
   CLAIMED_LOCKS: claimedLocks,
   QA_ACTIVE_LOCKS: qaActiveLocks,
 };
@@ -449,6 +523,17 @@ if (qa.terminal.length > 0) {
     ...common,
     QA_RESULTS: sanitizeComposite(
       qa.terminal.map(({ id, result }) => `${encodeComponent(id)}|${result}`).join(';'),
+    ),
+  });
+}
+
+if (activeCount >= options.capacity) {
+  emit('WORK_IN_PROGRESS', {
+    ...common,
+    NO_ACTION_STREAK: options.noActionStreak,
+    IDLE_PAUSE_RECOMMENDED: pauseRecommended(
+      options.noActionStreak,
+      options.idlePauseThreshold,
     ),
   });
 }

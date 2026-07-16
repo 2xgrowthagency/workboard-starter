@@ -47,6 +47,8 @@ Acceptance criteria:
 - [x] every worker and QA handoff receives the persistent root task ID and sends one completion callback;
 - [x] callback failure produces an explicit root-reconciliation marker instead of periodic monitoring;
 - [x] callback receipt authorizes one bounded reconciliation read, never open-ended monitoring.
+- [x] capacity is machine-enforced before ready or pending-QA routing;
+- [x] only callbacks matching canonical `worker_thread_id` and `worker_creation_attempt_id` may route; delayed callbacks remain recovery evidence.
 
 ### [ST-003: add an ambiguous-creation recovery lane](https://github.com/2xgrowthagency/workboard-starter/issues/3)
 

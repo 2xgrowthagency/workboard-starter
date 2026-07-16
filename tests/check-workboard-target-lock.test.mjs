@@ -76,6 +76,16 @@ test('encoded delimiters are decoded without creating phantom records', () => {
   assert.match(output, /PACKET_ID=packet%7Cone/);
 });
 
+test('encoded delimiters remain isolated across multiple lock records', () => {
+  const output = check([
+    ...candidate,
+    '--claimed-locks',
+    'packet%7Cone|shop%7Cwest|%2Fwork%2Fshop%3Bwest;packet-two|shop|%2Fwork%2Fshop',
+  ]);
+  assert.match(output, /^TARGET_LOCK_STATUS=LOCKED /);
+  assert.match(output, /PACKET_ID=packet-two/);
+});
+
 test('malformed lock input fails closed', () => {
   const output = check([...candidate, '--claimed-locks', 'missing-components'], 2);
   assert.match(output, /TARGET_LOCK_STATUS=CHECK_FAILED/);
@@ -87,6 +97,30 @@ test('invalid percent encoding fails closed', () => {
   assert.match(output, /Invalid%20percent%20encoding/);
 });
 
+test('malformed percent-encoded UTF-8 fails closed', () => {
+  const output = check([...candidate, '--claimed-locks', 'packet|shop|%C3%28'], 2);
+  assert.match(output, /TARGET_LOCK_STATUS=CHECK_FAILED/);
+  assert.match(output, /Invalid%20percent%20encoding/);
+});
+
+test('decoded replacement characters in lock records fail closed', () => {
+  const output = check(
+    [...candidate, '--qa-active-locks', 'packet|shop|%2Fwork%2F%EF%BF%BD'],
+    2,
+  );
+  assert.match(output, /TARGET_LOCK_STATUS=CHECK_FAILED/);
+  assert.match(output, /Unicode%20replacement%20character/);
+});
+
+test('replacement characters in candidate metadata fail closed', () => {
+  const output = check(
+    ['--target-project-id', 'shop\uFFFD', '--target-path', '/work/shop'],
+    2,
+  );
+  assert.match(output, /TARGET_LOCK_STATUS=CHECK_FAILED/);
+  assert.match(output, /Unicode%20replacement%20character/);
+});
+
 test('blank candidate target metadata fails closed', () => {
   const blankProject = check(
     ['--target-project-id', ' ', '--target-path', '/work/shop'],
@@ -95,4 +129,25 @@ test('blank candidate target metadata fails closed', () => {
   const blankPath = check(['--target-project-id', 'shop', '--target-path', ''], 2);
   assert.match(blankProject, /REASON=Empty%20--target-project-id/);
   assert.match(blankPath, /REASON=Empty%20--target-path/);
+});
+
+test('decoded whitespace-only target fields fail closed', () => {
+  const blankProject = check(
+    [...candidate, '--claimed-locks', 'packet|%20%09|%2Fwork%2Fshop'],
+    2,
+  );
+  const blankPath = check(
+    [...candidate, '--qa-active-locks', 'packet|shop|%20%0A%20'],
+    2,
+  );
+  assert.match(blankProject, /REASON=Empty%20target_project_id/);
+  assert.match(blankPath, /REASON=Empty%20target_path/);
+});
+
+test('decoded whitespace-only packet identity fails closed', () => {
+  const output = check(
+    [...candidate, '--claimed-locks', '%20%09|shop|%2Fwork%2Fshop'],
+    2,
+  );
+  assert.match(output, /REASON=Empty%20packet_id/);
 });
