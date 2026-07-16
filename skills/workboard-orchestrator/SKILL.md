@@ -37,13 +37,16 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 
 ## Ambiguous creation hard stop
 
-Task creation timeout is an ambiguous outcome, not proof of failure. Preserve the
-full request, exact calls, timestamps, partial evidence, source IDs, and any raw
-task ID in a recovery packet. Select one canonical task only through live
-app-native list/read, stand down or archive only proven duplicates, and preserve
-their history. Completion requires validation with
-`scripts/check-task-creation-recovery.mjs`, dependency-promotion rerun, and queue
-classification rerun.
+Task creation timeout is an ambiguous outcome, not proof of failure. Keep the
+source packet claimed with capacity and target lock retained. Preserve its
+`root_task_id`, target tuple, `worker_creation_surface`, persistent
+`worker_creation_attempt_id`, full request, exact calls, timestamps, partial
+evidence, and raw task ID in a recovery packet. Select one canonical task only
+through structured live app-native list/read, write it back to source
+`worker_thread_id` with proof, and archive or stand down only proven duplicates.
+Callbacks route only when canonical task and creation-attempt IDs both match;
+others are recovery evidence. Completion requires validator success, promotion
+rerun, and queue-classification rerun.
 
 ## Tool enforcement
 

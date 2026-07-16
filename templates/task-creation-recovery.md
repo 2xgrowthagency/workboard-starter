@@ -2,12 +2,12 @@
 recovery_id: YYYYMMDD-001-task-creation-recovery
 recovery_status: investigating
 source_packet_id: <packet-id>
-source_root_task_id: <root-task-id-or-unknown>
+root_task_id: <persistent-root-task-id>
+worker_creation_attempt_id: <persistent-creation-attempt-id>
 requested_title: <exact-requested-title>
-requested_project_id: <project-id>
-requested_project_name: <project-name>
-requested_cwd: <portable-or-configured-target-path>
-creation_surface: <app-native-tool-and-host>
+target_project_id: <project-id>
+target_path: <portable-or-configured-target-path>
+worker_creation_surface: <app-native-tool-and-host>
 requested_model: <model-id-or-unknown>
 requested_reasoning: <reasoning-level-or-unknown>
 creation_started_at: YYYY-MM-DDTHH:MM:SSZ
@@ -19,6 +19,7 @@ canonical_selected_at:
 replacement_authorized: false
 replacement_basis: none
 replacement_task_id:
+replacement_created_at:
 recovery_completed_at:
 promotion_rerun_at:
 queue_classification_rerun_at:
@@ -28,7 +29,8 @@ queue_classification_rerun_at:
 
 Use this packet when an app-native creation call stalls, times out, errors after
 returning partial evidence, or otherwise has an ambiguous outcome. The source
-packet remains claimed and its target lock remains active during recovery.
+packet remains claimed and its capacity/target lock remains active during
+recovery. The ownership fields above must exactly match the source packet.
 
 ## Creation attempt log
 
@@ -51,13 +53,10 @@ plausible candidate. Preserve exact calls, timestamps, returned IDs, title,
 project, cwd, model/reasoning when exposed, and task usability evidence.
 
 ```text
+RECONCILIATION_SURFACE:
 LIST_CALL:
 LISTED_AT:
 LIST_RESULT:
-READ_CALL:
-READ_AT:
-READ_RESULT:
-USABILITY:
 ```
 
 ## Replacement authorization evidence
@@ -69,28 +68,58 @@ specific live evidence and decision timestamp here before making one replacement
 attempt.
 
 ```text
+AUTHORIZATION_SURFACE:
+AUTHORIZATION_LIST_CALL:
+AUTHORIZATION_LIST_AT:
+AUTHORIZATION_LIST_RESULT:
+AUTHORIZATION_READ_CALL:
+AUTHORIZATION_READ_TASK_ID:
+AUTHORIZATION_READ_AT:
+AUTHORIZATION_READ_STATUS: success
+AUTHORIZATION_READ_RESULT:
+AUTHORIZATION_ORIGINAL_STATE: absent|unusable
+AUTHORIZATION_DECIDED_AT:
 REPLACEMENT_AUTHORIZATION_EVIDENCE:
+REPLACEMENT_CREATE_CALL:
+REPLACEMENT_CREATED_AT:
+REPLACEMENT_CREATE_RESULT:
+REPLACEMENT_TASK_ID:
 ```
 
 ## Canonical selection
 
 Record why `canonical_task_id` is the single usable task for the source packet,
 and cite its successful live app-native readback. A returned creation ID or local
-database row alone is not canonical proof.
+database row alone is not canonical proof. When a replacement was authorized and
+created, its recorded `replacement_task_id` is the canonical task.
 
 ```text
+CANONICAL_TASK_ID:
+CANONICAL_ROOT_TASK_ID:
+CANONICAL_WORKER_CREATION_ATTEMPT_ID:
+CANONICAL_TARGET_PROJECT_ID:
+CANONICAL_TARGET_PATH:
+CANONICAL_READ_SURFACE:
+CANONICAL_READ_CALL:
+CANONICAL_READ_TASK_ID:
+CANONICAL_READ_AT:
+CANONICAL_READ_RESULT:
+CANONICAL_USABILITY: usable
 CANONICAL_SELECTION_EVIDENCE:
 ```
 
 ## Duplicate disposition
 
 List every proven duplicate task ID and the app-native readback that established
-it as a duplicate. Stand it down or archive it through the supported app-native
-surface and verify the result. Do not hard-delete useful task history. If no
-duplicates exist, record `none found`.
+it as a duplicate. Preserve useful history: only supported `stand_down` or
+`archive` actions with verified readback are valid. Use one single-line JSON
+`DUPLICATE_RECEIPT` per duplicate. If no duplicates exist, record the structured
+`none_found` state and the app-native search receipt that proves it.
 
 ```text
-DUPLICATE_DISPOSITION:
+DUPLICATE_STATE: none_found|handled
+DUPLICATE_SEARCH_RECEIPT:
+DUPLICATE_RECEIPT: {"task_id":"<id>","surface":"<worker-creation-surface>","action":"archive|stand_down","action_call":"<exact-call>","readback_call":"<exact-call>","readback_state":"archived|stood_down"}
 ```
 
 ## Recovery completion reruns
@@ -102,9 +131,13 @@ until both reruns are captured.
 
 ```text
 PROMOTION_CALL:
-PROMOTION_RESULT:
+PROMOTION_RERUN_AT:
+PROMOTION_STATUS: success
+PROMOTION_RECEIPT:
 QUEUE_CLASSIFICATION_CALL:
-QUEUE_CLASSIFICATION_RESULT:
+QUEUE_CLASSIFICATION_RERUN_AT:
+QUEUE_CLASSIFICATION_STATUS: success
+QUEUE_CLASSIFICATION_RECEIPT: QUEUE_STATUS=<classifier-status> <complete-output>
 ```
 
 ## Status log

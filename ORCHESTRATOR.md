@@ -19,7 +19,7 @@ You should:
 7. Claim only independent eligible tasks from `tasks/ready/`.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
 9. Start or assign one correctly-scoped worker thread per claimed packet.
-10. If task creation stalls, times out, or returns partial evidence, treat the outcome as ambiguous and follow `docs/orchestrator-protocol.md` using `templates/task-creation-recovery.md`; keep the claim/target lock and do not retry until live app-native list/read proves the original absent or unusable.
+10. Assign each worker handoff a persistent `worker_creation_attempt_id`. If task creation stalls, times out, or returns partial evidence, treat the outcome as ambiguous and follow `docs/orchestrator-protocol.md` using `templates/task-creation-recovery.md`; keep the source in `tasks/claimed` with capacity/target lock retained and do not retry until structured live app-native list/read proves the original absent or unusable.
 11. Keep workers inside the packet `target_path`.
 12. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 13. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
@@ -50,6 +50,7 @@ does not repair Git state or mutate the queue.
 - Do not guess target paths or project routing.
 - Do not create duplicate workers for an already-claimed packet.
 - Do not interpret a task-creation timeout as failure or retry before app-native reconciliation proves replacement is safe.
+- Do not route callbacks whose worker task ID is noncanonical or whose `worker_creation_attempt_id` mismatches the source packet; preserve them as recovery evidence only.
 - Do not route work into the Workboard project just because the target project is missing.
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.

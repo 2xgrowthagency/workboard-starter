@@ -96,18 +96,40 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 ## Ambiguous task-creation recovery
 
 A timeout or stalled app-native creation call is not proof of failure. Persistence
-may have completed after the caller stopped waiting. During recovery, the claimed
-source packet continues to own its worker slot and target lock, so ordinary polls
-must not retry it or route another worker to the same target.
+may have completed after the caller stopped waiting. During recovery, the source
+packet stays in `tasks/claimed`, continues to consume capacity, and retains its
+exact `target_project_id` + `target_path` lock. Ordinary polls must not retry it,
+move it to blocked, or route another worker to the same target.
 
-1. Copy `templates/task-creation-recovery.md` beside the source packet or into the repository's configured recovery-record location.
-2. Preserve the requested title, project ID/name, cwd, raw task ID when known, creation surface, selected model/reasoning, source packet/root task IDs, creation/recovery timestamps, every exact failed or stalled call, and all partial returned evidence.
-3. On the same live app-native surface, list tasks narrowly enough to find candidates, then read every plausible task by raw ID. Match title, project, cwd, source handoff, and usability. A local database row, helper-process result, or creation response without live readback is not sufficient.
-4. Do not create a replacement while the original outcome remains unknown. Authorize one replacement attempt only after app-native list/read proves the original absent or unusable, and record that evidence before the call.
-5. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`. If multiple usable tasks exist, select the task whose live state best matches the source packet and preserve the selection reason.
-6. For each proven duplicate, send a stand-down notice or archive it through a supported app-native action, then verify the disposition. Never hard-delete useful history. Do not mutate tasks that have not been proven duplicates.
-7. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record both exact calls and outcomes, set the completion timestamps, and set `recovery_status: completed`.
-8. Validate the completed record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`. A validation failure keeps recovery open and routing paused.
+1. Before the first create call, assign one persistent `worker_creation_attempt_id` to the source handoff. On ambiguity, assign one `recovery_id`, set source `worker_creation_status: ambiguous` and `worker_creation_recovery_id`, and commit those fields without moving the packet.
+2. Copy `templates/task-creation-recovery.md` beside the source packet or into the configured recovery-record location. Snapshot the source packet's exact `id -> source_packet_id`, `root_task_id`, `worker_creation_attempt_id`, `target_project_id`, `target_path`, and `worker_creation_surface`; do not introduce alternate project/cwd/ownership fields.
+3. Preserve the requested title, raw task ID (`unknown` is valid when none returned), selected model/reasoning, creation/recovery timestamps, every exact failed or stalled call, and all partial returned evidence.
+4. On the same live app-native surface, list tasks narrowly enough to find candidates, then read every plausible task by raw ID. Match title, target project/path, source handoff, and usability. A helper-process result or creation response without live readback is not sufficient.
+5. Do not create a replacement while the original outcome remains unknown. `replacement_authorized: true` is invalid while investigating. Authorize one replacement only after structured app-native list/read receipts prove the original absent or unusable; record the authorization decision before the replacement-create timestamp and preserve its returned ID.
+6. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`, matching canonical read task ID, and `CANONICAL_USABILITY: usable`. An authorized replacement becomes canonical. Otherwise, if multiple usable tasks exist, select the best source-packet match and preserve the reason.
+7. Record either `DUPLICATE_STATE: none_found` with search receipt or one verified archive/stand-down JSON receipt per duplicate. Destructive disposal is forbidden and useful history remains preserved.
+8. Validate the recovery record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`, then write the canonical ID and proof back to the still-claimed source packet with `node scripts/reconcile-task-creation-recovery.mjs canonicalize --source-packet <tasks/claimed/PACKET> --recovery-packet <RECOVERY_PACKET>`.
+9. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record successful structured receipts, set the completion timestamps/status, and validate the completed record again.
+
+Every worker callback carries `worker_task_id` and
+`worker_creation_attempt_id`. Before routing, check both against the current
+source packet:
+
+```bash
+node scripts/reconcile-task-creation-recovery.mjs check-callback \
+  --source-packet <PACKET> \
+  --worker-task-id <CALLBACK_TASK_ID> \
+  --worker-creation-attempt-id <CALLBACK_ATTEMPT_ID>
+```
+
+Only `CALLBACK_ROUTE_STATUS=ROUTABLE` can request a queue transition, and only
+while the source has `completion_callback_status: pending`. A replayed callback
+or one from a noncanonical task or mismatched creation attempt is durable
+recovery evidence only; append it to recovery proof and do not route. Move the source
+packet to `tasks/blocked` and release its target lock only after app-native
+reconciliation has resolved the ambiguity and proved no usable canonical worker
+remains. A tool outage or inconclusive readback keeps the packet claimed and
+locked.
 
 If list/read is unavailable or inconclusive, leave the recovery packet
 `investigating`, keep the lock, and report the exact blocker. Retrying creation is

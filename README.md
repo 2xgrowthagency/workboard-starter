@@ -117,6 +117,7 @@ ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
   check-task-creation-recovery.mjs # validate recovery state and proof
+  reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/

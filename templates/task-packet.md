@@ -6,7 +6,13 @@ created_by: <human-or-agent-name>
 created_at: YYYY-MM-DDTHH:MM:SSZ
 claimed_by:
 claimed_at:
+root_task_id:
 worker_thread_id:
+worker_creation_attempt_id:
+worker_creation_recovery_id:
+worker_creation_surface:
+worker_creation_status: pending
+worker_creation_proof:
 max_runtime_minutes: 90
 heartbeat_after_minutes: 30
 requires_network: true
@@ -34,6 +40,14 @@ qa_worker_notification_policy: on_failure_or_no_github
 qa_publication_status: not_required
 qa_github_comment_urls: []
 qa_worker_notification_status: not_required
+completion_callback_status: pending
+completion_callback_result:
+completion_callback_worker_task_id:
+completion_callback_worker_creation_attempt_id:
+completion_callback_immutable_proof:
+completion_callback_next_lane:
+completion_callback_sent_at:
+completion_callback_error:
 target_commit:
 repo:
 github_issue:
@@ -91,6 +105,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
 - [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
+- [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
+- [ ] Exactly one completion callback receipt, or a `ROOT_RECONCILIATION_REQUIRED` marker with identical proof
 
 ## Stop and ask if
 
@@ -100,7 +116,11 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
-- Root/orchestrator claims and monitors; worker executes.
+- Root/orchestrator claims and reconciles one-shot callbacks; worker executes without periodic monitoring.
+- Root creates `root_task_id` and `worker_creation_attempt_id` once for the source handoff. The attempt ID survives ambiguous creation, replacement reconciliation, and callbacks.
+- During ambiguous creation this packet stays in `tasks/claimed`, keeps its capacity/target lock, sets `worker_creation_status: ambiguous`, and records `worker_creation_recovery_id`.
+- Canonical reconciliation writes the live-readback task ID to `worker_thread_id`, sets `worker_creation_status: canonical`, and records `worker_creation_proof` without moving the packet.
+- A callback can request routing only while `completion_callback_status: pending`, when its worker task ID equals `worker_thread_id`, and when its creation-attempt ID equals `worker_creation_attempt_id`. Replayed, noncanonical, and mismatched-attempt callbacks are recovery evidence only.
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
 - Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
 - QA runs in a separate product-read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
