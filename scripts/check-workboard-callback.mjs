@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 function usage() {
@@ -133,7 +133,10 @@ export function checkCallbackArgs(argv) {
   return classifyCallback(parseArgs(argv));
 }
 
-if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   try {
     console.log(checkCallbackArgs(process.argv.slice(2)).output);
   } catch (error) {
