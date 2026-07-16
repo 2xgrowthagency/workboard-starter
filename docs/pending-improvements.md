@@ -47,6 +47,8 @@ Acceptance criteria:
 
 ### [ST-003: add an ambiguous-creation recovery lane](https://github.com/2xgrowthagency/workboard-starter/issues/3)
 
+Status: implementation complete; pending review and merge.
+
 Document and template a recovery packet for app-native project/task calls that stall or return an ambiguous error.
 
 Acceptance criteria:

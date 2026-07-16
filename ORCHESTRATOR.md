@@ -19,14 +19,15 @@ You should:
 7. Claim only independent eligible tasks from `tasks/ready/`.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
 9. Start or assign one correctly-scoped worker thread per claimed packet.
-10. Keep workers inside the packet `target_path`.
-11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
-12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
-13. Give QA the associated PR/issue URLs, original `worker_thread_id`, and publication policy. Verify comment/notification receipts or perform the root fallback.
-14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
-15. Move QA-not-required worker completions directly to `tasks/review/` with proof.
-16. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
-17. Commit and push every state transition.
+10. If task creation stalls, times out, or returns partial evidence, treat the outcome as ambiguous and follow `docs/orchestrator-protocol.md` using `templates/task-creation-recovery.md`; keep the claim/target lock and do not retry until live app-native list/read proves the original absent or unusable.
+11. Keep workers inside the packet `target_path`.
+12. Route worker-complete packets that still require independent QA to `tasks/qa/`.
+13. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
+14. Give QA the associated PR/issue URLs, original `worker_thread_id`, and publication policy. Verify comment/notification receipts or perform the root fallback.
+15. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
+16. Move QA-not-required worker completions directly to `tasks/review/` with proof.
+17. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
+18. Commit and push every state transition.
 
 The classifier returns one of these lanes:
 
@@ -48,6 +49,7 @@ does not repair Git state or mutate the queue.
 - Do not free-roam through projects looking for work.
 - Do not guess target paths or project routing.
 - Do not create duplicate workers for an already-claimed packet.
+- Do not interpret a task-creation timeout as failure or retry before app-native reconciliation proves replacement is safe.
 - Do not route work into the Workboard project just because the target project is missing.
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.

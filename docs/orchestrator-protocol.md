@@ -84,13 +84,34 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 10. Claim only independent eligible tasks. Avoid two active workers in the same repo/path unless both packets say they are parallel-safe.
 11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
 12. Create or reuse a visible worker thread/project with the correct target path from the start.
-13. Give the worker the full task packet plus the worker handoff prompt below.
-14. Monitor worker output and write proof/status back into the packet.
-15. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
-16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
-17. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
-18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
-19. Commit/push every state transition.
+13. Treat a stalled, timed-out, or partially returned task-creation call as ambiguous. Keep the source packet claimed and its target lock active, create a recovery packet from `templates/task-creation-recovery.md`, and run the recovery protocol below before any retry.
+14. Give the worker the full task packet plus the worker handoff prompt below.
+15. Monitor worker output and write proof/status back into the packet.
+16. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
+17. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
+18. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
+19. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
+20. Commit/push every state transition.
+
+## Ambiguous task-creation recovery
+
+A timeout or stalled app-native creation call is not proof of failure. Persistence
+may have completed after the caller stopped waiting. During recovery, the claimed
+source packet continues to own its worker slot and target lock, so ordinary polls
+must not retry it or route another worker to the same target.
+
+1. Copy `templates/task-creation-recovery.md` beside the source packet or into the repository's configured recovery-record location.
+2. Preserve the requested title, project ID/name, cwd, raw task ID when known, creation surface, selected model/reasoning, source packet/root task IDs, creation/recovery timestamps, every exact failed or stalled call, and all partial returned evidence.
+3. On the same live app-native surface, list tasks narrowly enough to find candidates, then read every plausible task by raw ID. Match title, project, cwd, source handoff, and usability. A local database row, helper-process result, or creation response without live readback is not sufficient.
+4. Do not create a replacement while the original outcome remains unknown. Authorize one replacement attempt only after app-native list/read proves the original absent or unusable, and record that evidence before the call.
+5. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`. If multiple usable tasks exist, select the task whose live state best matches the source packet and preserve the selection reason.
+6. For each proven duplicate, send a stand-down notice or archive it through a supported app-native action, then verify the disposition. Never hard-delete useful history. Do not mutate tasks that have not been proven duplicates.
+7. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record both exact calls and outcomes, set the completion timestamps, and set `recovery_status: completed`.
+8. Validate the completed record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`. A validation failure keeps recovery open and routing paused.
+
+If list/read is unavailable or inconclusive, leave the recovery packet
+`investigating`, keep the lock, and report the exact blocker. Retrying creation is
+forbidden until the packet satisfies the replacement gate.
 
 ## Concurrency policy
 

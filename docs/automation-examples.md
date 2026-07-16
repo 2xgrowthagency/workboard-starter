@@ -20,11 +20,13 @@ Instructions:
 8. Claim only independent eligible ready tasks.
 9. Commit/push claim transitions before delegation.
 10. Delegate each claimed task to a correctly-rooted worker thread/project.
-11. Monitor worker results and update packets with proof.
-12. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
-13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
-14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-15. Commit/push every transition.
+11. If task creation stalls, times out, or returns partial evidence, keep the claim/target lock and run the templates/task-creation-recovery.md protocol. Do not retry until live app-native list/read proves the original absent or unusable.
+12. Monitor worker results and update packets with proof.
+13. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
+14. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
+15. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
+16. After recovery, rerun dependency promotion and queue classification before resuming routing.
+17. Commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -32,6 +34,10 @@ Stop before secrets, destructive actions, production data, deployments, account/
 ## Codex Desktop pattern
 
 Create a saved Codex project for the Workboard repo and saved projects for each target repo. Schedule or manually run the generic root-orchestrator prompt in the Workboard project. Worker threads should be created in the target project, not in the Workboard project, unless the task is explicitly Workboard/control-plane work.
+
+When an app-native create call has an ambiguous outcome, use app-native task list
+and read calls on that same surface before any retry. Returned IDs and partial
+responses belong in the recovery packet even when the create call itself errors.
 
 ## Claude Desktop pattern
 

@@ -116,10 +116,12 @@ docs/
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
+  check-task-creation-recovery.mjs # validate recovery state and proof
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
   task-packet.md            # copy this into tasks/ready/
+  task-creation-recovery.md # reconcile ambiguous app-native creation
 tasks/
   ready/                    # ready to claim
   claimed/                  # active work
@@ -130,6 +132,7 @@ tasks/
 projects.example.yaml       # copy to projects.yaml and customize
 tests/
   check-workboard-queue.test.mjs
+  task-creation-recovery.test.mjs
 ```
 
 ## Queue-first check
@@ -175,6 +178,25 @@ Supported fields in `templates/task-packet.md` include:
 
 The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
 
+## Ambiguous task creation
+
+An app-native task-creation timeout may happen after persistence. Do not retry it
+as if it were a confirmed failure. Keep the packet claim and target lock, copy
+`templates/task-creation-recovery.md`, and use live app-native list/read to find
+the original, authorize a replacement only when the original is proven absent or
+unusable, and select one canonical task. Archive or stand down only proven
+duplicates; preserve their history.
+
+Validate a filled recovery packet with:
+
+```bash
+node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>
+```
+
+Recovery completion records and reruns both dependency promotion and queue
+classification before routing resumes. The full checklist is in
+`docs/orchestrator-protocol.md`.
+
 ## Minimum rules
 
 - No secrets in this repo.
@@ -182,6 +204,7 @@ The orchestrator must preflight these before delegation and require proof before
 - One root orchestrator loop at a time.
 - Default max active workers: 3.
 - One worker per packet.
+- A task-creation timeout is ambiguous; no replacement is allowed without live app-native absence or unusability proof.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.

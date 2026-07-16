@@ -25,6 +25,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Claim only independent ready packets with clear routing and acceptance criteria.
 - Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
+- On a stalled, timed-out, or partially returned task-creation call, keep the source claim and target lock, open `templates/task-creation-recovery.md`, and follow the ambiguous-creation protocol. Do not retry until live app-native list/read proves the original absent or unusable.
 - Record worker thread/session identity and proof in the packet.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
@@ -33,6 +34,16 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
 - Commit and push every transition.
+
+## Ambiguous creation hard stop
+
+Task creation timeout is an ambiguous outcome, not proof of failure. Preserve the
+full request, exact calls, timestamps, partial evidence, source IDs, and any raw
+task ID in a recovery packet. Select one canonical task only through live
+app-native list/read, stand down or archive only proven duplicates, and preserve
+their history. Completion requires validation with
+`scripts/check-task-creation-recovery.mjs`, dependency-promotion rerun, and queue
+classification rerun.
 
 ## Tool enforcement
 
