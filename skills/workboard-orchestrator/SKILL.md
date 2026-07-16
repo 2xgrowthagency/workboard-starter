@@ -10,8 +10,12 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 ## Start here
 
 1. Read `ORCHESTRATOR.md`.
-2. Read `docs/orchestrator-protocol.md`.
-3. Read `projects.yaml`. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
+2. Inspect and safely synchronize the Workboard checkout.
+3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>` before broad reads.
+4. Stop on `NOTHING_TO_CLAIM`, `WORKBOARD_SYNC_NEEDED`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
+5. On `QA_RESULT_AVAILABLE`, read only the emitted QA packets, verify their evidence, and route each verdict to its exact next lane without launching duplicate QA.
+6. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
+7. Read `projects.yaml` only when routing is needed. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
 
 ## Core loop
 

@@ -10,17 +10,21 @@ Run one Workboard orchestrator polling cycle.
 Workboard repo: <LOCAL_PATH_TO_WORKBOARD>
 
 Instructions:
-1. Pull latest main.
-2. Read projects.yaml and docs/orchestrator-protocol.md.
-3. Inspect claimed tasks before claiming new work.
-4. Respect max 3 active workers unless projects.yaml says otherwise.
-5. Claim only independent eligible ready tasks.
-6. Commit/push claim transitions before delegation.
-7. Delegate each claimed task to a correctly-rooted worker thread/project.
-8. Monitor worker results and update packets with proof.
-9. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
-10. Launch separate QA tasks from tasks/qa and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-11. Commit/push every transition.
+1. Inspect and safely synchronize the Workboard checkout.
+2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD>
+3. Stop on WORKBOARD_SYNC_NEEDED, WORKBOARD_REQUIRES_JUDGMENT, or CHECK_FAILED.
+4. Stop on NOTHING_TO_CLAIM after reporting HEAD and queue counts.
+5. Read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
+6. Inspect claimed tasks before claiming new work.
+7. Respect max 3 active workers unless projects.yaml says otherwise.
+8. Claim only independent eligible ready tasks.
+9. Commit/push claim transitions before delegation.
+10. Delegate each claimed task to a correctly-rooted worker thread/project.
+11. Monitor worker results and update packets with proof.
+12. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
+13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
+14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
+15. Commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -42,7 +46,8 @@ Example shell shape:
 ```bash
 cd /path/to/workboard
 git pull --ff-only origin main
-# root agent reads docs/orchestrator-protocol.md and claims work
+node scripts/check-workboard-queue.mjs --repo "$PWD"
+# root agent opens only the lane required by the classifier
 
 cd /path/to/target-project
 # start Claude Code, Codex CLI, or another local worker with the packet prompt
