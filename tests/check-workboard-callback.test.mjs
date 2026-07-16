@@ -20,6 +20,10 @@ const canonical = [
   'task-current',
   '--source-worker-creation-attempt-id',
   'attempt-current',
+  '--source-worker-visibility-status',
+  'verified',
+  '--source-recovery-pending',
+  'false',
   '--callback-packet-id',
   'packet-1',
   '--callback-result',
@@ -79,6 +83,20 @@ test('mismatched packet ID is recovery evidence and cannot route', () => {
   const output = check(replaceValue(canonical, '--callback-packet-id', 'packet-old'));
   assert.match(output, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /);
   assert.match(output, /REASON=packet_id_mismatch/);
+});
+
+test('ambiguous visibility or pending recovery fails closed', () => {
+  const ambiguous = check(replaceValue(
+    canonical,
+    '--source-worker-visibility-status',
+    'ambiguous',
+  ));
+  assert.match(ambiguous, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /);
+  assert.match(ambiguous, /REASON=worker_visibility_not_verified/);
+
+  const pending = check(replaceValue(canonical, '--source-recovery-pending', 'true'));
+  assert.match(pending, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /);
+  assert.match(pending, /REASON=recovery_pending/);
 });
 
 test('multiple stale identities remain recovery evidence only', () => {

@@ -19,14 +19,14 @@ Instructions:
 7. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
 8. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
 9. Commit/push claim transitions before delegation.
-10. For each creation attempt, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical worker_thread_id only after complete live proof.
+10. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
 11. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
 12. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
 13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
 14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
 15. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
 16. Run scripts/check-workboard-callback.mjs with canonical source handoff kind and packet qa_required. Only ROUTABLE permits one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
-17. Commit/push every transition.
+17. After recovery, rerun dependency promotion and queue classification, then commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -57,6 +57,10 @@ resolved and no usable/canonical worker remains, with an exact next action.
 Raw/replacement IDs remain recovery evidence until canonical writeback. Delayed
 or noncanonical callbacks also remain recovery evidence: they cannot route
 unless both worker task ID and creation attempt ID match the source packet.
+
+When an app-native create call has an ambiguous outcome, use app-native task list
+and read calls on that same surface before any retry. Returned IDs and partial
+responses belong in the recovery packet even when the create call itself errors.
 
 ## Claude Desktop pattern
 

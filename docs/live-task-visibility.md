@@ -18,24 +18,27 @@ Use the source packet's existing names throughout the visibility flow:
 - `worker_creation_attempt_id`: immutable ID generated before the current
   creation or authorized replacement attempt;
 - `worker_thread_id`: current canonical worker task ID;
+- `worker_creation_status` and `worker_creation_proof`: canonicalization state
+  and evidence;
 - `worker_portable_session_id`: noncanonical portable session identity;
 - `worker_visibility_status`: `pending`, `ambiguous`, `verified`, or
   `portable_only`;
-- `recovery_status` and `recovery_pending`: recovery lifecycle and gate;
-- `worker_visibility_proof` and `worker_routing_blocker`: exact evidence.
+- `recovery_id`, `recovery_status`, and `recovery_pending`: stable incident ID,
+  recovery lifecycle, and routing gate;
+- `worker_visibility_verified_at`, `worker_visibility_proof`, and
+  `worker_routing_blocker`: exact evidence.
 
-Recovery records may use more descriptive aliases. Map them explicitly rather
-than copying values into unrelated source fields:
+Recovery records preserve the canonical routing vocabulary. Only the source
+packet relation and candidate/canonical evidence need recovery-specific names:
 
 | Source packet | Recovery record |
 | --- | --- |
 | `id` | `source_packet_id` |
-| `root_task_id` | `source_root_task_id` |
+| `root_task_id` | `root_task_id` |
 | `worker_task_title` | `requested_title` |
-| `target_project_id` | `requested_project_id` |
-| `target_project_name` | `requested_project_name` |
-| `target_path` | `requested_cwd` |
-| `worker_creation_surface` | `creation_surface` |
+| `target_project_id` | `target_project_id` |
+| `target_path` | `target_path` |
+| `worker_creation_surface` | `worker_creation_surface` |
 | `worker_creation_attempt_id` | `worker_creation_attempt_id` |
 
 `raw_task_id`, `replacement_task_id`, and other candidate IDs belong in the
@@ -75,11 +78,11 @@ For `app_native` delegation:
 5. Through the running host's live list and read tools, verify the same candidate
    task ID and exact values for title, saved project/target, cwd, host/local
    identity, and worker handoff.
-6. Perform one canonical writeback only after every value matches: write the
-   proven candidate ID to `worker_thread_id`, retain its
-   `worker_creation_attempt_id`, set `worker_visibility_status: verified`, set
-   `recovery_pending: false`, and record the tool names and timestamp in
-   `worker_visibility_proof`.
+6. Perform one canonical writeback atomically only after every value matches:
+   write the proven candidate ID to `worker_thread_id`, write that creation call's
+   `worker_creation_attempt_id`, set `worker_creation_status: canonical`, set
+   `worker_visibility_status: verified`, set `worker_visibility_verified_at`
+   and both creation/visibility proof fields, and set `recovery_pending: false`.
 7. Return the canonical `worker_thread_id` and the host-supported clickable task
    link or directive. In Codex Desktop, a successfully created task can be
    surfaced as `::created-thread{threadId="<RAW_TASK_ID>"}` when that directive

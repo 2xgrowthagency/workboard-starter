@@ -12,6 +12,8 @@ builder_thread_id:
 worker_task_title:
 worker_creation_surface:
 worker_creation_attempt_id:
+worker_creation_status: pending
+worker_creation_proof:
 worker_portable_session_id:
 worker_task_link:
 worker_host_identity:
@@ -19,6 +21,7 @@ worker_visibility_status: pending
 worker_visibility_verified_at:
 worker_visibility_proof:
 worker_routing_blocker:
+recovery_id:
 recovery_status: not_required
 recovery_pending: false
 completion_callback_status: pending
@@ -113,6 +116,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
 - [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
+- [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
 - [ ] Exactly one completion callback receipt, or a `ROOT_RECONCILIATION_REQUIRED` marker with identical proof
 
 ## Stop and ask if
@@ -124,7 +128,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Orchestration notes
 
 - Root/orchestrator claims and reconciles one-shot completion callbacks; workers execute without periodic monitoring or heartbeats.
-- Before each create or authorized replacement, root persists a new immutable `worker_creation_attempt_id`.
+- Root assigns one stable `recovery_id` per ambiguous incident and persists a new immutable `worker_creation_attempt_id` before every actual create call, including an authorized replacement.
 - When app-native task APIs are exposed, root verifies one candidate's exact title, `target_project_id`, `target_path` cwd, `worker_host_identity`, and handoff through live list/read tools. Only then does it write the candidate ID to canonical `worker_thread_id` and mark visibility `verified`.
 - Helper, separate app-server, session-index, or database persistence is not proof that the running Desktop UI refreshed.
 - On app-native stall/timeout/ambiguous readback, preserve raw/replacement IDs as recovery evidence, set `worker_visibility_status: ambiguous`, `recovery_status: investigating`, and `recovery_pending: true`, create no duplicate, and keep this source packet in `tasks/claimed/` so its exact target lock and capacity slot remain active.
@@ -134,6 +138,9 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Verified app-native root output includes canonical `worker_thread_id` and `worker_task_link` or supported clickable directive.
 - Before QA replaces the canonical `worker_thread_id`, preserve the original builder identity in `builder_thread_id`; `qa_thread_id` may mirror the canonical QA task for provenance.
 - Claimed and active-QA packets lock only an exact decoded `target_project_id` + `target_path` tuple. Unrelated targets may route up to capacity; `parallel_safe` does not override a target lock.
+- During ambiguous creation this packet stays in `tasks/claimed`, keeps its capacity/target lock, sets `worker_creation_status: ambiguous`, `worker_visibility_status: ambiguous`, and `recovery_pending: true`, and records its stable `recovery_id`.
+- Canonical reconciliation atomically writes `worker_thread_id`, the canonical `worker_creation_attempt_id`, `worker_creation_status: canonical`, `worker_visibility_status: verified`, visibility proof/timestamp, `worker_creation_proof`, and `recovery_pending: false` without moving the packet.
+- A callback can request routing only while `completion_callback_status: pending`, visibility is verified, recovery is not pending, and its packet/task/attempt identity plus role/QA/result/lane matrix all match. Replayed, noncanonical, delayed, ambiguous, and mismatched callbacks are recovery evidence only.
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
 - Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
 - QA runs in a separate product-read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.

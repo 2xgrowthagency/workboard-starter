@@ -106,9 +106,9 @@ Workers are pilots. Each worker gets one packet, one target path, and clear proo
 Ordinary polls never inspect, monitor, heartbeat, or babysit active task history.
 Claimed and active-QA packets consume capacity and lock their exact decoded
 `target_project_id` + `target_path` tuple. Ready work for other targets keeps
-routing up to capacity. Every builder and QA task receives the persistent source
-`root_task_id`, canonical `worker_thread_id`, and persistent
-`worker_creation_attempt_id`, then sends exactly one final callback. Only a
+routing up to capacity. Every builder and QA create handoff receives the persistent source
+`root_task_id` and current `worker_creation_attempt_id`, but no future task ID.
+Complete live readback writes canonical `worker_thread_id`; the task then sends exactly one final callback. Only a
 callback matching the packet's current task and attempt can route; delayed or
 noncanonical callbacks are recovery evidence. Callback failure emits
 `ROOT_RECONCILIATION_REQUIRED` with the same immutable proof and attempt ID.
@@ -131,10 +131,13 @@ scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
   check-workboard-target-lock.mjs # exact decoded target-lock check
   check-workboard-callback.mjs # canonical callback identity/role/lane check
+  check-task-creation-recovery.mjs # validate recovery state and proof
+  reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
   task-packet.md            # copy this into tasks/ready/
+  task-creation-recovery.md # reconcile ambiguous app-native creation
 tasks/
   ready/                    # ready to claim
   claimed/                  # active work
@@ -148,6 +151,7 @@ tests/
   check-workboard-queue.test.mjs
   check-workboard-target-lock.test.mjs
   live-task-visibility-docs.test.mjs
+  task-creation-recovery.test.mjs
 ```
 
 ## Queue-first check
@@ -207,6 +211,25 @@ Supported fields in `templates/task-packet.md` include:
 
 The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
 
+## Ambiguous task creation
+
+An app-native task-creation timeout may happen after persistence. Do not retry it
+as if it were a confirmed failure. Keep the packet claim and target lock, copy
+`templates/task-creation-recovery.md`, and use live app-native list/read to find
+the original, authorize a replacement only when the original is proven absent or
+unusable, and select one canonical task. Archive or stand down only proven
+duplicates; preserve their history.
+
+Validate a filled recovery packet with:
+
+```bash
+node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>
+```
+
+Recovery completion records and reruns both dependency promotion and queue
+classification before routing resumes. The full checklist is in
+`docs/orchestrator-protocol.md`.
+
 ## Minimum rules
 
 - No secrets in this repo.
@@ -217,6 +240,7 @@ The orchestrator must preflight these before delegation and require proof before
 - Claimed and active-QA packets lock only their exact target tuple; unrelated targets continue up to capacity.
 - Active workers are event-driven: no periodic history reads, monitoring, or heartbeats.
 - Each builder/QA task sends exactly one final callback to persistent `root_task_id`. Only callback `worker_task_id` matching canonical `worker_thread_id` and matching `worker_creation_attempt_id` can route; noncanonical callbacks are recovery evidence. Callback failure emits `ROOT_RECONCILIATION_REQUIRED`.
+- A task-creation timeout is ambiguous; no replacement is allowed without live app-native absence or unusability proof.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.

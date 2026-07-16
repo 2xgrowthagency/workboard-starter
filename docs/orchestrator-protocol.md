@@ -108,7 +108,7 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 9. Decode the emitted locks and reject every ready packet whose exact `target_project_id` and `target_path` tuple is locked. `parallel_safe` does not override a target lock.
 10. Claim only independent eligible packets for unlocked targets, up to remaining capacity.
 11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
-12. Persist a new `worker_creation_attempt_id`, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write `worker_thread_id` only after complete app-native proof. Preserve the original canonical builder as `builder_thread_id` before creating QA.
+12. Persist a new `worker_creation_attempt_id` before every actual create call, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write canonical identity only after complete app-native proof. Keep one stable `recovery_id` for an ambiguous incident; an authorized replacement receives a new attempt ID. Preserve the original canonical builder as `builder_thread_id` before creating QA.
 13. Give the worker the full task packet plus the exact worker handoff prompt below.
 14. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, and lane all match the source packet.
 15. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
@@ -120,9 +120,9 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 
 ## Completion callback contract
 
-Every builder and QA handoff must include the packet's persistent
-`root_task_id`, packet ID, canonical `worker_thread_id`, persistent
-`worker_creation_attempt_id`, `target_project_id`, and `target_path`.
+Every builder and QA create handoff must include the packet's persistent
+`root_task_id`, packet ID, current `worker_creation_attempt_id`,
+`target_project_id`, and `target_path`, but cannot include the future task ID.
 `root_task_id` is created once by the source root task and survives builder, QA,
 rework, and review handoffs. `worker_thread_id` is always the current canonical
 live-read task; `worker_creation_attempt_id` is minted once for that task-creation
@@ -158,6 +158,8 @@ node scripts/check-workboard-callback.mjs \
   --source-qa-required "$QA_REQUIRED" \
   --source-worker-thread-id "$WORKER_THREAD_ID" \
   --source-worker-creation-attempt-id "$WORKER_CREATION_ATTEMPT_ID" \
+  --source-worker-visibility-status "$WORKER_VISIBILITY_STATUS" \
+  --source-recovery-pending "$RECOVERY_PENDING" \
   --callback-packet-id "$CALLBACK_PACKET_ID" \
   --callback-result "$CALLBACK_RESULT" \
   --callback-worker-task-id "$CALLBACK_WORKER_TASK_ID" \
@@ -199,6 +201,48 @@ After the bounded reconciliation, append the complete callback envelope and
 delivery receipt or error to the packet status log. Reset the current
 `completion_callback_*` fields to `pending` only when creating a later builder
 or QA handoff, so every prior callback remains durable and auditable.
+## Ambiguous task-creation recovery
+
+A timeout or stalled app-native creation call is not proof of failure. Persistence
+may have completed after the caller stopped waiting. During recovery, the source
+packet stays in `tasks/claimed`, continues to consume capacity, and retains its
+exact `target_project_id` + `target_path` lock. Ordinary polls must not retry it,
+move it to blocked, or route another worker to the same target.
+
+1. Before the first create call, assign one `worker_creation_attempt_id`. On ambiguity, assign one stable incident `recovery_id`, set source `worker_creation_status: ambiguous`, `worker_visibility_status: ambiguous`, and `recovery_pending: true`, and commit those fields without moving the packet.
+2. Copy `templates/task-creation-recovery.md` beside the source packet or into the configured recovery-record location. Snapshot the source packet's exact `id -> source_packet_id`, `root_task_id`, original `worker_creation_attempt_id`, `target_project_id`, `target_path`, and `worker_creation_surface`; do not introduce alternate project/cwd/ownership fields.
+3. Preserve the requested title, raw task ID (`unknown` is valid when none returned), selected model/reasoning, creation/recovery timestamps, every exact failed or stalled call, and all partial returned evidence.
+4. On the same live app-native surface, list tasks narrowly enough to find candidates, then read every plausible task by raw ID. Match title, target project/path, source handoff, and usability. A helper-process result or creation response without live readback is not sufficient.
+5. Do not create a replacement while the original outcome remains unknown. `replacement_authorized: true` is invalid while investigating. Authorize exactly one replacement call only after structured app-native list/read receipts conclusively prove the original absent or unusable, and record one explicit pre-call authorization. Before that call, mint a new unique `replacement_worker_creation_attempt_id`; preserve its returned ID as attempt evidence only.
+6. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`, its `canonical_worker_creation_attempt_id`, matching canonical read task ID, and `CANONICAL_USABILITY: usable`. An authorized replacement becomes canonical only after complete readback. Otherwise, if multiple usable tasks exist, select the best source-packet match and preserve the reason.
+7. Record either `DUPLICATE_STATE: none_found` with search receipt or one verified archive/stand-down JSON receipt per duplicate. Destructive disposal is forbidden and useful history remains preserved.
+8. Validate the recovery record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`, then atomically write canonical task/attempt identity, canonical/verified statuses, visibility proof/timestamp, and `recovery_pending: false` back to the still-claimed source packet with `node scripts/reconcile-task-creation-recovery.mjs canonicalize --source-packet <tasks/claimed/PACKET> --recovery-packet <RECOVERY_PACKET>`.
+9. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record successful structured receipts, set the completion timestamps/status, and validate the completed record again.
+
+Every worker callback carries `worker_task_id` and
+`worker_creation_attempt_id`. Before routing, check both against the current
+source packet:
+
+```bash
+node scripts/reconcile-task-creation-recovery.mjs check-callback \
+  --source-packet <PACKET> \
+  --worker-task-id <CALLBACK_TASK_ID> \
+  --worker-creation-attempt-id <CALLBACK_ATTEMPT_ID>
+```
+
+Only `CALLBACK_ROUTE_STATUS=ROUTABLE` can request a queue transition, and only
+while the source has `completion_callback_status: pending`, verified visibility,
+and no recovery pending. A replayed callback or one from a noncanonical task or
+mismatched creation attempt is durable
+recovery evidence only; append it to recovery proof and do not route. Move the source
+packet to `tasks/blocked` and release its target lock only after app-native
+reconciliation has resolved the ambiguity and proved no usable canonical worker
+remains. A tool outage or inconclusive readback keeps the packet claimed and
+locked.
+
+If list/read is unavailable or inconclusive, leave the recovery packet
+`investigating`, keep the lock, and report the exact blocker. Retrying creation is
+forbidden until the packet satisfies the replacement gate.
 
 ## Concurrency policy
 
@@ -304,7 +348,6 @@ You are an independent Workboard QA companion. Verify exactly one packet.
 Handoff identity:
 - root_task_id: <same-persistent-source-root-task-id>
 - packet_id: <packet-id>
-- worker_thread_id: <canonical-current-QA-task-id>
 - worker_creation_attempt_id: <current-QA-creation-attempt-id>
 - target_project_id: <canonical-target-project-id>
 - target_path: <canonical-target-path>
@@ -318,7 +361,7 @@ Rules:
 - Keep screenshots and reports local unless the packet explicitly allows sharing.
 - Publish only to verified packet-linked GitHub targets. Use a stable marker to update/skip duplicate comments; never upload local-only artifacts or expose absolute local paths.
 - Notify the original worker only according to packet policy; the notice must forbid fixes until root requeues the packet.
-- Send exactly one final callback to the supplied root_task_id. Copy worker_thread_id into callback worker_task_id and include the unchanged worker_creation_attempt_id. If callback delivery is unavailable or fails, emit ROOT_RECONCILIATION_REQUIRED with the identical packet ID, verdict, canonical worker_thread_id as worker_task_id, worker_creation_attempt_id, immutable proof, and next lane. Do not request periodic monitoring.
+- Send exactly one final callback to the supplied root_task_id. At callback time, report this task's host-current ID as `worker_task_id` and include the unchanged `worker_creation_attempt_id`. Root routes only after live readback has made that pair canonical. If callback delivery is unavailable or fails, emit `ROOT_RECONCILIATION_REQUIRED` with the identical packet ID, verdict, host-current task ID, creation attempt ID, immutable proof, and next lane. Do not request periodic monitoring.
 
 Return exactly one verdict:
 - PASS: every required criterion is independently supported.

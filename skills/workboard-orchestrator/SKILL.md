@@ -27,8 +27,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Claim only independent ready packets with clear routing and acceptance criteria.
 - Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
-- Mint and persist a new `worker_creation_attempt_id` before each create or authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before writing canonical `worker_thread_id` and marking visibility verified.
+- Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
 - Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
+- On a stalled, timed-out, or partially returned create, keep the source claim and target lock, assign one stable recovery incident ID, open `templates/task-creation-recovery.md`, and do not authorize replacement until live app-native list/read conclusively proves the original absent or unusable.
 - Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
 - Validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, and packet `qa_required`. Only `ROUTABLE` authorizes one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from mismatched/delayed task or attempt IDs is logged but cannot route.
 - Never periodically inspect, monitor, heartbeat, or babysit active workers.
@@ -40,6 +41,19 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
 - Commit and push every transition.
+
+## Ambiguous creation hard stop
+
+Task creation timeout is an ambiguous outcome, not proof of failure. Keep the
+source packet claimed with capacity and target lock retained. Preserve its
+`root_task_id`, target tuple, `worker_creation_surface`, persistent
+`worker_creation_attempt_id`, full request, exact calls, timestamps, partial
+evidence, and raw task ID in a recovery packet. Select one canonical task only
+through structured live app-native list/read, write it back to source
+`worker_thread_id` with proof, and archive or stand down only proven duplicates.
+Callbacks route only when canonical task and creation-attempt IDs both match;
+others are recovery evidence. Completion requires validator success, promotion
+rerun, and queue-classification rerun.
 
 ## Tool enforcement
 

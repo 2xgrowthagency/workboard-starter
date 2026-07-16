@@ -5,7 +5,8 @@ function usage() {
     'Usage: node scripts/check-workboard-callback.mjs ' +
       '--source-packet-id <id> --source-handoff-kind <builder|qa> ' +
       '--source-qa-required <true|false> --source-worker-thread-id <id> ' +
-      '--source-worker-creation-attempt-id <id> --callback-packet-id <id> ' +
+      '--source-worker-creation-attempt-id <id> --source-worker-visibility-status <status> ' +
+      '--source-recovery-pending <true|false> --callback-packet-id <id> ' +
       '--callback-result <result> --callback-worker-task-id <id> ' +
       '--callback-worker-creation-attempt-id <id> --callback-immutable-proof <proof> ' +
       '--callback-next-lane <lane>',
@@ -18,6 +19,8 @@ const names = {
   '--source-qa-required': 'sourceQaRequired',
   '--source-worker-thread-id': 'sourceWorkerThreadId',
   '--source-worker-creation-attempt-id': 'sourceWorkerCreationAttemptId',
+  '--source-worker-visibility-status': 'sourceWorkerVisibilityStatus',
+  '--source-recovery-pending': 'sourceRecoveryPending',
   '--callback-packet-id': 'callbackPacketId',
   '--callback-result': 'callbackResult',
   '--callback-worker-task-id': 'callbackWorkerTaskId',
@@ -59,6 +62,9 @@ function parseArgs(argv) {
   if (!['true', 'false'].includes(options.sourceQaRequired)) {
     throw new Error('Invalid --source-qa-required');
   }
+  if (!['true', 'false'].includes(options.sourceRecoveryPending)) {
+    throw new Error('Invalid --source-recovery-pending');
+  }
   return options;
 }
 
@@ -78,8 +84,7 @@ function encode(value) {
   return encodeURIComponent(String(value));
 }
 
-try {
-  const options = parseArgs(process.argv.slice(2));
+export function classifyCallback(options) {
   const expectedLane = resultLanes.get(options.callbackResult);
   if (!expectedLane || expectedLane !== options.callbackNextLane) {
     throw new Error('Invalid callback result and next lane pair');
@@ -98,22 +103,39 @@ try {
   ) {
     mismatches.push('worker_creation_attempt_id');
   }
+  if (options.sourceWorkerVisibilityStatus !== 'verified') {
+    mismatches.push('worker_visibility_not_verified');
+  }
+  if (options.sourceRecoveryPending !== 'false') {
+    mismatches.push('recovery_pending');
+  }
 
   if (mismatches.length > 0) {
-    console.log(
-      `CALLBACK_STATUS=RECOVERY_EVIDENCE PACKET_ID=${encode(options.callbackPacketId)} ` +
-        `REASON=${mismatches.map((field) => `${field}_mismatch`).join(',')}`,
-    );
-  } else {
-    console.log(
-      `CALLBACK_STATUS=ROUTABLE PACKET_ID=${encode(options.callbackPacketId)} ` +
-        `WORKER_TASK_ID=${encode(options.callbackWorkerTaskId)} ` +
-        `WORKER_CREATION_ATTEMPT_ID=${encode(options.callbackWorkerCreationAttemptId)} ` +
-        `RESULT=${options.callbackResult} NEXT_LANE=${options.callbackNextLane}`,
-    );
+    return {
+      status: 'RECOVERY_EVIDENCE',
+      output: `CALLBACK_STATUS=RECOVERY_EVIDENCE PACKET_ID=${encode(options.callbackPacketId)} ` +
+        `REASON=${mismatches.map((field) => field.endsWith('_pending') || field.endsWith('_verified') ? field : `${field}_mismatch`).join(',')}`,
+    };
   }
-} catch (error) {
-  usage();
-  console.error(`CALLBACK_STATUS=CHECK_FAILED REASON=${encode(error.message)}`);
-  process.exitCode = 2;
+  return {
+    status: 'ROUTABLE',
+    output: `CALLBACK_STATUS=ROUTABLE PACKET_ID=${encode(options.callbackPacketId)} ` +
+      `WORKER_TASK_ID=${encode(options.callbackWorkerTaskId)} ` +
+      `WORKER_CREATION_ATTEMPT_ID=${encode(options.callbackWorkerCreationAttemptId)} ` +
+      `RESULT=${options.callbackResult} NEXT_LANE=${options.callbackNextLane}`,
+  };
+}
+
+export function checkCallbackArgs(argv) {
+  return classifyCallback(parseArgs(argv));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  try {
+    console.log(checkCallbackArgs(process.argv.slice(2)).output);
+  } catch (error) {
+    usage();
+    console.error(`CALLBACK_STATUS=CHECK_FAILED REASON=${encode(error.message)}`);
+    process.exitCode = 2;
+  }
 }

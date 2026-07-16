@@ -18,11 +18,11 @@ You should:
 6. When ready work exists and capacity remains, inspect ready packets and continue routing unrelated targets.
 7. Decode locks and reject a ready packet when both canonical `target_project_id` and `target_path` exactly match; use `scripts/check-workboard-target-lock.mjs` and fail closed on malformed input.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
-9. Persist a new `worker_creation_attempt_id`, then delegate at most one correctly scoped worker through `docs/live-task-visibility.md`; write canonical `worker_thread_id` only after complete app-native list/read proof.
+9. Persist a new `worker_creation_attempt_id` before every actual creation call, then delegate at most one correctly scoped worker through `docs/live-task-visibility.md`; write canonical identity only after complete app-native list/read proof. On ambiguity, keep one stable recovery incident ID and use `templates/task-creation-recovery.md`; an authorized replacement gets a new attempt ID.
 10. Keep workers inside the packet `target_path`.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
-13. Give every builder and QA handoff the persistent source `root_task_id`, packet ID, canonical `worker_thread_id`, unchanged `worker_creation_attempt_id`, `target_project_id`, `target_path`, associated PR/issue URLs, and publication policy.
+13. Give every builder and QA create handoff the persistent source `root_task_id`, packet ID, current `worker_creation_attempt_id`, `target_project_id`, `target_path`, associated PR/issue URLs, and publication policy. Do not include a future worker task ID; app-native readback writes canonical `worker_thread_id` afterward.
 14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
 15. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 16. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
@@ -58,6 +58,7 @@ below capacity, ready work returns a routable lane for unlocked targets.
 - Do not inspect, monitor, heartbeat, or babysit active worker/QA task history during ordinary polls.
 - Do not route a callback unless callback `worker_task_id` equals the source packet's canonical `worker_thread_id` and callback `worker_creation_attempt_id` equals the source packet field of the same name.
 - Do not release a claimed target lock merely because app-native creation is ambiguous.
+- Do not interpret a task-creation timeout as failure or retry before app-native reconciliation proves replacement is safe.
 - Do not route work into the Workboard project just because the target project is missing.
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.
@@ -117,7 +118,7 @@ current canonical pair; otherwise it is recovery evidence only.
 
 ## Worker handoff
 
-Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task packet below it and supply persistent `root_task_id`, packet ID, canonical `worker_thread_id`, persistent `worker_creation_attempt_id`, `target_project_id`, and `target_path`. Require exactly one final callback with immutable proof and exact next lane.
+Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task packet below it and supply persistent `root_task_id`, packet ID, current `worker_creation_attempt_id`, `target_project_id`, and `target_path`. The create handoff cannot supply a future worker task ID. Require exactly one final callback with the host-current task ID, immutable proof, and exact next lane.
 
 ## QA handoff
 
