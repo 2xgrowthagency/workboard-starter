@@ -110,7 +110,9 @@ routing up to capacity. Every builder and QA create handoff receives the persist
 `root_task_id` and current `worker_creation_attempt_id`, but no future task ID.
 Complete live readback writes canonical `worker_thread_id`; the task then sends exactly one final callback. Only a
 callback matching the packet's current task and attempt can route; delayed or
-noncanonical callbacks are recovery evidence. Callback failure emits
+noncanonical callbacks are recovery evidence. The callback gate also requires
+source `worker_creation_status: canonical` after structural duplicate-key
+rejection. Callback failure emits
 `ROOT_RECONCILIATION_REQUIRED` with the same immutable proof and attempt ID.
 
 QA companions are inspectors. They run as separate `[qa] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.

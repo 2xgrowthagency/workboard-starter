@@ -158,6 +158,7 @@ node scripts/check-workboard-callback.mjs \
   --source-qa-required "$QA_REQUIRED" \
   --source-worker-thread-id "$WORKER_THREAD_ID" \
   --source-worker-creation-attempt-id "$WORKER_CREATION_ATTEMPT_ID" \
+  --source-worker-creation-status "$WORKER_CREATION_STATUS" \
   --source-worker-visibility-status "$WORKER_VISIBILITY_STATUS" \
   --source-recovery-pending "$RECOVERY_PENDING" \
   --callback-packet-id "$CALLBACK_PACKET_ID" \
@@ -168,8 +169,11 @@ node scripts/check-workboard-callback.mjs \
   --callback-next-lane "$CALLBACK_NEXT_LANE"
 ```
 
-Set `source-handoff-kind` from the canonical handoff (`builder` or `qa`) and
-`source-qa-required` from the source packet. Builders may return
+Structurally parse the source frontmatter and reject duplicate keys before
+passing its fields to the validator. Set `source-handoff-kind` from the
+canonical handoff (`builder` or `qa`), `source-qa-required` from the source
+packet, and `source-worker-creation-status` from `worker_creation_status`.
+Builders may return
 `ready_for_qa` only when QA is required, `ready_for_review` only when it is not,
 or `blocked`; QA may return only `pass`, `fail`, or `blocked`. Only
 `CALLBACK_STATUS=ROUTABLE` may move the packet. A packet-ID, task-ID, or
@@ -216,7 +220,7 @@ move it to blocked, or route another worker to the same target.
 5. Do not create a replacement while the original outcome remains unknown. `replacement_authorized: true` is invalid while investigating. Authorize exactly one replacement call only after structured app-native list/read receipts conclusively prove the original absent or unusable, and record one explicit pre-call authorization. Before that call, mint a new unique `replacement_worker_creation_attempt_id`; preserve its returned ID as attempt evidence only.
 6. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`, its `canonical_worker_creation_attempt_id`, matching canonical read task ID, `CANONICAL_USABILITY: usable`, and `recovery_outcome: canonical_worker`. An authorized replacement becomes canonical only after complete readback. If conclusive app-native list/read instead proves no usable worker remains, set `recovery_outcome: no_usable_worker`, leave canonical fields empty, and complete the structured `No-canonical resolution` evidence with an exact next action.
 7. Record either `DUPLICATE_STATE: none_found` with search receipt or one verified archive/stand-down JSON receipt per duplicate. Destructive disposal is forbidden and useful history remains preserved.
-8. Validate the recovery record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`. For `canonical_worker`, atomically write canonical task/attempt identity, canonical/verified statuses, visibility proof/timestamp, and `recovery_pending: false` back to the still-claimed source packet with `node scripts/reconcile-task-creation-recovery.mjs canonicalize --source-packet <tasks/claimed/PACKET> --recovery-packet <RECOVERY_PACKET>`. The canonicalizer rejects `no_usable_worker`; after that completed outcome validates, move the source to `tasks/blocked/` with its exact next action and release the lock.
+8. Validate the recovery record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`. For `canonical_worker`, atomically write canonical task/attempt identity, canonical/verified statuses, visibility proof/timestamp, and `recovery_pending: false` back to the still-claimed source packet with `node scripts/reconcile-task-creation-recovery.mjs canonicalize --repo <WORKBOARD_PATH> --source-packet <WORKBOARD_PATH/tasks/claimed/PACKET> --recovery-packet <RECOVERY_PACKET>`. The canonicalizer rejects duplicate frontmatter keys, non-regular or symlinked packet paths, paths outside the real `tasks/claimed` directory, and `no_usable_worker`; after that completed outcome validates, move the source to `tasks/blocked/` with its exact next action and release the lock.
 9. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record successful structured receipts, set the completion timestamps/status, and validate the completed record again.
 
 Every worker callback carries `worker_task_id` and

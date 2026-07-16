@@ -8,7 +8,8 @@ function usage() {
     'Usage: node scripts/check-workboard-callback.mjs ' +
       '--source-packet-id <id> --source-handoff-kind <builder|qa> ' +
       '--source-qa-required <true|false> --source-worker-thread-id <id> ' +
-      '--source-worker-creation-attempt-id <id> --source-worker-visibility-status <status> ' +
+      '--source-worker-creation-attempt-id <id> --source-worker-creation-status <status> ' +
+      '--source-worker-visibility-status <status> ' +
       '--source-recovery-pending <true|false> --callback-packet-id <id> ' +
       '--callback-result <result> --callback-worker-task-id <id> ' +
       '--callback-worker-creation-attempt-id <id> --callback-immutable-proof <proof> ' +
@@ -22,6 +23,7 @@ const names = {
   '--source-qa-required': 'sourceQaRequired',
   '--source-worker-thread-id': 'sourceWorkerThreadId',
   '--source-worker-creation-attempt-id': 'sourceWorkerCreationAttemptId',
+  '--source-worker-creation-status': 'sourceWorkerCreationStatus',
   '--source-worker-visibility-status': 'sourceWorkerVisibilityStatus',
   '--source-recovery-pending': 'sourceRecoveryPending',
   '--callback-packet-id': 'callbackPacketId',
@@ -97,14 +99,17 @@ export function classifyCallback(options) {
   }
 
   const mismatches = [];
-  if (options.callbackPacketId !== options.sourcePacketId) mismatches.push('packet_id');
+  if (options.callbackPacketId !== options.sourcePacketId) mismatches.push('packet_id_mismatch');
   if (options.callbackWorkerTaskId !== options.sourceWorkerThreadId) {
-    mismatches.push('worker_task_id');
+    mismatches.push('worker_task_id_mismatch');
   }
   if (
     options.callbackWorkerCreationAttemptId !== options.sourceWorkerCreationAttemptId
   ) {
-    mismatches.push('worker_creation_attempt_id');
+    mismatches.push('worker_creation_attempt_id_mismatch');
+  }
+  if (options.sourceWorkerCreationStatus !== 'canonical') {
+    mismatches.push('worker_creation_not_canonical');
   }
   if (options.sourceWorkerVisibilityStatus !== 'verified') {
     mismatches.push('worker_visibility_not_verified');
@@ -117,7 +122,7 @@ export function classifyCallback(options) {
     return {
       status: 'RECOVERY_EVIDENCE',
       output: `CALLBACK_STATUS=RECOVERY_EVIDENCE PACKET_ID=${encode(options.callbackPacketId)} ` +
-        `REASON=${mismatches.map((field) => field.endsWith('_pending') || field.endsWith('_verified') ? field : `${field}_mismatch`).join(',')}`,
+        `REASON=${mismatches.join(',')}`,
     };
   }
   return {

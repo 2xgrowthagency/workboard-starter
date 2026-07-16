@@ -26,7 +26,7 @@ You should:
 14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
 15. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 16. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
-17. Run `scripts/check-workboard-callback.mjs` with canonical handoff kind and packet `qa_required` before reconciliation. Only `CALLBACK_STATUS=ROUTABLE` authorizes one bounded read of canonical `worker_thread_id` and a lane move; mismatched task/attempt callbacks are recovery evidence only.
+17. Structurally reject duplicate source frontmatter keys, then run `scripts/check-workboard-callback.mjs` with canonical handoff kind, packet `qa_required`, and source `worker_creation_status` before reconciliation. Only `CALLBACK_STATUS=ROUTABLE` with canonical creation authorizes one bounded read of canonical `worker_thread_id` and a lane move; mismatched task/attempt callbacks are recovery evidence only.
 18. Commit and push every state transition.
 
 The classifier returns one of these lanes:
@@ -135,7 +135,8 @@ to the persistent `root_task_id`. It contains packet ID, result, current canonic
 `worker_thread_id` as callback `worker_task_id`, persistent
 `worker_creation_attempt_id`, immutable proof, and one exact
 next lane. Validate it with `scripts/check-workboard-callback.mjs`, the canonical
-handoff kind, and packet `qa_required`. Only
+handoff kind, packet `qa_required`, and source `worker_creation_status` after
+structural duplicate-key rejection. Only
 `ROUTABLE` permits one bounded read of canonical `worker_thread_id` and packet
 movement. `RECOVERY_EVIDENCE` from a delayed/noncanonical task or attempt is
 logged but cannot move the packet or authorize a live read.

@@ -133,6 +133,7 @@ function callback(source, overrides = {}) {
   const values = {
     packetId: fields.id, workerTaskId: fields.worker_thread_id,
     attemptId: fields.worker_creation_attempt_id,
+    creationStatus: fields.worker_creation_status,
     visibility: fields.worker_visibility_status, recoveryPending: fields.recovery_pending,
     ...overrides,
   };
@@ -140,6 +141,7 @@ function callback(source, overrides = {}) {
     '--source-packet-id', fields.id, '--source-handoff-kind', 'builder',
     '--source-qa-required', fields.qa_required, '--source-worker-thread-id', fields.worker_thread_id,
     '--source-worker-creation-attempt-id', fields.worker_creation_attempt_id,
+    '--source-worker-creation-status', values.creationStatus,
     '--source-worker-visibility-status', values.visibility,
     '--source-recovery-pending', values.recoveryPending,
     '--callback-packet-id', values.packetId, '--callback-result', 'ready_for_review',

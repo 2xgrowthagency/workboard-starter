@@ -40,11 +40,21 @@ export function parseRecoveryPacket(source) {
   const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) throw new Error('missing or unterminated YAML frontmatter');
   const metadata = {};
+  const entries = [];
+  const seenKeys = new Set();
   for (const line of match[1].split(/\r?\n/)) {
     if (!line.trim() || line.trimStart().startsWith('#')) continue;
     const separator = line.indexOf(':');
     if (separator <= 0) throw new Error(`invalid frontmatter line: ${line}`);
-    metadata[line.slice(0, separator).trim()] = parseScalar(line.slice(separator + 1));
+    const key = line.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(key)) {
+      throw new Error(`invalid frontmatter key: ${key || '<empty>'}`);
+    }
+    if (seenKeys.has(key)) throw new Error(`duplicate frontmatter key: ${key}`);
+    seenKeys.add(key);
+    const rawValue = line.slice(separator + 1).trim();
+    metadata[key] = parseScalar(rawValue);
+    entries.push({ key, rawValue });
   }
 
   const body = source.slice(match[0].length);
@@ -55,7 +65,34 @@ export function parseRecoveryPacket(source) {
     const end = headings[index + 1]?.index ?? body.length;
     sections[headings[index][1].trim()] = body.slice(start, end).trim();
   }
-  return { metadata, sections };
+  return {
+    metadata,
+    sections,
+    frontmatter: { entries },
+    body,
+  };
+}
+
+function serializeScalar(value) {
+  const scalar = String(value);
+  if (/\r|\n/.test(scalar)) throw new Error('frontmatter scalar values must be single-line');
+  if (scalar === '') return '';
+  if (/^[A-Za-z0-9_./|:@+-]+$/.test(scalar)) return scalar;
+  return JSON.stringify(scalar);
+}
+
+export function serializePacketFrontmatter(source, updates) {
+  const packet = parseRecoveryPacket(source);
+  const remaining = new Set(Object.keys(updates));
+  const lines = packet.frontmatter.entries.map(({ key, rawValue }) => {
+    if (!Object.hasOwn(updates, key)) return `${key}: ${rawValue}`;
+    remaining.delete(key);
+    return `${key}: ${serializeScalar(updates[key])}`;
+  });
+  if (remaining.size > 0) {
+    throw new Error(`source packet missing field: ${[...remaining].join(', ')}`);
+  }
+  return `---\n${lines.join('\n')}\n---\n${packet.body}`;
 }
 
 function recordedValue(section, label) {

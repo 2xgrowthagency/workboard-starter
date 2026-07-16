@@ -23,6 +23,8 @@ const canonical = [
   'task-current',
   '--source-worker-creation-attempt-id',
   'attempt-current',
+  '--source-worker-creation-status',
+  'canonical',
   '--source-worker-visibility-status',
   'verified',
   '--source-recovery-pending',
@@ -111,6 +113,37 @@ test('ambiguous visibility or pending recovery fails closed', () => {
   const pending = check(replaceValue(canonical, '--source-recovery-pending', 'true'));
   assert.match(pending, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /);
   assert.match(pending, /REASON=recovery_pending/);
+});
+
+test('the previous ambiguous-creation probe cannot route without source creation status', () => {
+  const previousProbe = canonical.filter((value, index, values) =>
+    value !== '--source-worker-creation-status' &&
+    values[index - 1] !== '--source-worker-creation-status'
+  );
+  const output = check(previousProbe, 2);
+  assert.match(output, /CALLBACK_STATUS=CHECK_FAILED/);
+  assert.match(output, /Missing%20--source-worker-creation-status/);
+  assert.doesNotMatch(output, /CALLBACK_STATUS=ROUTABLE/);
+});
+
+test('ambiguous, pending, unset, and invalid creation statuses fail closed', () => {
+  for (const status of ['ambiguous', 'pending', 'unset', 'invalid']) {
+    const output = check(replaceValue(
+      canonical,
+      '--source-worker-creation-status',
+      status,
+    ));
+    assert.match(output, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /, status);
+    assert.match(output, /REASON=worker_creation_not_canonical/, status);
+    assert.doesNotMatch(output, /CALLBACK_STATUS=ROUTABLE/, status);
+  }
+
+  const empty = check(replaceValue(
+    canonical,
+    '--source-worker-creation-status',
+    ' ',
+  ), 2);
+  assert.match(empty, /Empty%20--source-worker-creation-status/);
 });
 
 test('multiple stale identities remain recovery evidence only', () => {

@@ -25,7 +25,7 @@ Instructions:
 13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
 14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
 15. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
-16. Run scripts/check-workboard-callback.mjs with canonical source handoff kind and packet qa_required. Only ROUTABLE permits one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
+16. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, and source worker_creation_status. Only canonical-creation ROUTABLE permits one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
 17. After recovery, rerun dependency promotion and queue classification, then commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
