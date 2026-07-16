@@ -25,6 +25,8 @@ const canonical = [
   'attempt-current',
   '--source-worker-creation-status',
   'canonical',
+  '--source-completion-callback-status',
+  'pending',
   '--source-worker-visibility-status',
   'verified',
   '--source-recovery-pending',
@@ -146,6 +148,34 @@ test('ambiguous, pending, unset, and invalid creation statuses fail closed', () 
   assert.match(empty, /Empty%20--source-worker-creation-status/);
 });
 
+test('missing or blank completion callback status fails closed as a check error', () => {
+  const missing = canonical.filter((value, index, values) =>
+    value !== '--source-completion-callback-status' &&
+    values[index - 1] !== '--source-completion-callback-status'
+  );
+  assert.match(check(missing, 2), /Missing%20--source-completion-callback-status/);
+
+  const blank = check(replaceValue(
+    canonical,
+    '--source-completion-callback-status',
+    ' ',
+  ), 2);
+  assert.match(blank, /Empty%20--source-completion-callback-status/);
+});
+
+test('routed and delivered callback replays are recovery evidence only', () => {
+  for (const status of ['routed', 'delivered']) {
+    const output = check(replaceValue(
+      canonical,
+      '--source-completion-callback-status',
+      status,
+    ));
+    assert.match(output, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /, status);
+    assert.match(output, /REASON=completion_callback_not_pending/, status);
+    assert.doesNotMatch(output, /CALLBACK_STATUS=ROUTABLE/, status);
+  }
+});
+
 test('multiple stale identities remain recovery evidence only', () => {
   let stale = replaceValue(canonical, '--callback-worker-task-id', 'task-old');
   stale = replaceValue(
@@ -191,11 +221,15 @@ test('builder callbacks cannot use QA verdicts to bypass required QA', () => {
   assert.match(output, /Callback%20result%20is%20invalid%20for%20source%20handoff/);
 });
 
-test('role, QA requirement, result, and lane cross-product follows the protocol', () => {
+test('callback status, role, QA requirement, result, and lane cross-product follows the protocol', () => {
   const roles = ['builder', 'qa'];
   const qaRequirements = ['false', 'true'];
   const results = ['ready_for_qa', 'ready_for_review', 'pass', 'fail', 'blocked'];
   const lanes = ['tasks/qa', 'tasks/review', 'tasks/ready', 'tasks/blocked'];
+  const callbackStatuses = [
+    'pending', 'delivered', 'routed', 'complete', 'failed', 'ambiguous', 'unknown',
+    'Pending', ' pending ',
+  ];
   const validRoutes = new Set([
     'builder:false:ready_for_review:tasks/review',
     'builder:false:blocked:tasks/blocked',
@@ -206,20 +240,33 @@ test('role, QA requirement, result, and lane cross-product follows the protocol'
     'qa:true:blocked:tasks/blocked',
   ]);
 
-  for (const role of roles) {
-    for (const qaRequired of qaRequirements) {
-      for (const result of results) {
-        for (const lane of lanes) {
-          const route = `${role}:${qaRequired}:${result}:${lane}`;
-          let callback = replaceValue(canonical, '--source-handoff-kind', role);
-          callback = replaceValue(callback, '--source-qa-required', qaRequired);
-          callback = replaceValue(callback, '--callback-result', result);
-          callback = replaceValue(callback, '--callback-next-lane', lane);
+  for (const callbackStatus of callbackStatuses) {
+    for (const role of roles) {
+      for (const qaRequired of qaRequirements) {
+        for (const result of results) {
+          for (const lane of lanes) {
+            const route = `${callbackStatus}:${role}:${qaRequired}:${result}:${lane}`;
+            let callback = replaceValue(
+              canonical,
+              '--source-completion-callback-status',
+              callbackStatus,
+            );
+            callback = replaceValue(callback, '--source-handoff-kind', role);
+            callback = replaceValue(callback, '--source-qa-required', qaRequired);
+            callback = replaceValue(callback, '--callback-result', result);
+            callback = replaceValue(callback, '--callback-next-lane', lane);
 
-          if (validRoutes.has(route)) {
-            assert.match(check(callback), /^CALLBACK_STATUS=ROUTABLE /, route);
-          } else {
-            assert.match(check(callback, 2), /CALLBACK_STATUS=CHECK_FAILED/, route);
+            if (validRoutes.has(`${role}:${qaRequired}:${result}:${lane}`)) {
+              const output = check(callback);
+              if (callbackStatus === 'pending') {
+                assert.match(output, /^CALLBACK_STATUS=ROUTABLE /, route);
+              } else {
+                assert.match(output, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /, route);
+                assert.match(output, /REASON=completion_callback_not_pending/, route);
+              }
+            } else {
+              assert.match(check(callback, 2), /CALLBACK_STATUS=CHECK_FAILED/, route);
+            }
           }
         }
       }

@@ -9,6 +9,7 @@ function usage() {
       '--source-packet-id <id> --source-handoff-kind <builder|qa> ' +
       '--source-qa-required <true|false> --source-worker-thread-id <id> ' +
       '--source-worker-creation-attempt-id <id> --source-worker-creation-status <status> ' +
+      '--source-completion-callback-status <status> ' +
       '--source-worker-visibility-status <status> ' +
       '--source-recovery-pending <true|false> --callback-packet-id <id> ' +
       '--callback-result <result> --callback-worker-task-id <id> ' +
@@ -24,6 +25,7 @@ const names = {
   '--source-worker-thread-id': 'sourceWorkerThreadId',
   '--source-worker-creation-attempt-id': 'sourceWorkerCreationAttemptId',
   '--source-worker-creation-status': 'sourceWorkerCreationStatus',
+  '--source-completion-callback-status': 'sourceCompletionCallbackStatus',
   '--source-worker-visibility-status': 'sourceWorkerVisibilityStatus',
   '--source-recovery-pending': 'sourceRecoveryPending',
   '--callback-packet-id': 'callbackPacketId',
@@ -110,6 +112,9 @@ export function classifyCallback(options) {
   }
   if (options.sourceWorkerCreationStatus !== 'canonical') {
     mismatches.push('worker_creation_not_canonical');
+  }
+  if (options.sourceCompletionCallbackStatus !== 'pending') {
+    mismatches.push('completion_callback_not_pending');
   }
   if (options.sourceWorkerVisibilityStatus !== 'verified') {
     mismatches.push('worker_visibility_not_verified');

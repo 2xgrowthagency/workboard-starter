@@ -134,6 +134,7 @@ function callback(source, overrides = {}) {
     packetId: fields.id, workerTaskId: fields.worker_thread_id,
     attemptId: fields.worker_creation_attempt_id,
     creationStatus: fields.worker_creation_status,
+    callbackStatus: fields.completion_callback_status,
     visibility: fields.worker_visibility_status, recoveryPending: fields.recovery_pending,
     ...overrides,
   };
@@ -142,6 +143,7 @@ function callback(source, overrides = {}) {
     '--source-qa-required', fields.qa_required, '--source-worker-thread-id', fields.worker_thread_id,
     '--source-worker-creation-attempt-id', fields.worker_creation_attempt_id,
     '--source-worker-creation-status', values.creationStatus,
+    '--source-completion-callback-status', values.callbackStatus,
     '--source-worker-visibility-status', values.visibility,
     '--source-recovery-pending', values.recoveryPending,
     '--callback-packet-id', values.packetId, '--callback-result', 'ready_for_review',
@@ -234,6 +236,13 @@ test('a delayed callback from the old creation attempt is rejected', () => {
   const delayed = callback(updated, { workerTaskId: 'task-raw', attemptId: 'attempt-1' });
   assert.match(delayed, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /);
   assert.match(delayed, /worker_task_id_mismatch,worker_creation_attempt_id_mismatch/);
+});
+
+test('a callback replay after routing is rejected', () => {
+  const updated = canonicalizeSourcePacket(sourcePacket(), recoveryPacket());
+  const replay = callback(updated, { callbackStatus: 'routed' });
+  assert.match(replay, /^CALLBACK_STATUS=RECOVERY_EVIDENCE /);
+  assert.match(replay, /completion_callback_not_pending/);
 });
 
 test('helper and persistence-only surfaces cannot establish canonical visibility', () => {

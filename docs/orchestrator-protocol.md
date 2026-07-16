@@ -115,7 +115,7 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
 17. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
-19. Validate the callback with `scripts/check-workboard-callback.mjs`. Only `CALLBACK_STATUS=ROUTABLE` authorizes one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
+19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
 20. Commit/push every state transition.
 
 ## Completion callback contract
@@ -159,6 +159,7 @@ node scripts/check-workboard-callback.mjs \
   --source-worker-thread-id "$WORKER_THREAD_ID" \
   --source-worker-creation-attempt-id "$WORKER_CREATION_ATTEMPT_ID" \
   --source-worker-creation-status "$WORKER_CREATION_STATUS" \
+  --source-completion-callback-status "$COMPLETION_CALLBACK_STATUS" \
   --source-worker-visibility-status "$WORKER_VISIBILITY_STATUS" \
   --source-recovery-pending "$RECOVERY_PENDING" \
   --callback-packet-id "$CALLBACK_PACKET_ID" \
@@ -173,6 +174,10 @@ Structurally parse the source frontmatter and reject duplicate keys before
 passing its fields to the validator. Set `source-handoff-kind` from the
 canonical handoff (`builder` or `qa`), `source-qa-required` from the source
 packet, and `source-worker-creation-status` from `worker_creation_status`.
+Set `source-completion-callback-status` from the source packet's
+`completion_callback_status`; only exact `pending` is routable. Any supplied
+non-pending value is recovery evidence, while a missing or blank value is a
+check failure.
 Builders may return
 `ready_for_qa` only when QA is required, `ready_for_review` only when it is not,
 or `blocked`; QA may return only `pass`, `fail`, or `blocked`. Only
@@ -233,6 +238,10 @@ node scripts/reconcile-task-creation-recovery.mjs check-callback \
   --worker-task-id <CALLBACK_TASK_ID> \
   --worker-creation-attempt-id <CALLBACK_ATTEMPT_ID>
 ```
+
+The recovery reconciler reads `completion_callback_status` directly from the
+structurally parsed source packet; callers must not substitute callback-local
+state for that authoritative gate.
 
 Only `CALLBACK_ROUTE_STATUS=ROUTABLE` can request a queue transition, and only
 while the source has `completion_callback_status: pending`, verified visibility,

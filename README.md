@@ -111,7 +111,7 @@ routing up to capacity. Every builder and QA create handoff receives the persist
 Complete live readback writes canonical `worker_thread_id`; the task then sends exactly one final callback. Only a
 callback matching the packet's current task and attempt can route; delayed or
 noncanonical callbacks are recovery evidence. The callback gate also requires
-source `worker_creation_status: canonical` after structural duplicate-key
+source `worker_creation_status: canonical` and `completion_callback_status: pending` after structural duplicate-key
 rejection. Callback failure emits
 `ROOT_RECONCILIATION_REQUIRED` with the same immutable proof and attempt ID.
 
@@ -132,7 +132,7 @@ ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
   check-workboard-target-lock.mjs # exact decoded target-lock check
-  check-workboard-callback.mjs # canonical callback identity/role/lane check
+  check-workboard-callback.mjs # canonical callback status/identity/role/lane check
   check-task-creation-recovery.mjs # validate recovery state and proof
   reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
 skills/
