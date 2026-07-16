@@ -6,6 +6,7 @@ created_by: <human-or-agent-name>
 created_at: YYYY-MM-DDTHH:MM:SSZ
 claimed_by:
 claimed_at:
+worker_thread_id:
 max_runtime_minutes: 90
 heartbeat_after_minutes: 30
 requires_network: true
@@ -28,8 +29,15 @@ qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
 qa_artifacts_dir:
 qa_thread_id:
 qa_result:
+qa_publish_to_github: auto
+qa_worker_notification_policy: on_failure_or_no_github
+qa_publication_status: not_required
+qa_github_comment_urls: []
+qa_worker_notification_status: not_required
 target_commit:
 repo:
+github_issue:
+github_pr:
 target_project_id: workboard
 target_project_name: Workboard
 target_path: /Users/YOU/dev/workboard
@@ -94,7 +102,11 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 - Root/orchestrator claims and monitors; worker executes.
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
-- QA runs in a separate read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
+- Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
+- QA runs in a separate product-read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
+- With `qa_publish_to_github: auto|required`, QA posts one idempotent concise verdict comment to every verified packet-linked PR/issue and records its URL; local-only artifacts and absolute local paths stay off GitHub.
+- QA notifies `worker_thread_id` according to `qa_worker_notification_policy`. Notifications are informational and must forbid fixes until root requeues the packet.
+- Publication status is separate from `qa_result`; a write/tool failure must not rewrite the product verdict.
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Use medium worker reasoning unless this task explicitly justifies escalation.

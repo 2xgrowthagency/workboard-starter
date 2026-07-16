@@ -32,7 +32,7 @@ flowchart LR
 
     subgraph EP["Execution plane"]
         W["Builder worker<br/>one task and one target"]
-        Q["QA companion<br/>independent read-only verification"]
+        Q["QA companion<br/>independent product-read-only verification"]
     end
 
     H --> A
@@ -142,6 +142,8 @@ Supported fields in `templates/task-packet.md` include:
 - `required_skills`
 - `qa_required`
 - `qa_status`
+- `github_pr`, `github_issue`, and `worker_thread_id`
+- `qa_publish_to_github`, `qa_worker_notification_policy`, and publication receipt fields
 - `qa_codex_project`
 - `qa_model`
 - `qa_artifacts_dir`
@@ -169,8 +171,9 @@ The orchestrator must preflight these before delegation and require proof before
 2. Have the root orchestrator claim it.
 3. Start one worker in the Workboard project/path.
 4. Have the worker write proof and route the packet to `tasks/qa/`.
-5. Start a separate read-only QA task and record a `PASS`, `FAIL`, or `BLOCKED` result.
-6. Route a pass to `tasks/review/`, inspect the result, and move it to `tasks/done/`.
+5. Start a separate product-read-only QA task and record a `PASS`, `FAIL`, or `BLOCKED` result.
+6. If the packet links a PR/issue, publish the concise QA result there and record the comment URL; otherwise follow the worker-notification fallback.
+7. Route a pass to `tasks/review/`, inspect the result, and move it to `tasks/done/`.
 
 That dry run teaches the whole loop without risking a real project.
 

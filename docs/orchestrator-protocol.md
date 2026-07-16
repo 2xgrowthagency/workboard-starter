@@ -54,9 +54,10 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 11. Give the worker the full task packet plus the worker handoff prompt below.
 12. Monitor worker output and write proof/status back into the packet.
 13. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
-14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
-15. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
-16. Commit/push every state transition.
+14. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
+15. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
+16. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
+17. Commit/push every state transition.
 
 ## Concurrency policy
 
@@ -65,7 +66,7 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 - Prefer parallelism across different repos/projects.
 - One worker per packet.
 - One separate QA task per QA packet; the builder does not self-verify.
-- QA is read-only by default and reports failures instead of fixing them.
+- QA keeps the product target read-only and reports failures instead of fixing them; packet-authorized result comments and task notices are the only closeout-write exception.
 - Workers do not spawn workers by default.
 - A packet may allow a bounded read-only swarm for research/QA discovery, but it must state limits, merge format, and stop conditions.
 - Never use parallelism to bypass a blocker or approval.
@@ -110,10 +111,12 @@ You are an independent Workboard QA companion. Verify exactly one packet.
 Rules:
 - Treat the builder's summary as a claim, not evidence.
 - Verify the pinned commit or immutable artifact named by the packet.
-- Work read-only by default. Do not fix code, merge, publish, deploy, or mutate production data.
+- Keep the product target read-only. Do not fix code, merge, deploy, publish product/release changes, or mutate production data. Packet-authorized QA result comments and informational task notices are the only closeout-write exception.
 - Use the packet's required tools, interactions, viewports, and artifact directory.
 - Record unsupported checks explicitly rather than weakening the acceptance criteria.
 - Keep screenshots and reports local unless the packet explicitly allows sharing.
+- Publish only to verified packet-linked GitHub targets. Use a stable marker to update/skip duplicate comments; never upload local-only artifacts or expose absolute local paths.
+- Notify the original worker only according to packet policy; the notice must forbid fixes until root requeues the packet.
 
 Return exactly one verdict:
 - PASS: every required criterion is independently supported.
@@ -126,6 +129,7 @@ Required proof:
 - Test, browser, console, network, screenshot, or file evidence as applicable.
 - Absolute local artifact paths.
 - Final repository status proving QA did not edit the target.
+- GitHub comment URL(s), worker-notification status, or exact publication fallback reason.
 ```
 
 ## Completion standard

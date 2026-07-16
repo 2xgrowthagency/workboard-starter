@@ -19,11 +19,12 @@ You should:
 7. Start or assign one correctly-scoped worker thread per claimed packet.
 8. Keep workers inside the packet `target_path`.
 9. Route worker-complete packets that still require independent QA to `tasks/qa/`.
-10. Start a separate, read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
-11. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
-12. Move QA-not-required worker completions directly to `tasks/review/` with proof.
-13. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
-14. Commit and push every state transition.
+10. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
+11. Give QA the associated PR/issue URLs, original `worker_thread_id`, and publication policy. Verify comment/notification receipts or perform the root fallback.
+12. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
+13. Move QA-not-required worker completions directly to `tasks/review/` with proof.
+14. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
+15. Commit and push every state transition.
 
 ## What you should not do
 
@@ -77,7 +78,9 @@ Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task pa
 
 QA is a separate task inside the existing target project, not a second orchestrator or a separate empty-folder project. Give it the full packet, immutable target commit or artifact, expected behavior, required tools, interactions/viewports when relevant, and artifact directory.
 
-Require exactly one verdict: `PASS`, `FAIL`, or `BLOCKED`. QA must inspect raw evidence itself, remain read-only unless the packet explicitly says otherwise, and leave fixes to a rework packet.
+Require exactly one verdict: `PASS`, `FAIL`, or `BLOCKED`. QA must inspect raw evidence itself, keep the product target read-only, and leave fixes to a rework packet. Packet-authorized result comments and informational task notices are the only closeout-write exception.
+
+When `qa_publish_to_github` is `auto` or `required`, QA verifies packet-linked PR/issue targets and adds or updates one concise marker-bearing verdict comment without uploading local-only evidence or exposing absolute local paths. It records comment URLs and notifies the original worker according to policy with an informational no-fix-until-requeued message. Publication failure is tracked separately and does not change the verdict.
 
 ## Completion
 
