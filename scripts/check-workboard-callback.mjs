@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 function usage() {
   console.error(
     'Usage: node scripts/check-workboard-callback.mjs ' +
@@ -130,7 +133,7 @@ export function checkCallbackArgs(argv) {
   return classifyCallback(parseArgs(argv));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
   try {
     console.log(checkCallbackArgs(process.argv.slice(2)).output);
   } catch (error) {

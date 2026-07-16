@@ -2,6 +2,9 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -38,11 +41,22 @@ const canonical = [
   'tasks/qa',
 ];
 
-function check(args, expectedStatus = 0) {
-  const result = spawnSync(process.execPath, [checker, ...args], { encoding: 'utf8' });
+function check(args, expectedStatus = 0, script = checker) {
+  const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
   assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
   return `${result.stdout}${result.stderr}`;
 }
+
+test('CLI entrypoint runs from paths that require URL escaping', () => {
+  const root = mkdtempSync(join(tmpdir(), 'workboard callback '));
+  try {
+    const escapedPath = join(root, 'callback checker.mjs');
+    copyFileSync(checker, escapedPath);
+    assert.match(check(canonical, 0, escapedPath), /^CALLBACK_STATUS=ROUTABLE /);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function replaceValue(args, flag, value) {
   const updated = [...args];
