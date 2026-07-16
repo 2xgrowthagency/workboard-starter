@@ -78,8 +78,20 @@ function sanitize(value) {
 function sanitizeComposite(value) {
   return String(value ?? '')
     .replace(/[\n\r\t ]+/g, '_')
-    .replace(/[^A-Za-z0-9._=:+,@/|;-]/g, '_')
+    .replace(/[^A-Za-z0-9._=:+,@/|;%-]/g, '_')
     .slice(0, 2000);
+}
+
+function encodeComponent(value) {
+  return encodeURIComponent(String(value ?? ''));
+}
+
+function canonicalQaResult(value) {
+  const normalized = String(value ?? '').toLowerCase();
+  if (normalized === 'passed') return 'pass';
+  if (normalized === 'failed') return 'fail';
+  if (['pass', 'fail', 'blocked'].includes(normalized)) return normalized;
+  return null;
 }
 
 function stripQuotes(value) {
@@ -215,7 +227,7 @@ function lockFor(file) {
     fields.target_project_id || 'unknown_project',
     fields.target_path || 'unknown_path',
   ]
-    .map(sanitize)
+    .map(encodeComponent)
     .join('|');
 }
 
@@ -233,19 +245,18 @@ function classifyQa(files) {
     const result = (fields.qa_result || '').toLowerCase();
 
     if (result) {
-      if (terminalStates.includes(result)) {
-        terminal.push({ file, id: packetId(file, fields), result });
-      }
-      else invalidResults.push({ file, result });
+      const canonicalResult = canonicalQaResult(result);
+      if (canonicalResult) {
+        terminal.push({ file, id: packetId(file, fields), result: canonicalResult });
+      } else invalidResults.push({ file, result });
       continue;
     }
 
     if (['', 'pending', 'required'].includes(state)) pending.push(file);
     else if (['active', 'in_progress'].includes(state)) active.push(file);
     else if (terminalStates.includes(state)) {
-      terminal.push({ file, id: packetId(file, fields), result: state });
-    }
-    else invalidStatuses.push({ file, state });
+      terminal.push({ file, id: packetId(file, fields), result: canonicalQaResult(state) });
+    } else invalidStatuses.push({ file, state });
   }
   return { pending, active, terminal, invalidStatuses, invalidResults };
 }
@@ -426,7 +437,7 @@ if (qa.terminal.length > 0) {
   emit('QA_RESULT_AVAILABLE', {
     ...common,
     QA_RESULTS: sanitizeComposite(
-      qa.terminal.map(({ id, result }) => `${sanitize(id)}|${result}`).join(';'),
+      qa.terminal.map(({ id, result }) => `${encodeComponent(id)}|${result}`).join(';'),
     ),
   });
 }

@@ -50,8 +50,10 @@ Use the result to open the smallest required lane:
 - `CHECK_FAILED`: report the exact classifier failure and stop.
 
 Claimed and active-QA lock values are metadata summaries in the form
-`packet_id|target_project_id|target_path`. They are routing inputs, not permission
-to open worker history.
+`packet_id|target_project_id|target_path`. Each component is percent-encoded so
+spaces and delimiter characters remain reversible. Decode each component before
+exact target comparisons. Locks are routing inputs, not permission to open worker
+history.
 
 
 ## Tool and skill preflight

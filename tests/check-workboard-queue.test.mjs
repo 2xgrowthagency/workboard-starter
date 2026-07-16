@@ -145,8 +145,8 @@ test('claimed work emits a target lock', () => {
       packet({
         id: 'active-task',
         status: 'claimed',
-        target_project_id: 'example',
-        target_path: '/tmp/example',
+        target_project_id: 'example project',
+        target_path: '/tmp/my app',
       }),
     );
     commit(root, 'add claimed task');
@@ -154,7 +154,11 @@ test('claimed work emits a target lock', () => {
 
     const output = classify(root);
     assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
-    assert.match(output, /CLAIMED_LOCKS=active-task\|example\|\/tmp\/example/);
+    assert.match(output, /CLAIMED_LOCKS=active-task\|example%20project\|%2Ftmp%2Fmy%20app/);
+    assert.doesNotMatch(output, /my_app/);
+
+    const encodedPath = output.match(/CLAIMED_LOCKS=[^|]+\|[^|]+\|([^; ]+)/)?.[1];
+    assert.equal(decodeURIComponent(encodedPath), '/tmp/my app');
   });
 });
 
@@ -211,7 +215,7 @@ test('active QA counts as work in progress and emits a target lock', () => {
     const output = classify(root);
     assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
     assert.match(output, /QA_ACTIVE=1/);
-    assert.match(output, /QA_ACTIVE_LOCKS=qa-active\|example\|C:\/work\/example/);
+    assert.match(output, /QA_ACTIVE_LOCKS=qa-active\|example\|C%3A%2Fwork%2Fexample/);
   });
 });
 
@@ -228,6 +232,27 @@ test('terminal QA left in the QA lane is routed for root reconciliation', () => 
     assert.match(output, /^QUEUE_STATUS=QA_RESULT_AVAILABLE /);
     assert.match(output, /QA_COMPLETE=1/);
     assert.match(output, /QA_RESULTS=qa-terminal\|pass/);
+  });
+});
+
+test('terminal QA aliases are normalized before reconciliation output', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'qa', 'passed.md'),
+      packet({ id: 'qa-alias-pass', status: 'qa', qa_status: 'passed' }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'qa', 'failed.md'),
+      packet({ id: 'qa-alias-fail', status: 'qa', qa_result: 'FAILED' }),
+    );
+    commit(root, 'add qa alias results');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=QA_RESULT_AVAILABLE /);
+    assert.match(output, /QA_RESULTS=.*qa-alias-fail\|fail/);
+    assert.match(output, /QA_RESULTS=.*qa-alias-pass\|pass/);
+    assert.doesNotMatch(output, /\|failed|\|passed/);
   });
 });
 
@@ -290,7 +315,7 @@ test('completed QA packet IDs cannot inject result records', () => {
 
     const output = classify(root);
     assert.match(output, /^QUEUE_STATUS=QA_RESULT_AVAILABLE /);
-    assert.match(output, /QA_RESULTS=real_pass_forged\|pass/);
+    assert.match(output, /QA_RESULTS=real%7Cpass%3Bforged\|pass/);
     assert.doesNotMatch(output, /QA_RESULTS=real\|pass;forged/);
   });
 });
