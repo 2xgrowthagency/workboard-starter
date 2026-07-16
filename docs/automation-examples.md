@@ -19,8 +19,8 @@ Instructions:
 7. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
 8. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
 9. Commit/push claim transitions before delegation.
-10. For each creation attempt, mint worker_creation_attempt_id and persist the created task as canonical worker_thread_id. Supply them with persistent root_task_id, packet ID, target_project_id, and target_path.
-11. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks.
+10. For each creation attempt, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical worker_thread_id only after complete live proof.
+11. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
 12. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
 13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
 14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
@@ -33,7 +33,30 @@ Stop before secrets, destructive actions, production data, deployments, account/
 
 ## Codex Desktop pattern
 
-Create a saved Codex project for the Workboard repo and saved projects for each target repo. Schedule or manually run the generic root-orchestrator prompt in the Workboard project. Worker threads should be created in the target project, not in the Workboard project, unless the task is explicitly Workboard/control-plane work.
+Create a saved Codex project for the Workboard repo and saved projects for each
+target repo. Schedule or manually run the generic root-orchestrator prompt in
+the Workboard project. Worker tasks belong in the exact target project, not the
+Workboard project, unless the packet is explicitly Workboard/control-plane work.
+
+When the host exposes app-native APIs, list projects and select the exact saved
+target, persist `worker_creation_attempt_id`, create at most one task for that
+attempt, then use the live list/read tools to verify one candidate's exact title,
+saved project/target, cwd, host/local identity, and complete handoff. Only then
+write the candidate ID to canonical `worker_thread_id`, mark visibility
+`verified`, and report that ID plus the creation tool's clickable task link or
+supported directive, such as `::created-thread{threadId="<RAW_TASK_ID>"}`.
+
+Do not treat a helper, separate app server, session index, or database row as
+proof that Desktop refreshed. On a stall, timeout, ambiguous result, or mismatch,
+record the exact call and partial result, preserve any raw ID, create no
+duplicate, and keep the source packet claimed with its target lock and capacity
+slot active. Set visibility `ambiguous` and recovery pending; do not claim
+successful delegation. Move to blocked only after recovery proves ambiguity
+resolved and no usable/canonical worker remains, with an exact next action.
+
+Raw/replacement IDs remain recovery evidence until canonical writeback. Delayed
+or noncanonical callbacks also remain recovery evidence: they cannot route
+unless both worker task ID and creation attempt ID match the source packet.
 
 ## Claude Desktop pattern
 
@@ -42,6 +65,12 @@ Create a Claude project for Workboard and one project per target workspace/repo.
 ## Claude Code / Codex CLI pattern
 
 Run the root loop from the Workboard repo. For each claimed packet, start a separate terminal/session from the packet `target_path` and provide the full packet plus worker handoff. Keep each worker scoped to one packet.
+
+This is the portable fallback when app-native project/task APIs are not exposed.
+Set `worker_visibility_status: portable_only`, record the session identity in
+`worker_portable_session_id` plus cwd/handoff evidence, leave canonical
+`worker_thread_id` empty, and state that live Desktop visibility and canonical
+callback routing were not verified.
 
 Example shell shape:
 

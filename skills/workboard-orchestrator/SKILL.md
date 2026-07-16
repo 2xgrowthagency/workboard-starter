@@ -27,8 +27,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Claim only independent ready packets with clear routing and acceptance criteria.
 - Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
-- Persist `worker_thread_id` as the current canonical live-read task and mint `worker_creation_attempt_id` once per task creation attempt. Pass them with persistent `root_task_id`, packet ID, `target_project_id`, and `target_path` in every builder and QA handoff.
-- Require exactly one final callback containing packet ID, result, canonical `worker_thread_id` as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
+- Mint and persist a new `worker_creation_attempt_id` before each create or authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before writing canonical `worker_thread_id` and marking visibility verified.
+- Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
+- Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
 - Validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, and packet `qa_required`. Only `ROUTABLE` authorizes one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from mismatched/delayed task or attempt IDs is logged but cannot route.
 - Never periodically inspect, monitor, heartbeat, or babysit active workers.
 - On callback unavailability/failure, require `ROOT_RECONCILIATION_REQUIRED` with the identical envelope and error; do not replace it with monitoring.
@@ -54,6 +55,22 @@ If a packet declares `qa_required: true`, the orchestrator must also preflight t
 ## Hard stops
 
 Stop before secrets, production data, billing/account settings, deployment, publishing, destructive actions, ambiguous acceptance criteria, or unknown project paths.
+
+An app-native project/task stall, timeout, ambiguous result, or readback mismatch
+is also a routing hard stop. Preserve the raw task ID and partial result, record
+the exact failed call, create no duplicate, keep the source packet claimed with
+its target lock/capacity active, set visibility `ambiguous`, and keep recovery
+pending without claiming successful delegation. Move to blocked and release the
+lock only after recovery proves ambiguity resolved and no usable/canonical worker
+remains, with an exact next action. Helper, separate app-server, session-index,
+or database persistence is not live Desktop proof.
+
+If the host genuinely lacks app-native task APIs, use the `portable_only`
+fallback from the exact target path and explicitly report that live Desktop
+visibility was not verified. Record `worker_portable_session_id`, leave
+canonical `worker_thread_id` empty, and treat completion as root reconciliation
+evidence. Verified app-native root output includes the raw canonical task ID and
+supported clickable task link or directive.
 
 ## Defaults
 

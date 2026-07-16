@@ -18,7 +18,7 @@ You should:
 6. When ready work exists and capacity remains, inspect ready packets and continue routing unrelated targets.
 7. Decode locks and reject a ready packet when both canonical `target_project_id` and `target_path` exactly match; use `scripts/check-workboard-target-lock.mjs` and fail closed on malformed input.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
-9. For each task creation, mint `worker_creation_attempt_id` and persist the created task as canonical `worker_thread_id` before handoff.
+9. Persist a new `worker_creation_attempt_id`, then delegate at most one correctly scoped worker through `docs/live-task-visibility.md`; write canonical `worker_thread_id` only after complete app-native list/read proof.
 10. Keep workers inside the packet `target_path`.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
@@ -57,6 +57,7 @@ below capacity, ready work returns a routable lane for unlocked targets.
 - Do not route any packet whose exact decoded `target_project_id` and `target_path` tuple is locked by claimed work or active QA, even when `parallel_safe` is true.
 - Do not inspect, monitor, heartbeat, or babysit active worker/QA task history during ordinary polls.
 - Do not route a callback unless callback `worker_task_id` equals the source packet's canonical `worker_thread_id` and callback `worker_creation_attempt_id` equals the source packet field of the same name.
+- Do not release a claimed target lock merely because app-native creation is ambiguous.
 - Do not route work into the Workboard project just because the target project is missing.
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.
@@ -90,12 +91,29 @@ Tool-required work cannot move to `tasks/qa/` or `tasks/review/` unless the pack
 
 Use `projects.yaml` as the routing source of truth.
 
-- Codex Desktop: create/open a worker thread in the saved project matching the packet target path.
+- Codex Desktop: use app-native project selection and task creation when exposed, then verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through live list/read tools before writing canonical `worker_thread_id`.
 - Claude Desktop: create/open a worker chat in the project matching the packet target path.
-- Claude Code or Codex CLI: launch from the packet `target_path` and paste the packet plus worker handoff.
+- Claude Code or Codex CLI: launch from the packet `target_path`, paste the packet plus worker handoff, record `worker_portable_session_id`, leave canonical `worker_thread_id` empty, and mark the visibility status `portable_only`.
 - OpenClaw or other agents: start a bounded sub-agent/session with the packet target path, packet text, and proof requirements.
 
 If the target project/path is missing, block and ask. Do not improvise.
+
+App-native creation is not successful delegation until live readback passes.
+Helper, separate app-server, session-index, or database persistence does not
+prove live Desktop visibility. On a stall, timeout, ambiguous result, or
+mismatch, preserve the source packet in `tasks/claimed/`, its target lock and
+capacity slot, the current attempt ID, raw IDs, and exact blocker. Set visibility
+to `ambiguous`, keep recovery pending, create no duplicate, and do not claim
+successful delegation. Release the lock by moving to `tasks/blocked/` only after
+recovery proves ambiguity resolved and no usable/canonical worker remains, with
+an exact next action. When app-native task APIs are genuinely absent, record
+portable session proof without claiming Desktop visibility or canonical
+callback routing.
+
+Verified app-native root output includes canonical `worker_thread_id` and a
+supported clickable task link or directive. A callback routes only when its
+`worker_task_id` and `worker_creation_attempt_id` equal the source packet's
+current canonical pair; otherwise it is recovery evidence only.
 
 ## Worker handoff
 
