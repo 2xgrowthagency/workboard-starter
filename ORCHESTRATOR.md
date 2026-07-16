@@ -18,7 +18,7 @@ You should:
 6. Monitor active claims and update packet status/proof.
 7. Claim only independent eligible tasks from `tasks/ready/`.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
-9. Start or assign one correctly-scoped worker thread per claimed packet.
+9. Delegate one correctly-scoped worker per claimed packet through the live visibility rules in `docs/live-task-visibility.md`.
 10. Keep workers inside the packet `target_path`.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
@@ -80,12 +80,21 @@ Tool-required work cannot move to `tasks/qa/` or `tasks/review/` unless the pack
 
 Use `projects.yaml` as the routing source of truth.
 
-- Codex Desktop: create/open a worker thread in the saved project matching the packet target path.
+- Codex Desktop: use app-native project selection and task creation when exposed, then verify the same raw task ID, exact title, saved project/target, cwd, host/local identity, and handoff through live list/read tools.
 - Claude Desktop: create/open a worker chat in the project matching the packet target path.
-- Claude Code or Codex CLI: launch from the packet `target_path` and paste the packet plus worker handoff.
+- Claude Code or Codex CLI: launch from the packet `target_path`, paste the packet plus worker handoff, and mark the visibility status `portable_only`.
 - OpenClaw or other agents: start a bounded sub-agent/session with the packet target path, packet text, and proof requirements.
 
 If the target project/path is missing, block and ask. Do not improvise.
+
+App-native creation is not successful delegation until live readback passes.
+Helper, separate app-server, session-index, or database persistence does not
+prove live Desktop visibility. On a stall, timeout, ambiguous result, or
+mismatch, preserve the raw task ID and exact blocker, create no duplicate, and
+move the packet to `tasks/blocked/` instead of leaving an active successful
+claim. When app-native task APIs are genuinely absent, record portable session
+proof without claiming Desktop visibility. Verified app-native root output must
+include the raw task ID and a supported clickable task link or directive.
 
 ## Worker handoff
 

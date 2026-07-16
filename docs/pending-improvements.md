@@ -58,6 +58,9 @@ Acceptance criteria:
 
 ### [ST-004: require live task visibility proof](https://github.com/2xgrowthagency/workboard-starter/issues/4)
 
+Status: implemented in the starter protocol, examples, skill, packet template,
+and structural tests.
+
 Codex Desktop examples should use app-native project/task creation when available and verify the same raw ID, title, project, cwd, host, and handoff through list/read tools.
 
 Do not present standalone helper or app-server persistence as proof that the running Desktop UI refreshed.

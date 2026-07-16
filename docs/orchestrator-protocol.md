@@ -83,8 +83,8 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 9. Inspect `tasks/ready/` by priority and age.
 10. Claim only independent eligible tasks. Avoid two active workers in the same repo/path unless both packets say they are parallel-safe.
 11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
-12. Create or reuse a visible worker thread/project with the correct target path from the start.
-13. Give the worker the full task packet plus the worker handoff prompt below.
+12. Delegate through the live task visibility gate below. Create at most one worker with the correct target path and preserve partial IDs/results.
+13. Give the worker the full task packet plus the exact worker handoff prompt below.
 14. Monitor worker output and write proof/status back into the packet.
 15. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
 16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
@@ -112,10 +112,38 @@ For Codex Desktop or Claude Desktop projects, create the worker inside the saved
 
 For Claude Code or Codex CLI, start the worker from the packet `target_path` and include the full packet in the prompt.
 
+## Live task visibility gate
+
+Follow [`docs/live-task-visibility.md`](live-task-visibility.md) for every
+delegation. When the host exposes app-native project selection and task
+create/list/read tools, use them and require live readback of the same raw task
+ID, exact state-first title, saved project/target, cwd, host/local identity, and
+worker handoff before setting `worker_visibility_status: verified`.
+
+A helper, separate app server, session index, or database proves persistence at
+most; it does not prove the running Desktop UI refreshed. If an app-native call
+stalls, times out, or returns an ambiguous partial result, preserve the raw task
+ID, record the exact call and blocker, create no duplicate, and move the packet
+to `tasks/blocked/` rather than leaving a successfully delegated active claim.
+
+When the host genuinely has no app-native task APIs, use the documented
+`portable_only` fallback from the exact target path. Record its session evidence
+without claiming live Desktop visibility.
+
+Root output for a verified app-native delegation must include the raw task ID
+and the host-supported clickable task link or directive.
+
 ## Worker handoff prompt
 
 ```text
 You are a Workboard worker. Work on exactly one packet.
+
+Handoff identity:
+- Root task ID: <ROOT_TASK_ID>
+- Worker task title: <EXACT_STATE_FIRST_TITLE>
+- Saved project/target: <TARGET_PROJECT>
+- Target cwd: <TARGET_PATH>
+- Host/local identity: <HOST_IDENTITY>
 
 Rules:
 - Work only inside the task target_path, except you may append proof/status to the Workboard packet.
@@ -133,6 +161,7 @@ Required proof:
 - Screenshots/browser proof if UI-facing and safe to capture.
 - Diff/PR/commit link if code changed.
 - Caveats/blockers.
+- Echo the handoff identity above exactly so root can compare live readback.
 - Final recommendation: ready_for_review or blocked.
 ```
 

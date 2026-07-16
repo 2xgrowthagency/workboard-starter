@@ -25,7 +25,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Claim only independent ready packets with clear routing and acceptance criteria.
 - Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
-- Record worker thread/session identity and proof in the packet.
+- Use app-native saved-project and task create/list/read tools when the host exposes them.
+- Apply `docs/live-task-visibility.md`: verify the same raw task ID, exact title, saved project/target, cwd, host/local identity, and handoff before marking Desktop delegation successful.
+- Record worker thread/session identity, visibility status, link/directive, and proof in the packet.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
 - Pass packet-linked PR/issue URLs, the original worker task ID, and publication policies to QA; verify publication receipts or perform a root fallback. Never expose absolute local paths or local-only artifacts in GitHub comments.
@@ -48,6 +50,17 @@ If a packet declares `qa_required: true`, the orchestrator must also preflight t
 ## Hard stops
 
 Stop before secrets, production data, billing/account settings, deployment, publishing, destructive actions, ambiguous acceptance criteria, or unknown project paths.
+
+An app-native project/task stall, timeout, ambiguous result, or readback mismatch
+is also a routing hard stop. Preserve the raw task ID and partial result, record
+the exact failed call, create no duplicate, and move the packet to blocked
+instead of leaving a successfully delegated active claim. Helper, separate
+app-server, session-index, or database persistence is not live Desktop proof.
+
+If the host genuinely lacks app-native task APIs, use the `portable_only`
+fallback from the exact target path and explicitly report that live Desktop
+visibility was not verified. Verified app-native root output includes the raw
+task ID and supported clickable task link or directive.
 
 ## Defaults
 

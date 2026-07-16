@@ -7,6 +7,14 @@ created_at: YYYY-MM-DDTHH:MM:SSZ
 claimed_by:
 claimed_at:
 worker_thread_id:
+worker_task_title:
+worker_creation_surface:
+worker_task_link:
+worker_host_identity:
+worker_visibility_status: pending
+worker_visibility_verified_at:
+worker_visibility_proof:
+worker_routing_blocker:
 max_runtime_minutes: 90
 heartbeat_after_minutes: 30
 requires_network: true
@@ -84,6 +92,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Required proof
 
 - [ ] Tool/capability proof if `requires_*` or `required_skills` is set
+- [ ] Live task readback proof, or an explicit `portable_only`/`blocked` visibility status
 - [ ] Current working directory and git branch/HEAD captured
 - [ ] Commands/tests run, with result
 - [ ] Diff/PR/commit link, if code changed
@@ -101,6 +110,11 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Orchestration notes
 
 - Root/orchestrator claims and monitors; worker executes.
+- When app-native task APIs are exposed, root verifies the same raw `worker_thread_id`, exact `worker_task_title`, saved project/target, `target_path` cwd, `worker_host_identity`, and handoff through live list/read tools before marking delegation successful.
+- Helper, separate app-server, session-index, or database persistence is not proof that the running Desktop UI refreshed.
+- On app-native stall/timeout/ambiguous readback, preserve partial results, set `worker_visibility_status: blocked`, record `worker_routing_blocker`, create no duplicate, and move the packet out of `tasks/claimed/` into `tasks/blocked/`.
+- If app-native task APIs are not exposed, set `worker_visibility_status: portable_only`, record portable session evidence, and do not claim live Desktop visibility.
+- Verified app-native root output includes the raw `worker_thread_id` and `worker_task_link` or supported clickable directive.
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
 - Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
 - QA runs in a separate product-read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
