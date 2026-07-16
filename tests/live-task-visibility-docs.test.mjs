@@ -72,6 +72,25 @@ test('canonical writeback follows complete app-native readback', () => {
   assert.match(contract, /::created-thread\{threadId="<RAW_TASK_ID>"\}/);
 });
 
+test('canonicalization docs state the exact concurrent-writer boundary', () => {
+  for (const path of [
+    'docs/live-task-visibility.md',
+    'docs/orchestrator-protocol.md',
+  ]) {
+    const contents = read(path);
+    assert.match(contents, /compares source identity and exact content immediately before rename\s+and rejects changes observed since its initial read/i,
+      `${path} must describe the final source comparison`);
+    assert.match(contents, /same-directory temporary file plus atomic rename(?:, which)? provides atomic\s+replacement visibility and prevents partial packet contents/i,
+      `${path} must describe atomic replacement visibility`);
+    assert.match(contents, /do not\s+provide digest-conditioned compare-and-swap[\s\S]{0,220}after (?:the|that) final comparison but before rename may\s+be\s+overwritten/i,
+      `${path} must disclose the post-comparison writer window`);
+    assert.match(contents, /one-root\/single-writer transition discipline[\s\S]{0,160}cooperative locking or transactional storage/i,
+      `${path} must state the operational discipline and stronger guarantee`);
+    assert.doesNotMatch(contents, /rejects? (?:all )?concurrent source changes/i,
+      `${path} must not claim unconditional concurrent-write rejection`);
+  }
+});
+
 test('ambiguous creation retains lock and forbids duplicate delegation', () => {
   const outcomes = Object.fromEntries(
     table(contract, 'Decision table').map((row) => [row.Outcome, row]),

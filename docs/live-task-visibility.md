@@ -83,8 +83,16 @@ For `app_native` delegation:
    packet paths. The supplied repo-root entry cannot itself be a symlink, and the
    source must be a regular packet physically inside its nonsymlinked real
    `tasks/claimed` directory. The canonicalizer rejects duplicate frontmatter
-   keys and concurrent source changes, then uses an fsynced same-directory
-   temporary file plus atomic rename; it never truncates the source packet in place:
+   keys. It compares source identity and exact content immediately before rename
+   and rejects changes observed since its initial read. It then uses an fsynced
+   same-directory temporary file plus atomic rename, which provides atomic
+   replacement visibility and prevents partial packet contents; it never
+   truncates the source packet in place. Ordinary POSIX/Node filesystems do not
+   provide digest-conditioned compare-and-swap, so an uncooperative writer that
+   changes the source after the final comparison but before rename may be
+   overwritten. Workboard's one-root/single-writer transition discipline is
+   required to close that operational gap. A stronger multi-writer guarantee
+   requires cooperative locking or transactional storage outside this protocol:
    write the proven candidate ID to `worker_thread_id`, write that creation call's
    `worker_creation_attempt_id`, set `worker_creation_status: canonical`, set
    `worker_visibility_status: verified`, set `worker_visibility_verified_at`
