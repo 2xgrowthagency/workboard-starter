@@ -5,6 +5,43 @@ desktop host can display and reopen. A helper, separate app server, session
 index, or database may prove persistence, but it does not prove that the live
 Desktop UI refreshed.
 
+## Source packet fields
+
+Use the source packet's existing names throughout the visibility flow:
+
+- `id`: packet identity;
+- `root_task_id`: persistent root callback destination;
+- `target_project_id`: saved project/target identity;
+- `target_path`: requested cwd;
+- `worker_task_title`: exact state-first task title;
+- `worker_creation_surface`: app-native or portable creation surface;
+- `worker_creation_attempt_id`: immutable ID generated before the current
+  creation or authorized replacement attempt;
+- `worker_thread_id`: current canonical worker task ID;
+- `worker_portable_session_id`: noncanonical portable session identity;
+- `worker_visibility_status`: `pending`, `ambiguous`, `verified`, or
+  `portable_only`;
+- `recovery_status` and `recovery_pending`: recovery lifecycle and gate;
+- `worker_visibility_proof` and `worker_routing_blocker`: exact evidence.
+
+Recovery records may use more descriptive aliases. Map them explicitly rather
+than copying values into unrelated source fields:
+
+| Source packet | Recovery record |
+| --- | --- |
+| `id` | `source_packet_id` |
+| `root_task_id` | `source_root_task_id` |
+| `worker_task_title` | `requested_title` |
+| `target_project_id` | `requested_project_id` |
+| `target_project_name` | `requested_project_name` |
+| `target_path` | `requested_cwd` |
+| `worker_creation_surface` | `creation_surface` |
+| `worker_creation_attempt_id` | `worker_creation_attempt_id` |
+
+`raw_task_id`, `replacement_task_id`, and other candidate IDs belong in the
+recovery attempt evidence. They are not canonical and must not overwrite
+`worker_thread_id` until the canonical writeback gate passes.
+
 ## Capability modes
 
 Choose one mode before delegation:
@@ -12,72 +49,147 @@ Choose one mode before delegation:
 - `app_native`: the current host exposes saved-project selection plus live task
   create, list, and read tools.
 - `portable_only`: the host does not expose those app-native tools. Start the
-  worker from the packet target path with the exact handoff, record the
+  worker from the packet `target_path` with the exact handoff, record the
   process/session evidence the host supports, and state that Desktop visibility
   is not verified.
 
 Do not switch to `portable_only` because an app-native call stalled. That is an
-app-native routing blocker with an ambiguous partial result, not proof that a
-second worker is needed.
+ambiguous app-native result requiring recovery, not proof that a second worker
+is needed.
 
 ## App-native proof gate
 
 For `app_native` delegation:
 
-1. List saved projects and select the exact project/target recorded by the
+1. List saved projects and select the exact `target_project_id` recorded by the
    packet. A local directory existing on disk does not substitute for this
    lookup.
 2. List existing tasks before creation when the host supports that lookup. Reuse
    the canonical matching task when live readback proves it is usable.
-3. Create at most one task with the exact state-first title, selected saved
-   project/target, target cwd, host/local identity, and complete worker handoff.
-4. Preserve the raw task ID and every partial result immediately, including when
-   the create call later reports an error or timeout.
-5. Through the running host's live list and read tools, verify the same raw task
-   ID and exact values for all of the following:
-
-   - task title;
-   - saved project/target;
-   - cwd;
-   - host/local identity;
-   - worker handoff.
-
-6. Set `worker_visibility_status: verified` only after every value matches.
-   Record the tool names and timestamp in `worker_visibility_proof`.
-7. Return the raw task ID and the host-supported clickable task link or
-   directive. In Codex Desktop, a successfully created task can be surfaced as
-   `::created-thread{threadId="<RAW_TASK_ID>"}` when that directive is supported
-   by the creation tool.
+3. Generate and persist one immutable `worker_creation_attempt_id` before the
+   create call. Create at most one task for that attempt with the exact
+   `worker_task_title`, `target_project_id`, `target_path`, host/local identity,
+   and complete worker handoff.
+4. Preserve every partial result immediately in recovery evidence. A returned
+   raw task ID does not populate `worker_thread_id` by itself.
+5. Through the running host's live list and read tools, verify the same candidate
+   task ID and exact values for title, saved project/target, cwd, host/local
+   identity, and worker handoff.
+6. Perform one canonical writeback only after every value matches: write the
+   proven candidate ID to `worker_thread_id`, retain its
+   `worker_creation_attempt_id`, set `worker_visibility_status: verified`, set
+   `recovery_pending: false`, and record the tool names and timestamp in
+   `worker_visibility_proof`.
+7. Return the canonical `worker_thread_id` and the host-supported clickable task
+   link or directive. In Codex Desktop, a successfully created task can be
+   surfaced as `::created-thread{threadId="<RAW_TASK_ID>"}` when that directive
+   is supported by the creation tool.
 
 Creation success alone is not enough. List success without exact readback is not
-enough. A task must not remain represented as a successfully delegated Desktop
-claim until the proof gate passes.
+enough. A Desktop delegation is not successful until canonical writeback.
 
-## Stall, timeout, or mismatch
+## Ambiguous creation and recovery
 
-On any app-native stall, timeout, ambiguous error, missing field, or mismatch:
+On an app-native stall, timeout, ambiguous error, partial result, missing field,
+or mismatch:
 
-1. Do not create another task merely because live visibility is uncertain.
-2. Set `worker_visibility_status: blocked` and preserve any raw task ID.
-3. Record the exact tool/call, elapsed timeout when known, error text, selected
-   project, requested title, cwd, host identity, and which readback checks did or
-   did not complete in `worker_routing_blocker` and the status log.
-4. Move the packet from `tasks/claimed/` to `tasks/blocked/`; do not leave it
-   active or describe delegation as successful.
-5. Reconcile the existing partial task through app-native list/read tools before
-   any later retry creates a replacement.
+1. Keep the source packet in `tasks/claimed/`. Its exact
+   `target_project_id` + `target_path` lock and capacity slot remain active.
+2. Set `worker_visibility_status: ambiguous`, `recovery_status: investigating`,
+   and `recovery_pending: true`. Do not describe delegation as successful.
+3. Preserve `worker_creation_attempt_id`, every raw/candidate task ID, the exact
+   tool/call, elapsed timeout when known, error text, selected project, requested
+   title, cwd, host identity, and completed or missing readback checks.
+4. Do not create another worker merely because visibility is uncertain. Only the
+   recovery protocol may authorize one replacement after live evidence proves
+   the original absent or unusable.
+5. Treat every raw or replacement ID as recovery evidence until live list/read
+   proof selects exactly one canonical task and writes it to `worker_thread_id`
+   with the matching attempt ID.
+
+Recovery has two terminal paths:
+
+- **Canonical worker found:** complete canonical writeback, set
+  `recovery_status: completed` and `recovery_pending: false`, and keep the source
+  packet claimed for the active worker.
+- **No usable worker remains:** only after recovery proves the ambiguity resolved
+  and proves there is no usable/canonical worker, set
+  `recovery_status: completed`, `recovery_pending: false`, record the exact next
+  action in `worker_routing_blocker` and the status log, then move the source
+  packet to `tasks/blocked/`. That move releases its target lock and capacity
+  slot.
+
+If list/read remains unavailable or inconclusive, recovery remains
+`investigating`, the packet remains claimed, and duplicate routing stays
+forbidden.
+
+## Canonical callback gate
+
+ST-002 callback/handoff names map to source packet fields as follows:
+
+| Callback or handoff | Source packet |
+| --- | --- |
+| `packet_id` | `id` |
+| `root_task_id` | `root_task_id` |
+| `worker_task_id` | `worker_thread_id` |
+| `worker_creation_attempt_id` | `worker_creation_attempt_id` |
+
+A callback may request routing only when `worker_task_id` equals the source
+packet's current canonical `worker_thread_id` and the callback's
+`worker_creation_attempt_id` equals the source packet's current
+`worker_creation_attempt_id`. For an app-native worker, visibility must also be
+`verified` and recovery must not be pending. A noncanonical, superseded, or
+delayed callback is recovery evidence only: append it to the status/recovery log
+and do not route the packet.
+
+The initial creation handoff supplies the attempt ID but not a future
+`worker_task_id`. At callback time, the worker reports its host-current task ID;
+root compares that reported value to the canonical ID established by live
+readback. The worker's self-reported ID does not itself make the task canonical.
+
+An authorized replacement receives a new attempt ID. Its callbacks cannot route
+until recovery writes both the replacement's proven task ID and that attempt ID
+back to the source packet as the current canonical pair.
+
+## Decision table
+
+| Outcome | Source lane | Lock held | Successful delegation | New worker allowed | Callback routing |
+| --- | --- | --- | --- | --- | --- |
+| `app_native_ambiguous` | `tasks/claimed/` | yes | no | no | evidence only |
+| `app_native_verified` | `tasks/claimed/` | yes | yes | no | exact canonical ID + attempt only |
+| `recovery_no_canonical` | `tasks/blocked/` | no | no | no | evidence only |
+| `portable_only` | `tasks/claimed/` | yes | portable only | no | root reconciliation evidence only |
+
+The table is normative: an ambiguous result retains both the claimed lane and
+lock, and no state permits another worker merely because visibility is
+uncertain.
+
+## Callback decision table
+
+| Worker ID equals canonical | Attempt ID equals current | Visibility | Recovery pending | Decision |
+| --- | --- | --- | --- | --- |
+| yes | yes | `verified` | no | route |
+| no | yes | `verified` | no | recovery evidence only |
+| yes | no | `verified` | no | recovery evidence only |
+| yes | yes | `verified` | yes | recovery evidence only |
+| n/a | yes | `portable_only` | no | root reconciliation evidence only |
 
 ## Portable fallback
 
 When app-native task APIs are genuinely unavailable, the orchestrator may use a
 terminal, CLI session, or another host-supported worker surface from the exact
-`target_path`. Record `worker_creation_surface`, session/process identity when
-available, cwd, title, and the exact handoff receipt. Set
-`worker_visibility_status: portable_only` and say explicitly:
+`target_path`. Generate `worker_creation_attempt_id` before starting it and
+record `worker_creation_surface`, stable session identity when available, cwd,
+title, and the exact handoff receipt. Store a stable portable session ID in
+`worker_portable_session_id`; leave canonical `worker_thread_id` empty because
+app-native live readback did not occur. Set `worker_visibility_status:
+portable_only` and say explicitly:
 
 ```text
 Portable worker started; live Desktop task visibility was not available and was not verified.
 ```
 
-This is valid portable delegation evidence. It must never be relabeled as
-app-native or live Desktop visibility.
+Portable completion can be retained as root reconciliation evidence tied to
+`worker_portable_session_id` and `worker_creation_attempt_id`, but it does not
+pass the canonical callback gate. This is valid portable delegation evidence,
+but it must never be relabeled as app-native or live Desktop visibility.

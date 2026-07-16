@@ -26,8 +26,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
 - Use app-native saved-project and task create/list/read tools when the host exposes them.
-- Apply `docs/live-task-visibility.md`: verify the same raw task ID, exact title, saved project/target, cwd, host/local identity, and handoff before marking Desktop delegation successful.
+- Persist `worker_creation_attempt_id`, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff before writing canonical `worker_thread_id` and marking Desktop delegation successful.
 - Record worker thread/session identity, visibility status, link/directive, and proof in the packet.
+- Reconcile a callback only when its worker task ID and creation attempt ID match the source packet's current canonical pair; otherwise retain it as recovery evidence.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
 - Pass packet-linked PR/issue URLs, the original worker task ID, and publication policies to QA; verify publication receipts or perform a root fallback. Never expose absolute local paths or local-only artifacts in GitHub comments.
@@ -53,14 +54,19 @@ Stop before secrets, production data, billing/account settings, deployment, publ
 
 An app-native project/task stall, timeout, ambiguous result, or readback mismatch
 is also a routing hard stop. Preserve the raw task ID and partial result, record
-the exact failed call, create no duplicate, and move the packet to blocked
-instead of leaving a successfully delegated active claim. Helper, separate
-app-server, session-index, or database persistence is not live Desktop proof.
+the exact failed call, create no duplicate, keep the source packet claimed with
+its target lock/capacity active, set visibility `ambiguous`, and keep recovery
+pending without claiming successful delegation. Move to blocked and release the
+lock only after recovery proves ambiguity resolved and no usable/canonical worker
+remains, with an exact next action. Helper, separate app-server, session-index,
+or database persistence is not live Desktop proof.
 
 If the host genuinely lacks app-native task APIs, use the `portable_only`
 fallback from the exact target path and explicitly report that live Desktop
-visibility was not verified. Verified app-native root output includes the raw
-task ID and supported clickable task link or directive.
+visibility was not verified. Record `worker_portable_session_id`, leave
+canonical `worker_thread_id` empty, and treat completion as root reconciliation
+evidence. Verified app-native root output includes the raw canonical task ID and
+supported clickable task link or directive.
 
 ## Defaults
 

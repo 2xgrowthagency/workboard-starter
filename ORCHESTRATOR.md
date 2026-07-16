@@ -15,10 +15,10 @@ You should:
 3. Use its status to decide which context is needed; do not put packet bodies or task history into the classifier path.
 4. Read `projects.yaml` and `docs/orchestrator-protocol.md` only when the returned lane requires orchestration work.
 5. Inspect `tasks/claimed/` before claiming anything new.
-6. Monitor active claims and update packet status/proof.
+6. Treat claimed packets as active locks/capacity and reconcile only authorized completion or recovery events.
 7. Claim only independent eligible tasks from `tasks/ready/`.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
-9. Delegate one correctly-scoped worker per claimed packet through the live visibility rules in `docs/live-task-visibility.md`.
+9. Persist `worker_creation_attempt_id`, then delegate one correctly-scoped worker per claimed packet through `docs/live-task-visibility.md`.
 10. Keep workers inside the packet `target_path`.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
@@ -48,6 +48,7 @@ does not repair Git state or mutate the queue.
 - Do not free-roam through projects looking for work.
 - Do not guess target paths or project routing.
 - Do not create duplicate workers for an already-claimed packet.
+- Do not release a claimed target lock merely because app-native creation is ambiguous.
 - Do not route work into the Workboard project just because the target project is missing.
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.
@@ -80,9 +81,9 @@ Tool-required work cannot move to `tasks/qa/` or `tasks/review/` unless the pack
 
 Use `projects.yaml` as the routing source of truth.
 
-- Codex Desktop: use app-native project selection and task creation when exposed, then verify the same raw task ID, exact title, saved project/target, cwd, host/local identity, and handoff through live list/read tools.
+- Codex Desktop: use app-native project selection and task creation when exposed, then verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through live list/read tools before writing canonical `worker_thread_id`.
 - Claude Desktop: create/open a worker chat in the project matching the packet target path.
-- Claude Code or Codex CLI: launch from the packet `target_path`, paste the packet plus worker handoff, and mark the visibility status `portable_only`.
+- Claude Code or Codex CLI: launch from the packet `target_path`, paste the packet plus worker handoff, record `worker_portable_session_id`, leave canonical `worker_thread_id` empty, and mark the visibility status `portable_only`.
 - OpenClaw or other agents: start a bounded sub-agent/session with the packet target path, packet text, and proof requirements.
 
 If the target project/path is missing, block and ask. Do not improvise.
@@ -90,11 +91,19 @@ If the target project/path is missing, block and ask. Do not improvise.
 App-native creation is not successful delegation until live readback passes.
 Helper, separate app-server, session-index, or database persistence does not
 prove live Desktop visibility. On a stall, timeout, ambiguous result, or
-mismatch, preserve the raw task ID and exact blocker, create no duplicate, and
-move the packet to `tasks/blocked/` instead of leaving an active successful
-claim. When app-native task APIs are genuinely absent, record portable session
-proof without claiming Desktop visibility. Verified app-native root output must
-include the raw task ID and a supported clickable task link or directive.
+mismatch, preserve the source packet in `tasks/claimed/`, its target lock and
+capacity slot, the current attempt ID, raw IDs, and exact blocker. Set visibility
+to `ambiguous`, keep recovery pending, create no duplicate, and do not claim
+successful delegation. Release the lock by moving to `tasks/blocked/` only after
+recovery proves ambiguity resolved and no usable/canonical worker remains, with
+an exact next action. When app-native task APIs are genuinely absent, record
+portable session proof without claiming Desktop visibility or canonical
+callback routing.
+
+Verified app-native root output includes canonical `worker_thread_id` and a
+supported clickable task link or directive. A callback routes only when its
+`worker_task_id` and `worker_creation_attempt_id` equal the source packet's
+current canonical pair; otherwise it is recovery evidence only.
 
 ## Worker handoff
 

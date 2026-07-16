@@ -167,8 +167,8 @@ Supported fields in `templates/task-packet.md` include:
 - `required_skills`
 - `qa_required`
 - `qa_status`
-- `github_pr`, `github_issue`, and `worker_thread_id`
-- worker task title, creation surface, link, host identity, visibility status/proof, and routing blocker fields
+- `github_pr`, `github_issue`, `root_task_id`, and canonical `worker_thread_id`
+- worker task title, creation surface/attempt ID, portable session ID, link, host identity, visibility status/proof, recovery status/pending, callback envelope, and routing blocker fields
 - `qa_publish_to_github`, `qa_worker_notification_policy`, and publication receipt fields
 - `qa_codex_project`
 - `qa_model`
@@ -191,7 +191,9 @@ The orchestrator must preflight these before delegation and require proof before
 - Unknown project/path means block and ask, not guess.
 - Done requires proof.
 - Desktop delegation requires live app-native list/read proof; persisted helper or session metadata alone is not visibility proof.
-- An uncertain app-native result blocks the packet without creating a duplicate. Hosts without app-native task APIs use the explicit `portable_only` fallback.
+- An ambiguous app-native result keeps the source packet claimed, its exact target lock/capacity active, and duplicate routing forbidden until recovery resolves it.
+- A packet moves to blocked and releases its lock only after recovery proves no usable/canonical worker remains and records the exact next action.
+- Callbacks route only for the source packet's current canonical worker task ID and creation attempt ID. Hosts without app-native task APIs use the honest `portable_only` fallback, keep `worker_thread_id` empty, and return root reconciliation evidence instead of claiming canonical callback routing.
 
 ## First training exercise
 
