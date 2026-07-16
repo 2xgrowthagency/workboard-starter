@@ -14,17 +14,19 @@ Instructions:
 2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD>
 3. Stop on WORKBOARD_SYNC_NEEDED, WORKBOARD_REQUIRES_JUDGMENT, or CHECK_FAILED.
 4. Stop on NOTHING_TO_CLAIM after reporting HEAD and queue counts.
-5. Read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
-6. Inspect claimed tasks before claiming new work.
-7. Respect max 3 active workers unless projects.yaml says otherwise.
-8. Claim only independent eligible ready tasks.
+5. On WORK_IN_PROGRESS, report counts and locks, then stop without reading active packets or worker history.
+6. For a routable lane, read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
+7. Count claimed plus active-QA tasks against max capacity (default 3).
+8. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
 9. Commit/push claim transitions before delegation.
-10. Delegate each claimed task to a correctly-rooted worker thread/project.
-11. Monitor worker results and update packets with proof.
+10. Delegate each claimed task to a correctly-rooted worker thread/project. Supply the persistent source root_task_id, packet ID, and created worker task ID.
+11. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks.
 12. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
 13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
 14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-15. Commit/push every transition.
+15. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, worker task ID, immutable proof, and exact next lane.
+16. A callback permits one bounded reconciliation read of that exact task and packet. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same proof; never start monitoring.
+17. Commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```

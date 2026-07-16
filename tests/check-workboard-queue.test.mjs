@@ -162,6 +162,57 @@ test('claimed work emits a target lock', () => {
   });
 });
 
+test('active work missing exact target metadata fails closed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'missing-target.md'),
+      packet({
+        id: 'missing-target',
+        status: 'claimed',
+        target_project_id: 'shop',
+      }),
+    );
+    commit(root, 'add claimed work without a target path');
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=invalid_target_lock_metadata/);
+    assert.match(output, /missing-target.md_missing_target_path/);
+  });
+});
+
+test('ready work remains routable while an unrelated target is claimed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'active.md'),
+      packet({
+        id: 'active-docs',
+        status: 'claimed',
+        target_project_id: 'docs',
+        target_path: '/work/docs',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'ready.md'),
+      packet({
+        id: 'ready-shop',
+        status: 'ready',
+        target_project_id: 'shop',
+        target_path: '/work/shop',
+      }),
+    );
+    commit(root, 'add active and unrelated ready work');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=READY_WORK_AVAILABLE /);
+    assert.match(output, /CLAIMED=1/);
+    assert.match(output, /READY=1/);
+    assert.match(output, /CLAIMED_LOCKS=active-docs\|docs\|%2Fwork%2Fdocs/);
+  });
+});
+
 test('pending QA is a first-class routable state', () => {
   withRepo((root) => {
     writeFileSync(
@@ -216,6 +267,38 @@ test('active QA counts as work in progress and emits a target lock', () => {
     assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
     assert.match(output, /QA_ACTIVE=1/);
     assert.match(output, /QA_ACTIVE_LOCKS=qa-active\|example\|C%3A%2Fwork%2Fexample/);
+  });
+});
+
+test('ready work remains routable while unrelated QA is active', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'qa', 'active.md'),
+      packet({
+        id: 'qa-docs',
+        status: 'qa',
+        qa_status: 'active',
+        target_project_id: 'docs',
+        target_path: '/work/docs',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'ready.md'),
+      packet({
+        id: 'ready-shop',
+        status: 'ready',
+        target_project_id: 'shop',
+        target_path: '/work/shop',
+      }),
+    );
+    commit(root, 'add active qa and unrelated ready work');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=READY_WORK_AVAILABLE /);
+    assert.match(output, /QA_ACTIVE=1/);
+    assert.match(output, /READY=1/);
+    assert.match(output, /QA_ACTIVE_LOCKS=qa-docs\|docs\|%2Fwork%2Fdocs/);
   });
 });
 

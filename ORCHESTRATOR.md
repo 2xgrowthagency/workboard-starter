@@ -14,19 +14,20 @@ You should:
 2. Before broad queue reads, run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`.
 3. Use its status to decide which context is needed; do not put packet bodies or task history into the classifier path.
 4. Read `projects.yaml` and `docs/orchestrator-protocol.md` only when the returned lane requires orchestration work.
-5. Inspect `tasks/claimed/` before claiming anything new.
-6. Monitor active claims and update packet status/proof.
-7. Claim only independent eligible tasks from `tasks/ready/`.
+5. Treat classifier-emitted claimed and active-QA records as capacity usage and exact per-target locks. Do not read their packet or task history during ordinary polls.
+6. When ready work exists and capacity remains, inspect ready packets and continue routing unrelated targets.
+7. Decode locks and reject a ready packet when both canonical `target_project_id` and `target_path` exactly match; use `scripts/check-workboard-target-lock.mjs` and fail closed on malformed input.
 8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
 9. Start or assign one correctly-scoped worker thread per claimed packet.
 10. Keep workers inside the packet `target_path`.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
-13. Give QA the associated PR/issue URLs, original `worker_thread_id`, and publication policy. Verify comment/notification receipts or perform the root fallback.
+13. Give every builder and QA handoff the persistent source `root_task_id`, packet ID, current task ID, associated PR/issue URLs, and publication policy.
 14. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
 15. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 16. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
-17. Commit and push every state transition.
+17. Reconcile a worker or QA result only after its one final completion callback. One callback authorizes one bounded read of that exact task and packet, never periodic monitoring.
+18. Commit and push every state transition.
 
 The classifier returns one of these lanes:
 
@@ -43,11 +44,18 @@ The classifier returns one of these lanes:
 Treat synchronization, judgment, and failure statuses as stops. The classifier
 does not repair Git state or mutate the queue.
 
+`WORK_IN_PROGRESS` is also a stop for an ordinary poll: report the emitted
+counts and locks without opening active packet bodies or worker/QA history. If
+ready work coexists with active work, the classifier returns a routable lane so
+the root can fill remaining capacity with unlocked targets.
+
 ## What you should not do
 
 - Do not free-roam through projects looking for work.
 - Do not guess target paths or project routing.
 - Do not create duplicate workers for an already-claimed packet.
+- Do not route any packet whose exact decoded `target_project_id` and `target_path` tuple is locked by claimed work or active QA, even when `parallel_safe` is true.
+- Do not inspect, monitor, heartbeat, or babysit active worker/QA task history during ordinary polls.
 - Do not route work into the Workboard project just because the target project is missing.
 - Do not read, print, or commit secrets.
 - Do not deploy, publish, merge, change account settings, touch billing, or mutate production data unless a packet explicitly allows it and the human approved it.
@@ -59,7 +67,7 @@ does not repair Git state or mutate the queue.
 
 Default max active worker claims: 3.
 
-Count existing files in `tasks/claimed/` before claiming more. A claimed packet already owns a worker slot unless it is clearly stale/abandoned and the retry is documented.
+Count classifier-emitted claimed and active-QA tasks before claiming more. They own worker slots and lock only their exact target tuples. Unrelated ready work remains eligible up to capacity.
 
 ## Tool preflight
 
@@ -89,7 +97,7 @@ If the target project/path is missing, block and ask. Do not improvise.
 
 ## Worker handoff
 
-Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task packet below it.
+Use the worker prompt in `docs/orchestrator-protocol.md`. Paste the full task packet below it and supply `root_task_id`, packet ID, and the created worker task ID. Require exactly one final callback with immutable proof and exact next lane.
 
 ## QA handoff
 
@@ -98,6 +106,24 @@ QA is a separate task inside the existing target project, not a second orchestra
 Require exactly one verdict: `PASS`, `FAIL`, or `BLOCKED`. QA must inspect raw evidence itself, keep the product target read-only, and leave fixes to a rework packet. Packet-authorized result comments and informational task notices are the only closeout-write exception.
 
 When `qa_publish_to_github` is `auto` or `required`, QA verifies packet-linked PR/issue targets and adds or updates one concise marker-bearing verdict comment without uploading local-only evidence or exposing absolute local paths. It records comment URLs and notifies the original worker according to policy with an informational no-fix-until-requeued message. Publication failure is tracked separately and does not change the verdict.
+
+## Callback reconciliation
+
+Builders and QA companions send exactly one final `WORKBOARD_COMPLETION_CALLBACK`
+to the persistent `root_task_id`. It contains packet ID, result, current worker
+or QA task ID, immutable proof, and one exact next lane. Receipt permits one
+bounded read of that task and packet for reconciliation. It never permits
+open-ended follow-up reads.
+
+If callback delivery is unavailable or fails, the task emits
+`ROOT_RECONCILIATION_REQUIRED` with the same envelope and the callback error.
+Do not compensate with monitoring, heartbeats, repeated reads, or duplicate
+workers.
+
+After the bounded reconciliation, append the complete callback envelope and
+delivery receipt or error to the packet status log. Reset the current
+`completion_callback_*` fields to `pending` only when creating the next builder
+or QA handoff, so earlier callback proof remains durable.
 
 ## Completion
 

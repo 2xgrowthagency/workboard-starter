@@ -6,9 +6,9 @@ created_by: <human-or-agent-name>
 created_at: YYYY-MM-DDTHH:MM:SSZ
 claimed_by:
 claimed_at:
+root_task_id:
 worker_thread_id:
 max_runtime_minutes: 90
-heartbeat_after_minutes: 30
 requires_network: true
 requires_auth: false
 requires_local_gui: false
@@ -34,6 +34,13 @@ qa_worker_notification_policy: on_failure_or_no_github
 qa_publication_status: not_required
 qa_github_comment_urls: []
 qa_worker_notification_status: not_required
+completion_callback_status: pending
+completion_callback_result:
+completion_callback_worker_task_id:
+completion_callback_immutable_proof:
+completion_callback_next_lane:
+completion_callback_sent_at:
+completion_callback_error:
 target_commit:
 repo:
 github_issue:
@@ -91,6 +98,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
 - [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
+- [ ] Exactly one completion callback receipt, or a `ROOT_RECONCILIATION_REQUIRED` marker with identical proof
 
 ## Stop and ask if
 
@@ -100,13 +108,18 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
-- Root/orchestrator claims and monitors; worker executes.
+- Root/orchestrator claims and reconciles one-shot completion callbacks; workers execute without periodic monitoring or heartbeats.
+- Root creates `root_task_id` once and includes it, the packet ID, and the current worker/QA task ID in every handoff.
+- Claimed and active-QA packets lock only an exact decoded `target_project_id` + `target_path` tuple. Unrelated targets may route up to capacity; `parallel_safe` does not override a target lock.
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
 - Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
 - QA runs in a separate product-read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
 - With `qa_publish_to_github: auto|required`, QA posts one idempotent concise verdict comment to every verified packet-linked PR/issue and records its URL; local-only artifacts and absolute local paths stay off GitHub.
 - QA notifies `worker_thread_id` according to `qa_worker_notification_policy`. Notifications are informational and must forbid fixes until root requeues the packet.
 - Publication status is separate from `qa_result`; a write/tool failure must not rewrite the product verdict.
+- Builder/QA sends exactly one final callback with packet ID, result, current worker/QA task ID, immutable proof, and exact next lane. A valid callback authorizes one bounded reconciliation read only.
+- Callback unavailability/failure emits `ROOT_RECONCILIATION_REQUIRED` with the identical envelope and records `completion_callback_error`; root must not replace it with monitoring.
+- Root appends every reconciled callback envelope and receipt/error to the status log before resetting `completion_callback_*` for a later builder or QA handoff.
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Use medium worker reasoning unless this task explicitly justifies escalation.

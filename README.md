@@ -11,7 +11,7 @@ Workboard is a shared filesystem/Git protocol:
 1. Write a task packet in `tasks/ready/`.
 2. A root orchestrator claims eligible work into `tasks/claimed/`.
 3. The orchestrator delegates each packet to a correctly-scoped worker thread/project.
-4. Workers update proof and outcomes.
+4. Each worker sends the persistent root task one final callback with immutable proof and the exact next lane.
 5. Work that requires independent verification moves to `tasks/qa/` and a separate QA companion returns `PASS`, `FAIL`, or `BLOCKED`.
 6. QA-passed work, or work that does not require QA, moves to `tasks/review/`.
 7. A human or context owner checks the verified outcome and moves it to `tasks/done/`.
@@ -38,12 +38,12 @@ flowchart LR
     H --> A
     A -->|"scope and create packet"| O
     O -->|"claim and delegate"| W
-    W -->|"implementation and proof"| O
+    W -->|"one final callback and immutable proof"| O
     O -->|"QA required"| Q
     O -->|"QA not required"| R
-    Q -->|"PASS"| R
-    Q -->|"FAIL: rework"| O
-    Q -->|"BLOCKED: decision or capability"| A
+    Q -->|"one final PASS callback"| R
+    Q -->|"one final FAIL callback: rework"| O
+    Q -->|"one final BLOCKED callback"| A
     R -->|"approved"| X["Done"]
     R -->|"changes needed"| O
 ```
@@ -63,6 +63,7 @@ Chat threads are bad source-of-truth. Workboard gives you:
 - visible queue state;
 - safe handoffs between humans and agents;
 - parallel workers without losing the plot;
+- per-target duplicate prevention without blocking unrelated work;
 - proof requirements before “done”;
 - blockers that survive context resets;
 - a simple Git audit trail.
@@ -95,11 +96,19 @@ The root orchestrator is air traffic control. It should:
 - inspect the board;
 - claim only safe, independent tasks;
 - route each task to the right worker/project;
-- monitor status;
+- treat active work as per-target locks;
+- reconcile one-shot completion callbacks;
 - record proof;
 - stop at blockers.
 
 Workers are pilots. Each worker gets one packet, one target path, and clear proof requirements.
+
+Ordinary polls never inspect, monitor, heartbeat, or babysit active task history.
+Claimed and active-QA packets consume capacity and lock their exact decoded
+`target_project_id` + `target_path` tuple. Ready work for other targets keeps
+routing up to capacity. Every builder and QA task receives the persistent source
+`root_task_id` and sends exactly one final callback; callback failure emits
+`ROOT_RECONCILIATION_REQUIRED` with the same immutable proof.
 
 QA companions are inspectors. They run as separate `[qa] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
 
@@ -116,6 +125,7 @@ docs/
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
+  check-workboard-target-lock.mjs # exact decoded target-lock check
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
@@ -130,6 +140,7 @@ tasks/
 projects.example.yaml       # copy to projects.yaml and customize
 tests/
   check-workboard-queue.test.mjs
+  check-workboard-target-lock.test.mjs
 ```
 
 ## Queue-first check
@@ -148,6 +159,16 @@ routing status. Run its tests with:
 
 ```bash
 node --test tests/check-workboard-queue.test.mjs
+```
+
+When ready work and active locks coexist, check each candidate with:
+
+```bash
+node scripts/check-workboard-target-lock.mjs \
+  --target-project-id "$TARGET_PROJECT_ID" \
+  --target-path "$TARGET_PATH" \
+  --claimed-locks "$CLAIMED_LOCKS" \
+  --qa-active-locks "$QA_ACTIVE_LOCKS"
 ```
 
 
@@ -172,6 +193,7 @@ Supported fields in `templates/task-packet.md` include:
 - `qa_artifacts_dir`
 - `qa_thread_id`
 - `qa_result`
+- `root_task_id` and completion callback receipt/error fields
 
 The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
 
@@ -182,6 +204,9 @@ The orchestrator must preflight these before delegation and require proof before
 - One root orchestrator loop at a time.
 - Default max active workers: 3.
 - One worker per packet.
+- Claimed and active-QA packets lock only their exact target tuple; unrelated targets continue up to capacity.
+- Active workers are event-driven: no periodic history reads, monitoring, or heartbeats.
+- Each builder/QA task sends exactly one final callback to the persistent root task; callback failure emits `ROOT_RECONCILIATION_REQUIRED`.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.

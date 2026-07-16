@@ -17,7 +17,7 @@ These records describe observed platform and runtime failures. The `ST-*` issues
 
 ## Already Present
 
-The starter already includes the core folder-state protocol, tool preflight, separate immutable QA, state-first worker naming, GitHub QA result publication, and a task-packet template. The items below extend those foundations rather than replacing them.
+The starter already includes the core folder-state protocol, tool preflight, separate immutable QA, state-first worker naming, GitHub QA result publication, per-target locks, one-shot completion callbacks, and a task-packet template. The items below extend those foundations rather than replacing them.
 
 ## P0: Routing Safety And Duplicate Prevention
 
@@ -36,14 +36,17 @@ Required behavior:
 
 ### [ST-002: replace active-worker monitoring with target locks and callbacks](https://github.com/2xgrowthagency/workboard-starter/issues/2)
 
+Status: implemented.
+
 Update the protocol, skill, and automation examples so ordinary polls treat claimed and active-QA packets as per-target locks and do not inspect worker history.
 
 Acceptance criteria:
 
-- unrelated ready work can route while another target is active;
-- same-target duplicate routing is rejected;
-- every worker receives the persistent root task ID and sends one completion callback;
-- callback failure produces an explicit root-reconciliation marker instead of periodic monitoring.
+- [x] unrelated ready work can route while another target is active;
+- [x] same-target duplicate routing is rejected using exact decoded project/path tuples;
+- [x] every worker and QA handoff receives the persistent root task ID and sends one completion callback;
+- [x] callback failure produces an explicit root-reconciliation marker instead of periodic monitoring;
+- [x] callback receipt authorizes one bounded reconciliation read, never open-ended monitoring.
 
 ### [ST-003: add an ambiguous-creation recovery lane](https://github.com/2xgrowthagency/workboard-starter/issues/3)
 

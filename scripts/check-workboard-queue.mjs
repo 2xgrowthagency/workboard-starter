@@ -222,10 +222,21 @@ function packetId(file, fields) {
 
 function lockFor(file) {
   const fields = readFrontmatter(file);
+  const missing = ['target_project_id', 'target_path'].filter((field) => !fields[field]);
+  if (missing.length > 0) {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_target_lock_metadata',
+        DETAIL: sanitize(`${basename(file)}_missing_${missing.join('_and_')}`),
+      },
+      1,
+    );
+  }
   return [
     packetId(file, fields),
-    fields.target_project_id || 'unknown_project',
-    fields.target_path || 'unknown_path',
+    fields.target_project_id,
+    fields.target_path,
   ]
     .map(encodeComponent)
     .join('|');
