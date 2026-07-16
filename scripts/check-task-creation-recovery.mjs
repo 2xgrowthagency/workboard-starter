@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const allowedStatuses = new Set(['investigating', 'reconciled', 'completed']);
 const allowedReplacementBases = new Set(['none', 'original_absent', 'original_unusable']);
+const allowedAppNativeSurfaces = new Set(['app-native task tools']);
 const negativeReceipt = /\b(?:not[\s_-]*(?:run|executed|found)|no[\s_-]*usable|unusable|skipped|pending|failed|failure|error|unknown|todo|placeholder|n\/a)\b/i;
 const inconclusiveReadResult = /\b(?:timed?[\s_-]*out|timeout|connection|unavailable|inconclusive|not[\s_-]*(?:run|executed)|skipped|pending|failed|failure|error|unknown|todo|placeholder|n\/a)\b/i;
 const absentReadResult = /\b(?:not[\s_-]*found|absent|no[\s_-]*matching[\s_-]*task)\b/i;
@@ -70,6 +71,27 @@ function isPlaceholder(value) {
 
 function isEvidencePlaceholder(value) {
   return isPlaceholder(value) || /^(?:unknown|none|null|not returned)$/i.test(value);
+}
+
+function supportsCanonicalDesktopReconciliation(value) {
+  if (allowedAppNativeSurfaces.has(value)) return true;
+
+  let descriptor;
+  try {
+    descriptor = JSON.parse(value);
+  } catch {
+    return false;
+  }
+  if (!descriptor || Array.isArray(descriptor) || typeof descriptor !== 'object') return false;
+  if (descriptor.mode !== 'app_native' || descriptor.host !== 'desktop' || descriptor.live !== true) {
+    return false;
+  }
+  if (!Array.isArray(descriptor.capabilities) ||
+      descriptor.capabilities.some((capability) => typeof capability !== 'string')) {
+    return false;
+  }
+  const capabilities = new Set(descriptor.capabilities);
+  return ['create', 'list', 'read'].every((capability) => capabilities.has(capability));
 }
 
 function requireValue(errors, section, label, message = `${label} is required`, allowUnknown = false) {
@@ -294,6 +316,11 @@ export function validateRecoveryPacket(source) {
 
   let canonicalSelected = null;
   if (['reconciled', 'completed'].includes(metadata.recovery_status)) {
+    if (!supportsCanonicalDesktopReconciliation(metadata.worker_creation_surface)) {
+      errors.push(
+        'worker_creation_surface must declare live app-native Desktop create/list/read capability',
+      );
+    }
     const reconciliation = sections['App-native reconciliation log'] || '';
     requireMatch(errors, reconciliation, 'RECONCILIATION_SURFACE', metadata.worker_creation_surface,
       'RECONCILIATION_SURFACE must match worker_creation_surface');

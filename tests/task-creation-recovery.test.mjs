@@ -125,6 +125,13 @@ function completedPacket(overrides = {}, sections = {}) {
   });
 }
 
+function withReconciliationSurfaces(source, { worker, reconciliation, canonical }) {
+  return source
+    .replace(/^worker_creation_surface:.*$/m, `worker_creation_surface: ${worker}`)
+    .replace(/^RECONCILIATION_SURFACE:.*$/m, `RECONCILIATION_SURFACE: ${reconciliation}`)
+    .replace(/^CANONICAL_READ_SURFACE:.*$/m, `CANONICAL_READ_SURFACE: ${canonical}`);
+}
+
 function sourcePacket(overrides = {}) {
   const fields = {
     id: 'packet-1', status: 'claimed', root_task_id: 'root-task-1',
@@ -158,6 +165,12 @@ test('portable template exposes every structured recovery receipt', () => {
 
 test('unknown raw task ID is valid preserved evidence while investigating', () => {
   assert.deepEqual(validateRecoveryPacket(packet()), []);
+});
+
+test('portable_only remains valid for non-live investigating recovery', () => {
+  assert.deepEqual(validateRecoveryPacket(packet({
+    worker_creation_surface: 'portable_only',
+  })), []);
 });
 
 test('investigating recovery cannot authorize or record a replacement', () => {
@@ -331,6 +344,84 @@ test('canonical readback must preserve the recovery ownership tuple and live sur
     'CANONICAL_TARGET_PATH must match target_path',
     'CANONICAL_READ_SURFACE must match worker_creation_surface',
   ]) assert.ok(errors.includes(expected), expected);
+});
+
+test('equal persistence-only surfaces cannot satisfy canonical Desktop reconciliation', () => {
+  const unsupported = [
+    'shell helper process',
+    'standalone app-server',
+    'database',
+    'session index',
+    'CLI process',
+    'portable_only',
+    'persistence-only surface',
+  ];
+  for (const buildPacket of [reconciledPacket, completedPacket]) {
+    for (const surface of unsupported) {
+      const errors = validateRecoveryPacket(withReconciliationSurfaces(buildPacket(), {
+        worker: surface, reconciliation: surface, canonical: surface,
+      }));
+      assert.ok(errors.includes(
+        'worker_creation_surface must declare live app-native Desktop create/list/read capability',
+      ), `${surface} must fail for ${buildPacket.name}`);
+    }
+  }
+});
+
+test('mixed reconciliation surfaces fail regardless of which field differs', () => {
+  const supported = 'app-native task tools';
+  const unsupported = 'shell helper process';
+  for (const surfaces of [
+    [unsupported, supported, supported],
+    [supported, unsupported, supported],
+    [supported, supported, unsupported],
+    [unsupported, unsupported, supported],
+    [unsupported, supported, unsupported],
+    [supported, unsupported, unsupported],
+  ]) {
+    const errors = validateRecoveryPacket(withReconciliationSurfaces(reconciledPacket(), {
+      worker: surfaces[0], reconciliation: surfaces[1], canonical: surfaces[2],
+    }));
+    assert.ok(errors.some((error) => error.includes('must match worker_creation_surface')),
+      `mixed surfaces must fail: ${surfaces.join(' | ')}`);
+  }
+});
+
+test('blank and placeholder reconciliation surfaces cannot become canonical', () => {
+  for (const surface of ['', '<app-native-tool-and-host>', 'unknown', 'none', 'not returned']) {
+    const errors = validateRecoveryPacket(withReconciliationSurfaces(reconciledPacket(), {
+      worker: surface, reconciliation: surface, canonical: surface,
+    }));
+    assert.ok(errors.includes(
+      'worker_creation_surface must declare live app-native Desktop create/list/read capability',
+    ), `${surface || '<blank>'} must fail capability validation`);
+  }
+});
+
+test('structured surfaces require a live app-native Desktop create/list/read capability set', () => {
+  const validSurface = JSON.stringify({
+    mode: 'app_native', host: 'desktop', live: true,
+    capabilities: ['create', 'list', 'read'],
+  });
+  assert.deepEqual(validateRecoveryPacket(withReconciliationSurfaces(reconciledPacket(), {
+    worker: validSurface, reconciliation: validSurface, canonical: validSurface,
+  })), []);
+
+  for (const descriptor of [
+    { mode: 'portable_only', host: 'desktop', live: true, capabilities: ['create', 'list', 'read'] },
+    { mode: 'app_native', host: 'app_server', live: true, capabilities: ['create', 'list', 'read'] },
+    { mode: 'app_native', host: 'desktop', live: false, capabilities: ['create', 'list', 'read'] },
+    { mode: 'app_native', host: 'desktop', live: true, capabilities: ['create', 'list'] },
+    { mode: 'app_native', host: 'desktop', live: true, capabilities: 'create,list,read' },
+  ]) {
+    const surface = JSON.stringify(descriptor);
+    const errors = validateRecoveryPacket(withReconciliationSurfaces(reconciledPacket(), {
+      worker: surface, reconciliation: surface, canonical: surface,
+    }));
+    assert.ok(errors.includes(
+      'worker_creation_surface must declare live app-native Desktop create/list/read capability',
+    ), surface);
+  }
 });
 
 test('prose-only canonical claims cannot replace structured readback', () => {

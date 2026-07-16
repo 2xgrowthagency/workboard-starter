@@ -51,6 +51,11 @@ PARTIAL_EVIDENCE:
 Use the same live app-native surface to list candidate tasks and read every
 plausible candidate. Preserve exact calls, timestamps, returned IDs, title,
 project, cwd, model/reasoning when exposed, and task usability evidence.
+For portable records, use the generic `app-native task tools` surface or a
+single-line JSON descriptor with `mode: "app_native"`, `host: "desktop"`,
+`live: true`, and `capabilities` containing `create`, `list`, and `read`.
+Persistence-only surfaces such as helpers, app servers, databases, indexes,
+CLI processes, and `portable_only` cannot complete canonical reconciliation.
 
 ```text
 RECONCILIATION_SURFACE:
