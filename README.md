@@ -112,6 +112,7 @@ docs/
   orchestrator-protocol.md  # standing instructions for the root loop
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
+  pending-improvements.md   # production hardening backlog for the starter
 ORCHESTRATOR.md              # first file for the local root orchestrator
 skills/
   workboard-orchestrator/    # optional portable skill instructions
@@ -185,4 +186,5 @@ Start here:
 - `docs/orchestrator-protocol.md`
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
+- `docs/pending-improvements.md`
 - `templates/task-packet.md`
