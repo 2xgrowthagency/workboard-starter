@@ -822,8 +822,8 @@ test('reconciliation CLI preserves the claim, writes the canonical worker, and g
     assert.match(updated, /^worker_thread_id: task-original$/m);
 
     const routable = spawnSync(process.execPath, [reconcileScript, 'check-callback',
-      '--source-packet', sourcePath, '--worker-task-id', 'task-original',
-      '--worker-creation-attempt-id', 'creation-attempt-1'], { encoding: 'utf8' });
+      '--source-packet', join('tasks', 'claimed', 'packet.md'), '--worker-task-id', 'task-original',
+      '--worker-creation-attempt-id', 'creation-attempt-1'], { encoding: 'utf8', cwd: root });
     assert.equal(routable.status, 0, routable.stderr);
     assert.match(routable.stdout, /CALLBACK_ROUTE_STATUS=ROUTABLE/);
 
@@ -891,6 +891,70 @@ test('canonicalization rejects outside, symlinked, escaped, and non-regular pack
   }
 });
 
+test('canonicalization requires absolute lexically canonical root and packet paths', () => {
+  const root = mkdtempSync(join(tmpdir(), 'workboard-recovery-canonical-paths-'));
+  try {
+    const claimedDir = join(root, 'tasks', 'claimed');
+    mkdirSync(claimedDir, { recursive: true });
+    const sourcePath = join(claimedDir, 'packet.md');
+    const recoveryPath = join(root, 'recovery.md');
+    writeFileSync(sourcePath, sourcePacket());
+    writeFileSync(recoveryPath, reconciledPacket());
+
+    for (const [repoPath, packetPath, recordPath, expected] of [
+      [`${root}/.`, sourcePath, recoveryPath, /Workboard repo root must be an absolute lexically canonical path/],
+      [root.slice(1), sourcePath, recoveryPath, /Workboard repo root must be an absolute lexically canonical path/],
+      [root, `${claimedDir}/../claimed/packet.md`, recoveryPath, /source packet must be an absolute lexically canonical path/],
+      [root, `${claimedDir}//packet.md`, recoveryPath, /source packet must be an absolute lexically canonical path/],
+      [root, sourcePath, `${root}/./recovery.md`, /recovery packet must be an absolute lexically canonical path/],
+    ]) {
+      const result = spawnSync(process.execPath, [reconcileScript, 'canonicalize',
+        '--repo', repoPath, '--source-packet', packetPath,
+        '--recovery-packet', recordPath], { encoding: 'utf8' });
+      assert.equal(result.status, 2, result.stderr || result.stdout);
+      assert.match(decodeURIComponent(result.stderr), expected);
+      assert.equal(readFileSync(sourcePath, 'utf8'), sourcePacket());
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('canonicalization rejects repo-root and tasks directory symlink aliases', () => {
+  const root = mkdtempSync(join(tmpdir(), 'workboard-recovery-real-root-'));
+  const aliasParent = mkdtempSync(join(tmpdir(), 'workboard-recovery-aliases-'));
+  try {
+    const claimedDir = join(root, 'tasks', 'claimed');
+    mkdirSync(claimedDir, { recursive: true });
+    const sourcePath = join(claimedDir, 'packet.md');
+    const recoveryPath = join(root, 'recovery.md');
+    writeFileSync(sourcePath, sourcePacket());
+    writeFileSync(recoveryPath, reconciledPacket());
+
+    const rootAlias = join(aliasParent, 'root-link');
+    symlinkSync(root, rootAlias);
+    const rootAliasResult = spawnSync(process.execPath, [reconcileScript, 'canonicalize',
+      '--repo', rootAlias, '--source-packet', join(rootAlias, 'tasks', 'claimed', 'packet.md'),
+      '--recovery-packet', recoveryPath], { encoding: 'utf8' });
+    assert.equal(rootAliasResult.status, 2, rootAliasResult.stderr || rootAliasResult.stdout);
+    assert.match(decodeURIComponent(rootAliasResult.stderr), /Workboard repo root must not be a symlink/);
+
+    const tasksAliasRoot = join(aliasParent, 'tasks-alias-root');
+    mkdirSync(tasksAliasRoot);
+    symlinkSync(join(root, 'tasks'), join(tasksAliasRoot, 'tasks'));
+    const tasksAliasResult = spawnSync(process.execPath, [reconcileScript, 'canonicalize',
+      '--repo', tasksAliasRoot,
+      '--source-packet', join(tasksAliasRoot, 'tasks', 'claimed', 'packet.md'),
+      '--recovery-packet', recoveryPath], { encoding: 'utf8' });
+    assert.equal(tasksAliasResult.status, 2, tasksAliasResult.stderr || tasksAliasResult.stdout);
+    assert.match(decodeURIComponent(tasksAliasResult.stderr), /tasks directory must not be a symlink/);
+    assert.equal(readFileSync(sourcePath, 'utf8'), sourcePacket());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(aliasParent, { recursive: true, force: true });
+  }
+});
+
 test('atomic packet replacement cleans temp files on create, write, and rename failures', () => {
   const root = mkdtempSync(join(tmpdir(), 'workboard-recovery-faults-'));
   try {
@@ -921,6 +985,70 @@ test('atomic packet replacement cleans temp files on create, write, and rename f
       assert.equal(readFileSync(sourcePath, 'utf8'), oldContent);
       assert.deepEqual(tempPacketFiles(root), []);
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('atomic replacement rejects same-inode same-size concurrent source modification', () => {
+  const root = mkdtempSync(join(tmpdir(), 'workboard-recovery-concurrent-same-size-'));
+  try {
+    const sourcePath = join(root, 'packet.md');
+    const oldContent = sourcePacket();
+    const concurrentContent = oldContent.replace('# Task', '# Tusk');
+    const newContent = canonicalizeSourcePacket(oldContent, reconciledPacket());
+    writeFileSync(sourcePath, oldContent);
+    const before = statSync(sourcePath);
+    let sourceOpenCount = 0;
+
+    assert.throws(
+      () => replacePacketAtomically(sourcePath, newContent, () => {}, {
+        openSync(path, flags, mode) {
+          if (path === sourcePath && ++sourceOpenCount === 2) {
+            writeFileSync(sourcePath, concurrentContent);
+          }
+          return openSync(path, flags, mode);
+        },
+      }, oldContent),
+      /source packet concurrent modification conflict before atomic replacement:.*(?:digest|content)/,
+    );
+    const after = statSync(sourcePath);
+    assert.equal(after.ino, before.ino);
+    assert.equal(after.size, before.size);
+    assert.equal(readFileSync(sourcePath, 'utf8'), concurrentContent);
+    assert.deepEqual(tempPacketFiles(root), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('atomic replacement rejects different-size concurrent source modification', () => {
+  const root = mkdtempSync(join(tmpdir(), 'workboard-recovery-concurrent-size-change-'));
+  try {
+    const sourcePath = join(root, 'packet.md');
+    const oldContent = sourcePacket();
+    const concurrentContent = `${oldContent}concurrent update\n`;
+    const newContent = canonicalizeSourcePacket(oldContent, reconciledPacket());
+    writeFileSync(sourcePath, oldContent);
+    const before = statSync(sourcePath);
+    let sourceOpenCount = 0;
+
+    assert.throws(
+      () => replacePacketAtomically(sourcePath, newContent, () => {}, {
+        openSync(path, flags, mode) {
+          if (path === sourcePath && ++sourceOpenCount === 2) {
+            writeFileSync(sourcePath, concurrentContent);
+          }
+          return openSync(path, flags, mode);
+        },
+      }, oldContent),
+      /source packet concurrent modification conflict before atomic replacement:.*size/,
+    );
+    const after = statSync(sourcePath);
+    assert.equal(after.ino, before.ino);
+    assert.notEqual(after.size, before.size);
+    assert.equal(readFileSync(sourcePath, 'utf8'), concurrentContent);
+    assert.deepEqual(tempPacketFiles(root), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

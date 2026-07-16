@@ -34,6 +34,10 @@ function packet(fields) {
   return `---\n${yaml}\n---\npacket body must not appear in classifier output\n`;
 }
 
+function packetWithDuplicate(fields, key, duplicateValue) {
+  return packet(fields).replace('\n---\npacket body', `\n${key}: ${duplicateValue}\n---\npacket body`);
+}
+
 function commit(root, message) {
   run('git', ['add', '.'], root);
   run('git', ['commit', '-m', message], root);
@@ -71,6 +75,21 @@ function withRepo(callback) {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+function assertDuplicateRejected(state, fields, key, duplicateValue) {
+  withRepo((root) => {
+    const file = join(root, 'tasks', state, `duplicate-${key}.md`);
+    writeFileSync(file, packetWithDuplicate(fields, key, duplicateValue));
+    commit(root, `add duplicate ${key} in ${state}`);
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=duplicate_packet_frontmatter_key/);
+    assert.match(output, new RegExp(`duplicate-${key}\\.md_duplicate_frontmatter_key_${key}`));
+    assert.doesNotMatch(output, /CLAIMED_LOCKS=|QA_ACTIVE_LOCKS=/);
+  });
 }
 
 test('empty queue is idle, read-only, and supports an external no-action streak', () => {
@@ -121,6 +140,64 @@ test('ready work is routable without exposing packet contents', () => {
     assert.match(output, /READY=1/);
     assert.doesNotMatch(output, /packet body/);
   });
+});
+
+test('claimed packets reject duplicate metadata keys before emitting a lock', () => {
+  const fields = {
+    id: 'claimed-task',
+    status: 'claimed',
+    target_project_id: 'shop',
+    target_path: '/work/shop',
+    'routing-note': 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'ready'],
+    ['target_project_id', 'other-project'],
+    ['target_path', '/work/other'],
+    ['routing-note', 'replacement'],
+  ]) assertDuplicateRejected('claimed', fields, key, value);
+});
+
+test('ready packets reject duplicate metadata keys before classification', () => {
+  const fields = {
+    id: 'ready-task', status: 'ready', routing_note: 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'claimed'],
+    ['routing_note', 'replacement'],
+  ]) assertDuplicateRejected('ready', fields, key, value);
+});
+
+test('pending-QA packets reject duplicate status, result, and unrelated keys', () => {
+  const fields = {
+    id: 'qa-pending', status: 'qa', qa_status: 'pending', qa_result: '',
+    routing_note: 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'ready'],
+    ['qa_status', 'active'],
+    ['qa_result', 'PASS'],
+    ['routing_note', 'replacement'],
+  ]) assertDuplicateRejected('qa', fields, key, value);
+});
+
+test('active-QA packets reject every duplicate key before emitting a lock', () => {
+  const fields = {
+    id: 'qa-active', status: 'qa', qa_status: 'active', qa_result: '',
+    target_project_id: 'shop', target_path: '/work/shop', routing_note: 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'ready'],
+    ['qa_status', 'pending'],
+    ['qa_result', 'PASS'],
+    ['target_project_id', 'other-project'],
+    ['target_path', '/work/other'],
+    ['routing_note', 'replacement'],
+  ]) assertDuplicateRejected('qa', fields, key, value);
 });
 
 test('large packet bodies do not affect frontmatter-only classification', () => {

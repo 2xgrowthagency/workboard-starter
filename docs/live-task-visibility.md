@@ -79,10 +79,12 @@ For `app_native` delegation:
    task ID and exact values for title, saved project/target, cwd, host/local
    identity, and worker handoff.
 6. Perform one canonical writeback atomically only after every value matches,
-   using an explicit Workboard repo root and a regular packet physically inside
-   its nonsymlinked real `tasks/claimed` directory. The canonicalizer rejects
-   duplicate frontmatter keys and uses an fsynced same-directory temporary file
-   plus atomic rename; it never truncates the source packet in place:
+   using absolute, lexically canonical repo-root, source-packet, and recovery-
+   packet paths. The supplied repo-root entry cannot itself be a symlink, and the
+   source must be a regular packet physically inside its nonsymlinked real
+   `tasks/claimed` directory. The canonicalizer rejects duplicate frontmatter
+   keys and concurrent source changes, then uses an fsynced same-directory
+   temporary file plus atomic rename; it never truncates the source packet in place:
    write the proven candidate ID to `worker_thread_id`, write that creation call's
    `worker_creation_attempt_id`, set `worker_creation_status: canonical`, set
    `worker_visibility_status: verified`, set `worker_visibility_verified_at`

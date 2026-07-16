@@ -249,9 +249,24 @@ function readFrontmatter(file) {
   }
 
   const fields = {};
+  const seenKeys = new Set();
   for (const line of match[1].split(/\r?\n/)) {
-    const fieldMatch = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-    if (fieldMatch) fields[fieldMatch[1]] = stripQuotes(fieldMatch[2]);
+    const separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(key)) continue;
+    if (seenKeys.has(key)) {
+      emit(
+        'WORKBOARD_REQUIRES_JUDGMENT',
+        {
+          REASON: 'duplicate_packet_frontmatter_key',
+          DETAIL: sanitize(`${basename(file)}_duplicate_frontmatter_key_${key}`),
+        },
+        1,
+      );
+    }
+    seenKeys.add(key);
+    fields[key] = stripQuotes(line.slice(separator + 1));
   }
   return fields;
 }
@@ -284,8 +299,7 @@ function validateLockComponent(file, field, value) {
   return value;
 }
 
-function lockFor(file) {
-  const fields = readFrontmatter(file);
+function lockFor({ file, fields }) {
   const missing = ['target_project_id', 'target_path'].filter((field) => !fields[field]);
   if (missing.length > 0) {
     emit(
@@ -313,7 +327,7 @@ function lockFor(file) {
     .join('|');
 }
 
-function classifyQa(files) {
+function classifyQa(packets) {
   const pending = [];
   const active = [];
   const terminal = [];
@@ -321,8 +335,7 @@ function classifyQa(files) {
   const invalidResults = [];
   const terminalStates = ['pass', 'passed', 'fail', 'failed', 'blocked'];
 
-  for (const file of files) {
-    const fields = readFrontmatter(file);
+  for (const { file, fields } of packets) {
     const state = (fields.qa_status || '').toLowerCase();
     const result = (fields.qa_result || '').toLowerCase();
 
@@ -334,8 +347,8 @@ function classifyQa(files) {
       continue;
     }
 
-    if (['', 'pending', 'required'].includes(state)) pending.push(file);
-    else if (['active', 'in_progress'].includes(state)) active.push(file);
+    if (['', 'pending', 'required'].includes(state)) pending.push({ file, fields });
+    else if (['active', 'in_progress'].includes(state)) active.push({ file, fields });
     else if (terminalStates.includes(state)) {
       terminal.push({ file, id: packetId(file, fields), result: canonicalQaResult(state) });
     } else invalidStatuses.push({ file, state });
@@ -462,9 +475,15 @@ if (headFull !== originFull) {
   );
 }
 
-const claimedFiles = packetFiles(repo, 'claimed');
-const readyFiles = packetFiles(repo, 'ready');
-const qa = classifyQa(packetFiles(repo, 'qa'));
+// Parse every routable lane before deriving counts or lock output. A malformed
+// packet must fail closed without exposing a partial classification.
+const claimedPackets = packetFiles(repo, 'claimed')
+  .map((file) => ({ file, fields: readFrontmatter(file) }));
+const readyPackets = packetFiles(repo, 'ready')
+  .map((file) => ({ file, fields: readFrontmatter(file) }));
+const qaPackets = packetFiles(repo, 'qa')
+  .map((file) => ({ file, fields: readFrontmatter(file) }));
+const qa = classifyQa(qaPackets);
 
 if (qa.invalidResults.length > 0) {
   emit(
@@ -497,20 +516,20 @@ if (qa.invalidStatuses.length > 0) {
 }
 
 const head = headFull.slice(0, 7);
-const claimedLocks = claimedFiles.length
-  ? claimedFiles.map(lockFor).join(';')
+const claimedLocks = claimedPackets.length
+  ? claimedPackets.map(lockFor).join(';')
   : 'none';
 const qaActiveLocks = qa.active.length ? qa.active.map(lockFor).join(';') : 'none';
-const activeCount = claimedFiles.length + qa.active.length;
+const activeCount = claimedPackets.length + qa.active.length;
 
 const common = {
   HEAD: head,
   BRANCH: sanitize(branch),
-  CLAIMED: claimedFiles.length,
+  CLAIMED: claimedPackets.length,
   QA_ACTIVE: qa.active.length,
   QA_PENDING: qa.pending.length,
   QA_COMPLETE: qa.terminal.length,
-  READY: readyFiles.length,
+  READY: readyPackets.length,
   CAPACITY: options.capacity,
   AVAILABLE_CAPACITY: Math.max(options.capacity - activeCount, 0),
   CAPACITY_REACHED: activeCount >= options.capacity ? 1 : 0,
@@ -539,12 +558,12 @@ if (activeCount >= options.capacity) {
 }
 
 let promotion = { status: 'NONE', count: 0, candidates: 'none' };
-if (activeCount === 0 && readyFiles.length === 0 && qa.pending.length === 0) {
+if (activeCount === 0 && readyPackets.length === 0 && qa.pending.length === 0) {
   promotion = runPromotionScanner(repo, options.promotionScript);
 }
 
 if (
-  readyFiles.length === 0 &&
+  readyPackets.length === 0 &&
   qa.pending.length === 0 &&
   activeCount === 0 &&
   promotion.status === 'CANDIDATES'
@@ -556,7 +575,7 @@ if (
   });
 }
 
-if (activeCount === 0 && readyFiles.length === 0 && qa.pending.length === 0) {
+if (activeCount === 0 && readyPackets.length === 0 && qa.pending.length === 0) {
   emit('NOTHING_TO_CLAIM', {
     ...common,
     NO_ACTION_STREAK: options.noActionStreak,
@@ -571,7 +590,7 @@ if (qa.pending.length > 0) {
   emit('QA_WORK_AVAILABLE', common);
 }
 
-if (readyFiles.length === 0) {
+if (readyPackets.length === 0) {
   emit('WORK_IN_PROGRESS', {
     ...common,
     NO_ACTION_STREAK: options.noActionStreak,

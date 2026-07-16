@@ -11,11 +11,10 @@ import {
   readFileSync,
   realpathSync,
   renameSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -115,35 +114,83 @@ function noFollowFlag() {
   return constants.O_NOFOLLOW || 0;
 }
 
+function statIdentity(stats) {
+  const value = (field) => String(stats[field]);
+  const timestamp = (name) => stats[`${name}Ns`] !== undefined
+    ? value(`${name}Ns`)
+    : value(`${name}Ms`);
+  return {
+    dev: value('dev'),
+    ino: value('ino'),
+    size: value('size'),
+    mtime: timestamp('mtime'),
+    ctime: timestamp('ctime'),
+  };
+}
+
+function changedStatFields(before, after) {
+  return ['dev', 'ino', 'size', 'mtime', 'ctime']
+    .filter((field) => before[field] !== after[field]);
+}
+
 function readRegularFileNoFollow(path, operations = {}) {
   const open = operations.openSync || openSync;
   const fstat = operations.fstatSync || fstatSync;
   const read = operations.readFileSync || readFileSync;
+  const realpath = operations.realpathSync || realpathSync;
   const close = operations.closeSync || closeSync;
   let descriptor;
   try {
     descriptor = open(path, constants.O_RDONLY | noFollowFlag());
-    const stats = fstat(descriptor);
-    if (!stats.isFile()) throw new Error(`not a regular file: ${path}`);
-    return { contents: read(descriptor, 'utf8'), stats };
+    const beforeStats = fstat(descriptor, { bigint: true });
+    if (!beforeStats.isFile()) throw new Error(`not a regular file: ${path}`);
+    const beforeIdentity = statIdentity(beforeStats);
+    const beforeRealPath = realpath(path);
+    const readResult = read(descriptor);
+    const bytes = Buffer.isBuffer(readResult) ? readResult : Buffer.from(readResult);
+    const afterStats = fstat(descriptor, { bigint: true });
+    const afterIdentity = statIdentity(afterStats);
+    const afterRealPath = realpath(path);
+    const changes = changedStatFields(beforeIdentity, afterIdentity);
+    if (beforeRealPath !== afterRealPath) changes.push('real_path');
+    if (changes.length > 0) {
+      throw new Error(`source packet changed while reading: ${changes.join(',')}`);
+    }
+    return {
+      bytes,
+      contents: bytes.toString('utf8'),
+      digest: createHash('sha256').update(bytes).digest('hex'),
+      identity: afterIdentity,
+      mode: Number(afterStats.mode) & 0o777,
+      realPath: afterRealPath,
+    };
   } finally {
     if (descriptor !== undefined) close(descriptor);
   }
+}
+
+function requireCanonicalAbsolutePath(path, label) {
+  if (!isAbsolute(path) || resolve(path) !== path) {
+    throw new Error(`${label} must be an absolute lexically canonical path`);
+  }
+  return path;
 }
 
 export function resolveClaimedPacket(repoRoot, packetPath) {
   if (!repoRoot) throw new Error('missing --repo');
   if (!packetPath) throw new Error('missing --source-packet');
 
-  const repoInput = resolve(repoRoot);
-  const packetInput = resolve(packetPath);
+  const repoInput = requireCanonicalAbsolutePath(repoRoot, 'Workboard repo root');
+  const packetInput = requireCanonicalAbsolutePath(packetPath, 'source packet');
   const packetRelative = relative(repoInput, packetInput);
   if (isPathEscape(packetRelative)) {
     throw new Error('source packet must be inside the Workboard repo root');
   }
 
+  const repoStats = lstatSync(repoInput);
+  if (repoStats.isSymbolicLink()) throw new Error('Workboard repo root must not be a symlink');
+  if (!repoStats.isDirectory()) throw new Error('Workboard repo root must be a directory');
   const repoReal = realpathSync(repoInput);
-  if (!statSync(repoReal).isDirectory()) throw new Error('Workboard repo root must be a directory');
   const tasksPath = resolve(repoReal, 'tasks');
   const claimedPath = resolve(tasksPath, 'claimed');
   for (const [label, path] of [['tasks directory', tasksPath], ['claimed directory', claimedPath]]) {
@@ -188,7 +235,7 @@ export function replacePacketAtomically(
   canonicalContent,
   validateContent,
   operations = {},
-  expectedSourceContent,
+  expectedSource,
 ) {
   const open = operations.openSync || openSync;
   const fstat = operations.fstatSync || fstatSync;
@@ -198,12 +245,13 @@ export function replacePacketAtomically(
   const chmod = operations.fchmodSync || fchmodSync;
   const rename = operations.renameSync || renameSync;
   const unlink = operations.unlinkSync || unlinkSync;
-  const lstat = operations.lstatSync || lstatSync;
-  const source = readRegularFileNoFollow(packetPath, operations);
-  if (expectedSourceContent !== undefined && source.contents !== expectedSourceContent) {
+  const source = expectedSource && typeof expectedSource === 'object' && expectedSource.bytes
+    ? expectedSource
+    : readRegularFileNoFollow(packetPath, operations);
+  if (typeof expectedSource === 'string' && source.contents !== expectedSource) {
     throw new Error('source packet changed before canonical content generation');
   }
-  const safeMode = source.stats.mode & 0o777;
+  const safeMode = source.mode;
   const tempPath = resolve(
     dirname(packetPath),
     `.${basename(packetPath)}.${process.pid}.${randomBytes(12).toString('hex')}.tmp`,
@@ -227,10 +275,23 @@ export function replacePacketAtomically(
     if (reread.contents !== canonicalContent) throw new Error('temporary packet re-read mismatch');
     validateContent(reread.contents);
 
-    const current = lstat(packetPath);
-    if (current.isSymbolicLink() || !current.isFile() ||
-        current.dev !== source.stats.dev || current.ino !== source.stats.ino) {
-      throw new Error('source packet changed before atomic replacement');
+    let current;
+    try {
+      current = readRegularFileNoFollow(packetPath, operations);
+    } catch (error) {
+      const detail = error.code || error.message || 'reopen_failed';
+      throw new Error(
+        `source packet concurrent modification conflict before atomic replacement: ${detail}`,
+      );
+    }
+    const changes = changedStatFields(source.identity, current.identity);
+    if (source.realPath !== current.realPath) changes.push('real_path');
+    if (source.digest !== current.digest) changes.push('digest');
+    if (!source.bytes.equals(current.bytes)) changes.push('content');
+    if (changes.length > 0) {
+      throw new Error(
+        `source packet concurrent modification conflict before atomic replacement: ${changes.join(',')}`,
+      );
     }
     rename(tempPath, packetPath);
     renamed = true;
@@ -284,9 +345,13 @@ function main(argv) {
       if (!options.repo) throw new Error('missing --repo');
       if (!options['recovery-packet']) throw new Error('missing --recovery-packet');
       const bounded = resolveClaimedPacket(options.repo, options['source-packet']);
-      const source = readRegularFileNoFollow(bounded.packetPath).contents;
-      const recovery = readFileSync(resolve(options['recovery-packet']), 'utf8');
-      const updated = canonicalizeSourcePacket(source, recovery);
+      const sourceSnapshot = readRegularFileNoFollow(bounded.packetPath);
+      const recoveryPath = requireCanonicalAbsolutePath(
+        options['recovery-packet'],
+        'recovery packet',
+      );
+      const recovery = readFileSync(recoveryPath, 'utf8');
+      const updated = canonicalizeSourcePacket(sourceSnapshot.contents, recovery);
       replacePacketAtomically(
         bounded.packetPath,
         updated,
@@ -299,7 +364,7 @@ function main(argv) {
           }
         },
         {},
-        source,
+        sourceSnapshot,
       );
       const workerId = sourceMetadata(updated).worker_thread_id;
       console.log(`RECOVERY_RECONCILIATION_STATUS=CANONICALIZED WORKER_THREAD_ID=${encodeURIComponent(workerId)}`);
