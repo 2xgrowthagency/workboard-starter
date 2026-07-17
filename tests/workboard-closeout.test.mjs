@@ -6,9 +6,13 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(new URL('../scripts/check-workboard-closeout.mjs', import.meta.url));
+const ROOT_TASK_ID = '019f0000-0000-7000-8000-000000000010';
 
-function run(args, expectedStatus = 0) {
-  const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+function run(args, expectedStatus = 0, threadId = ROOT_TASK_ID) {
+  const env = { ...process.env };
+  delete env.CODEX_THREAD_ID;
+  if (threadId !== null) env.CODEX_THREAD_ID = threadId;
+  const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env });
   assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
   return `${result.stdout}${result.stderr}`.trim();
 }
@@ -16,7 +20,8 @@ function run(args, expectedStatus = 0) {
 const verified = [
   '--state', 'review', '--label', 'Starter closeout links', '--outcome-known', 'true',
   '--title-status', 'verified', '--title', '[review] Starter closeout links',
-  '--title-readback', '[review] Starter closeout links', '--delegated', 'true',
+  '--title-readback', '[review] Starter closeout links', '--title-task-id', ROOT_TASK_ID,
+  '--delegated', 'true',
   '--task-id', 'task-123', '--task-link', '::created-thread{threadId="task-123"}',
   '--task-readback', 'verified',
 ];
@@ -64,6 +69,7 @@ test('accepts complete failure proof and requires observed readback for mismatch
     assert.match(run([
       '--state', 'blocked', '--label', 'Starter closeout links', '--outcome-known', 'true',
       '--title-status', status, '--title', '[blocked] Starter closeout links',
+      '--title-task-id', ROOT_TASK_ID,
       '--title-call', 'set_thread_title(task-123)',
       '--title-failure', `${status} after 60s`,
       '--title-blocker', `[blocked] Starter closeout links; set_thread_title(task-123); ${status} after 60s`,
@@ -73,6 +79,7 @@ test('accepts complete failure proof and requires observed readback for mismatch
   const mismatch = [
     '--state', 'blocked', '--label', 'Starter closeout links', '--outcome-known', 'true',
     '--title-status', 'mismatch', '--title', '[blocked] Starter closeout links',
+    '--title-task-id', ROOT_TASK_ID,
     '--title-readback', '[poll] Workboard',
     '--title-call', 'set_thread_title(task-123)', '--title-failure', 'readback mismatch',
     '--title-blocker', 'requested [blocked] Starter closeout links; set_thread_title(task-123); readback mismatch; observed [poll] Workboard',
@@ -94,6 +101,7 @@ test('rejects vague or incomplete title blocker records', () => {
   const complete = [
     '--state', 'blocked', '--label', 'Starter closeout links', '--outcome-known', 'true',
     '--title-status', 'failed', '--title', '[blocked] Starter closeout links',
+    '--title-task-id', ROOT_TASK_ID,
     '--title-call', 'set_thread_title(task-123)', '--title-failure', 'permission denied',
     '--title-blocker', '[blocked] Starter closeout links; set_thread_title(task-123); permission denied',
   ];
@@ -118,20 +126,36 @@ test('requires matching raw and clickable task identities for every delegation',
   ]) {
     const args = [...verified];
     args[args.indexOf(mutation[0]) + 1] = mutation[1];
-    assert.match(run(args, 1), /delegation closeout requires|same raw task ID/);
+    assert.match(run(args, 1), /delegation closeout requires|same raw task ID|task directive must be exactly/);
   }
 });
 
-test('accepts exact HTTPS task identities and rejects substring lookalikes', () => {
-  const withLink = (link) => {
+test('accepts only the exact supported same-ID task directive', () => {
+  const withDirective = (directive) => {
     const args = [...verified];
-    args[args.indexOf('--task-link') + 1] = link;
+    args[args.indexOf('--task-link') + 1] = directive;
     return args;
   };
-  assert.match(run(withLink('https://example.test/tasks/task-123')), /^CLOSEOUT_STATUS=VALID /);
-  assert.match(run(withLink('https://example.test/tasks/view?id=task-123')), /^CLOSEOUT_STATUS=VALID /);
-  assert.match(run(withLink('https://example.test/tasks/task-1234'), 1), /same raw task ID/);
-  assert.match(run(withLink('https://example.test/tasks/view?id=prefix-task-123'), 1), /same raw task ID/);
+  assert.match(run(withDirective('::created-thread{threadId="task-123"}')), /^CLOSEOUT_STATUS=VALID /);
+  for (const invalid of [
+    '::codex-thread{threadId="task-123"}',
+    '::created-thread{threadId="other-task"}',
+    "::created-thread{threadId='task-123'}",
+    '::created-thread{threadId="task-123" extra="other-task"}',
+    '::created-thread{threadId="task-123"} other-task',
+    '::created-thread{threadId="task-123"} ::created-thread{threadId="other-task"}',
+    'https://example.test/tasks/task-123',
+  ]) assert.match(run(withDirective(invalid), 1), /task directive must be exactly/);
+});
+
+test('standalone closeout reads only canonical CODEX_THREAD_ID identity', () => {
+  assert.match(run(verified, 1, null), /requires CODEX_THREAD_ID from the environment/);
+  assert.match(run(verified, 1, 'task-from-history'), /canonical task UUID/);
+
+  const mismatch = [...verified];
+  mismatch[mismatch.indexOf('--title-task-id') + 1] = '019f0000-0000-7000-8000-000000000011';
+  assert.match(run(mismatch, 1), /must exactly match environment CODEX_THREAD_ID/);
+  assert.match(run([...verified, '--current-task-id', ROOT_TASK_ID], 1), /unknown option --current-task-id/);
 });
 
 test('permits title retention only for a documented persistent-root heartbeat', () => {
@@ -141,7 +165,7 @@ test('permits title retention only for a documented persistent-root heartbeat', 
     '--title', '[claimed] Agency migration', '--title-readback', '[claimed] Agency migration',
     '--title-proof', 'persistent root heartbeat retained its stable state-first title',
   ];
-  assert.match(run(exception), /^CLOSEOUT_STATUS=VALID /);
+  assert.match(run(exception, 0, null), /^CLOSEOUT_STATUS=VALID /);
 
   for (const missing of ['--persistent-root', '--heartbeat']) {
     const args = [...exception];

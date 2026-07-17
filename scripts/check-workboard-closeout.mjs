@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
+import { isSupportedTaskDirective } from './task-link.mjs';
 
 const STATES = new Set(['idle', 'claimed', 'qa', 'review', 'blocked', 'done']);
 const TITLE_STATUSES = new Set(['verified', 'unavailable', 'failed', 'timeout', 'mismatch', 'retained']);
@@ -8,8 +9,9 @@ const OPTIONS = new Set([
   'state', 'label', 'outcome-known', 'title-status', 'title', 'title-readback',
   'title-blocker', 'title-call', 'title-failure', 'title-proof',
   'persistent-root', 'heartbeat', 'delegated',
-  'task-id', 'task-link', 'task-readback',
+  'title-task-id', 'task-id', 'task-link', 'task-readback',
 ]);
+const CODEX_TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function parseArgs(argv) {
   const values = {};
@@ -39,27 +41,7 @@ function usefulLabel(label) {
   return normalized.length > 1 && !['poll', 'wb', 'workboard', 'workboard poll'].includes(normalized);
 }
 
-function linkMatchesTask(link, taskId) {
-  const escaped = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const directive = new RegExp(`::(?:created-thread|codex-thread)\\{threadId=["']${escaped}["']\\}`);
-  if (directive.test(link)) return true;
-  try {
-    const url = new URL(link);
-    const pathMatches = url.pathname.split('/').some((segment) => {
-      try {
-        return decodeURIComponent(segment) === taskId;
-      } catch {
-        return false;
-      }
-    });
-    const queryMatches = [...url.searchParams.values()].includes(taskId);
-    return url.protocol === 'https:' && (pathMatches || queryMatches);
-  } catch {
-    return false;
-  }
-}
-
-export function validateCloseout(values) {
+export function validateCloseout(values, environment = process.env) {
   const errors = [];
   const state = values.state || '';
   const label = values.label || '';
@@ -68,6 +50,19 @@ export function validateCloseout(values) {
   const persistentRoot = boolean(values, 'persistent-root');
   const heartbeat = boolean(values, 'heartbeat');
   const delegated = boolean(values, 'delegated');
+  const persistentRootHeartbeat = persistentRoot && heartbeat;
+  const currentTaskId = environment.CODEX_THREAD_ID?.trim() || '';
+
+  if (!persistentRootHeartbeat) {
+    if (!currentTaskId) {
+      errors.push('standalone closeout requires CODEX_THREAD_ID from the environment');
+    } else if (!CODEX_TASK_ID.test(currentTaskId)) {
+      errors.push('standalone closeout requires CODEX_THREAD_ID to be a canonical task UUID');
+    }
+    if (values['title-task-id'] !== currentTaskId) {
+      errors.push('title task ID must exactly match environment CODEX_THREAD_ID');
+    }
+  }
 
   if (!STATES.has(state)) errors.push(`state must be one of ${[...STATES].join(', ')}`);
   if (!usefulLabel(label)) errors.push('label must identify a useful task or project and cannot be poll, WB, or Workboard');
@@ -79,7 +74,7 @@ export function validateCloseout(values) {
     if (values.title !== expectedTitle) errors.push(`title must equal ${expectedTitle}`);
     if (values['title-readback'] !== expectedTitle) errors.push('app-native title readback must exactly match the requested closeout title');
   } else if (titleStatus === 'retained') {
-    if (!(persistentRoot && heartbeat)) errors.push('title retention is allowed only for a heartbeat in a persistent root task');
+    if (!persistentRootHeartbeat) errors.push('title retention is allowed only for a heartbeat in a persistent root task');
     if (values.title !== expectedTitle || values['title-readback'] !== expectedTitle) {
       errors.push('persistent-root heartbeat retention requires exact app-native readback of the stable state-first title');
     }
@@ -107,9 +102,9 @@ export function validateCloseout(values) {
     const taskId = values['task-id']?.trim();
     const taskLink = values['task-link']?.trim();
     if (!taskId) errors.push('delegation closeout requires the raw task ID');
-    if (!taskLink) errors.push('delegation closeout requires a supported clickable task link or directive');
-    if (taskId && taskLink && !linkMatchesTask(taskLink, taskId)) {
-      errors.push('clickable task link or directive must reference the same raw task ID');
+    if (!taskLink) errors.push('delegation closeout requires the supported clickable task directive');
+    if (taskId && taskLink && !isSupportedTaskDirective(taskLink, taskId)) {
+      errors.push('task directive must be exactly ::created-thread{threadId="<RAW_TASK_ID>"} with the same raw task ID');
     }
     if (values['task-readback'] !== 'verified') errors.push('delegation closeout requires app-native task readback verification');
   }
@@ -120,7 +115,7 @@ export function validateCloseout(values) {
 function main() {
   try {
     const values = parseArgs(process.argv.slice(2));
-    const { errors, expectedTitle } = validateCloseout(values);
+    const { errors, expectedTitle } = validateCloseout(values, process.env);
     if (errors.length > 0) {
       console.error(`CLOSEOUT_STATUS=REJECTED ERRORS=${JSON.stringify(errors)}`);
       process.exitCode = 1;

@@ -15,8 +15,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 4. Stop on `NOTHING_TO_CLAIM`, `WORKBOARD_SYNC_NEEDED`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
 5. On `QA_RESULT_AVAILABLE`, read only the emitted QA packets, verify their evidence, and route each verdict to its exact next lane without launching duplicate QA.
 6. On `WORK_IN_PROGRESS`, report counts and locks, then stop without reading active packets or task history.
-7. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
-8. Read `projects.yaml` only when routing is needed. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
+7. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md` and inspect only emitted candidates.
+8. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
+9. Read `projects.yaml` only when routing is needed. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
 
 ## Core loop
 
@@ -31,7 +32,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.
 - Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
 - Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
-- In every verified builder or QA delegation response, print the raw canonical task ID and a host-supported clickable link/directive that contains the same ID. Verify the task with app-native readback first.
+- In every verified builder, QA, or canonical recovery response, print the raw canonical task ID plus exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID. Verify the task with app-native readback first; reject every other directive/link form.
 - On a stalled, timed-out, or partially returned create, keep the source claim and target lock, assign one stable recovery incident ID, open `templates/task-creation-recovery.md`, and do not authorize replacement until live app-native list/read conclusively proves the original absent or unusable.
 - Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
 - Structurally reject duplicate source frontmatter keys, then validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status`. Only exact callback status `pending` with canonical creation can return `ROUTABLE` and authorize one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs is logged but cannot route.
@@ -44,6 +45,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
+- Run dependency promotion as a root-owned transition: `auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges, `review` permits one bounded `ready_when` check, and manual or human/external blockers require new proof. Never make workers promote downstream packets.
 - Commit and push every transition.
 
 ## Ambiguous creation hard stop
@@ -89,8 +91,10 @@ If the host genuinely lacks app-native task APIs, use the `portable_only`
 fallback from the exact target path and explicitly report that live Desktop
 visibility was not verified. Record `worker_portable_session_id`, leave
 canonical `worker_thread_id` empty, and treat completion as root reconciliation
-evidence. Verified app-native root output includes the raw canonical task ID and
-supported clickable task link or directive.
+evidence. Verified builder, QA, and canonical recovery output includes the raw
+canonical task ID plus exactly `::created-thread{threadId="<RAW_TASK_ID>"}` with
+the same ID. Reject `::codex-thread`, URLs, malformed/extended directives, extra
+text/IDs, and multiple directives.
 
 ## Closeout gate
 
@@ -101,14 +105,21 @@ the exact tool/call, status/error or elapsed timeout, requested title, and
 observed title. Call the title unavailable or unverified; never report a rename
 as successful from the mutation return alone.
 
+For standalone closeout, read the current root ID only from
+`process.env.CODEX_THREAD_ID` and pass that exact UUID as `--title-task-id`.
+Reject missing, malformed, or mismatched identity. Never use task list/search or
+history reads to discover the current root task; direct readback by the known
+environment ID is allowed only to verify the title. Persistent-root heartbeats
+remain exempt from standalone identity retrieval.
+
 The only title-retention exception is a heartbeat delivered to an intentionally
 persistent root task whose state and useful label did not change. Record that
 exception and read back the retained title. It does not allow generic titles,
 worker heartbeat polling, or retention after a changed outcome.
 
 Run `node scripts/check-workboard-closeout.mjs` for structural closeout proof.
-A delegated task must pass its raw task ID, supported same-ID clickable
-link/directive, and verified app-native task readback. An unavailable or
+A delegated or canonically recovered task must pass its raw task ID, exact
+same-ID `::created-thread` directive, and verified app-native task readback. An unavailable or
 unverified title passes the exact `--title-call`, `--title-failure`, and a
 `--title-blocker` record containing the requested title and those details.
 

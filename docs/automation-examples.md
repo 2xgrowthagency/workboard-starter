@@ -22,15 +22,16 @@ Instructions:
 10. Resolve model routing from packet override, then project override, then the portable gpt-5.6-sol medium default. Run scripts/check-model-routing.mjs for overrides or escalation. High requires a task-local category of exactly high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex. Luna Medium requires exact bounded_high_volume eligibility plus independent_verification=true. Unknown or malformed checker options fail closed.
 11. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
 12. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
-13. Only after the cycle's final outcome is known, set the root title to `[idle|claimed|qa|review|blocked|done] <useful project or task label>`. Never leave `[poll]`, `WB`, or generic `Workboard` naming. Read the exact title back through the app-native task surface before reporting success; otherwise report the exact unavailable tool, failed call, timeout/error, or requested-versus-observed mismatch.
-14. For every verified builder or QA delegation, report the raw canonical task ID and a supported clickable link/directive containing that same ID after app-native readback.
-15. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
-16. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
-17. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-18. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
-19. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
-20. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
-21. After recovery, rerun dependency promotion and queue classification, then commit/push every transition.
+13. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
+14. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
+15. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
+16. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
+17. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
+18. On PROMOTION_REVIEW_NEEDED, follow docs/dependency-promotion.md. Promote auto candidates from dependency metadata only; open each review candidate for exactly one ready_when check; do not reconsider manual or human/external blockers without new proof.
+19. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
+20. Commit/push every promotion transition before rerunning queue classification. After recovery, rerun dependency promotion and queue classification, preserve its validated rerun receipts, then commit/push the recovery transition.
+21. Only after the cycle's final outcome is known, set the root title to `[idle|claimed|qa|review|blocked|done] <useful project or task label>`; reject final `[poll]`, `WB`, and generic `Workboard` titles. For standalone closeout, obtain the current task UUID only from process.env.CODEX_THREAD_ID and pass it as --title-task-id; reject missing/malformed/mismatched identity and never use task list/search or history discovery. Persistent-root heartbeats are exempt. Read the exact title back through the app-native task surface before reporting success; otherwise report the exact unavailable tool, failed call, timeout/error, or requested-versus-observed mismatch.
+22. For every verified builder, QA, or canonical task-creation recovery response, report the raw canonical task ID plus exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID after app-native readback. Reject all other directive/link forms.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -89,10 +90,10 @@ target, persist `worker_creation_attempt_id`, create at most one task for that
 attempt, then use the live list/read tools to verify one candidate's exact title,
 saved project/target, cwd, host/local identity, and complete handoff. Only then
 write the candidate ID to canonical `worker_thread_id`, mark visibility
-`verified`, and report that ID plus the creation tool's clickable task link or
-supported directive, such as `::created-thread{threadId="<RAW_TASK_ID>"}`.
-Show the raw ID on its own line as well; the directive is not a replacement for
-grepable identity.
+`verified`, and report that raw ID plus exactly
+`::created-thread{threadId="<RAW_TASK_ID>"}` with the same ID. Reject
+`::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and
+multiple directives.
 
 Do not treat a helper, separate app server, session index, or database row as
 proof that Desktop refreshed. On a stall, timeout, ambiguous result, or mismatch,
@@ -122,6 +123,7 @@ unverified title claims, vague title blockers, and mismatched delegation links.
 For example, a verified delegation closeout can be checked with:
 
 ```bash
+node -e 'const id=process.env.CODEX_THREAD_ID||"";if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)){console.error("invalid CODEX_THREAD_ID");process.exit(1)};console.log(id)'
 node scripts/check-workboard-closeout.mjs \
   --state claimed \
   --label "<USEFUL_PROJECT_OR_TASK_LABEL>" \
@@ -129,6 +131,7 @@ node scripts/check-workboard-closeout.mjs \
   --title-status verified \
   --title "[claimed] <USEFUL_PROJECT_OR_TASK_LABEL>" \
   --title-readback "[claimed] <USEFUL_PROJECT_OR_TASK_LABEL>" \
+  --title-task-id "$CODEX_THREAD_ID" \
   --delegated true \
   --task-id "<RAW_TASK_ID>" \
   --task-link '::created-thread{threadId="<RAW_TASK_ID>"}' \

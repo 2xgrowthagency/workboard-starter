@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HIGH_REASON_CATEGORIES, LUNA_ELIGIBILITY, LUNA_MODEL } from './check-model-routing.mjs';
+import { isSupportedTaskDirective } from './task-link.mjs';
 
 const allowedStatuses = new Set(['investigating', 'reconciled', 'completed']);
 const allowedOutcomes = new Set(['investigating', 'canonical_worker', 'no_usable_worker']);
@@ -32,8 +33,14 @@ const requiredSections = [
 
 function parseScalar(value) {
   const trimmed = value.trim();
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-      (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed.slice(1, -1);
+    }
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
@@ -249,6 +256,9 @@ export function validateRecoveryPacket(source) {
       errors.push(`missing metadata: ${key}`);
     }
   }
+  if (!Object.hasOwn(metadata, 'canonical_task_link')) {
+    errors.push('missing metadata: canonical_task_link');
+  }
   for (const heading of requiredSections) {
     if (!(heading in sections)) errors.push(`missing section: ${heading}`);
   }
@@ -324,7 +334,7 @@ export function validateRecoveryPacket(source) {
       errors.push('investigating recovery requires recovery_outcome: investigating');
     }
     if (replacementAuthorized) errors.push('investigating recovery cannot authorize replacement');
-    for (const key of ['canonical_task_id', 'canonical_worker_creation_attempt_id',
+    for (const key of ['canonical_task_id', 'canonical_task_link', 'canonical_worker_creation_attempt_id',
       'canonical_selected_at', 'replacement_authorization_id',
       'replacement_worker_creation_attempt_id', 'replacement_task_id', 'replacement_created_at',
       'recovery_completed_at', 'promotion_rerun_at', 'queue_classification_rerun_at']) {
@@ -438,12 +448,16 @@ export function validateRecoveryPacket(source) {
     requireReceipt(errors, reconciliation, 'LIST_RESULT');
 
     if (isPlaceholder(metadata.canonical_task_id)) errors.push('reconciled recovery requires canonical_task_id');
+    if (!isSupportedTaskDirective(metadata.canonical_task_link, metadata.canonical_task_id)) {
+      errors.push('canonical_task_link must be the exact supported ::created-thread directive for canonical_task_id');
+    }
     if (isEvidencePlaceholder(metadata.canonical_worker_creation_attempt_id)) {
       errors.push('reconciled recovery requires canonical_worker_creation_attempt_id');
     }
     canonicalSelected = timestampValue(errors, metadata.canonical_selected_at, 'canonical_selected_at');
     const canonical = sections['Canonical selection'] || '';
     const canonicalId = requireValue(errors, canonical, 'CANONICAL_TASK_ID');
+    const canonicalLink = requireValue(errors, canonical, 'CANONICAL_TASK_LINK');
     requireMatch(errors, canonical, 'CANONICAL_ROOT_TASK_ID', metadata.root_task_id,
       'CANONICAL_ROOT_TASK_ID must match root_task_id');
     requireMatch(errors, canonical, 'CANONICAL_WORKER_CREATION_ATTEMPT_ID',
@@ -462,6 +476,12 @@ export function validateRecoveryPacket(source) {
     const usability = requireValue(errors, canonical, 'CANONICAL_USABILITY');
     requireValue(errors, canonical, 'CANONICAL_SELECTION_EVIDENCE');
     if (canonicalId && canonicalId !== metadata.canonical_task_id) errors.push('CANONICAL_TASK_ID must match canonical_task_id');
+    if (canonicalLink && canonicalLink !== metadata.canonical_task_link) {
+      errors.push('CANONICAL_TASK_LINK must match canonical_task_link');
+    }
+    if (canonicalLink && !isSupportedTaskDirective(canonicalLink, canonicalId)) {
+      errors.push('CANONICAL_TASK_LINK must be the exact supported ::created-thread directive for CANONICAL_TASK_ID');
+    }
     if (canonicalReadId && canonicalReadId !== metadata.canonical_task_id) errors.push('CANONICAL_READ_TASK_ID must match canonical_task_id');
     if (replacementAuthorized && metadata.canonical_task_id !== metadata.replacement_task_id) {
       errors.push('authorized replacement_task_id must be the canonical_task_id');
@@ -501,7 +521,7 @@ export function validateRecoveryPacket(source) {
         'worker_creation_surface must declare live app-native Desktop create/list/read capability',
       );
     }
-    for (const key of ['canonical_task_id', 'canonical_worker_creation_attempt_id', 'canonical_selected_at']) {
+    for (const key of ['canonical_task_id', 'canonical_task_link', 'canonical_worker_creation_attempt_id', 'canonical_selected_at']) {
       if (metadata[key]) errors.push(`no-usable-worker recovery must not set ${key}`);
     }
     const resolution = sections['No-canonical resolution'] || '';

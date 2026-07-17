@@ -225,3 +225,33 @@ test('delegation and persistent-root exception stay structurally bounded', () =>
       `${path} must not broaden the exception to workers`);
   }
 });
+
+test('standalone closeout identity is environment-only and never discovered from history', () => {
+  for (const [path, contents] of surfaces) {
+    assert.match(contents, /CODEX_THREAD_ID/, `${path} must name the environment identity source`);
+    assert.match(contents, /missing[\s\S]{0,100}malformed[\s\S]{0,100}mismatch/i,
+      `${path} must reject unusable environment identity`);
+    assert.match(contents, /(?:never|do not)[\s\S]{0,100}(?:list|search)[\s\S]{0,100}history[\s\S]{0,100}discover|(?:never|do not)[\s\S]{0,100}history[\s\S]{0,100}(?:list|search)[\s\S]{0,100}discover/i,
+      `${path} must forbid list/history current-task discovery`);
+    assert.match(contents, /persistent-root heartbeat|persistent root task/i,
+      `${path} must retain the persistent-root exception`);
+  }
+  const closeout = section(contract, 'State-first root closeout');
+  assert.match(closeout, /node -e 'const id=process\.env\.CODEX_THREAD_ID/);
+  assert.doesNotMatch(
+    closeout,
+    /list_threads\s*\(|(?:^|\n)(?:use|call|inspect|search|list)\b[^\n]{0,100}\b(?:history|discover)/im,
+  );
+});
+
+test('only the exact created-thread directive is supported for delegation and recovery', () => {
+  assert.match(contract, /::created-thread\{threadId="<RAW_TASK_ID>"\}/);
+  assert.match(contract, /::codex-thread[\s\S]{0,120}unsupported/i);
+  assert.match(contract, /builder, QA, and canonical[\s\S]{0,80}recovery responses/i);
+
+  const recovery = read('templates/task-creation-recovery.md');
+  assert.match(recovery, /^canonical_task_link:$/m);
+  assert.match(recovery, /^CANONICAL_TASK_LINK: ::created-thread\{threadId="<CANONICAL_TASK_ID>"\}$/m);
+  assert.match(recovery, /raw task ID[\s\S]{0,100}exact same-ID/i);
+  assert.match(recovery, /::codex-thread[\s\S]{0,120}unsupported/i);
+});

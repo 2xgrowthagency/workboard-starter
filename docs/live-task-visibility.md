@@ -97,11 +97,12 @@ For `app_native` delegation:
    `worker_creation_attempt_id`, set `worker_creation_status: canonical`, set
    `worker_visibility_status: verified`, set `worker_visibility_verified_at`
    and both creation/visibility proof fields, and set `recovery_pending: false`.
-7. Return the canonical `worker_thread_id` and the host-supported clickable task
-   link or directive. In Codex Desktop, a successfully created task can be
-   surfaced as `::created-thread{threadId="<RAW_TASK_ID>"}` when that directive
-   is supported by the creation tool. The delegation response must show the raw
-   ID separately and the directive/link must reference that exact ID.
+7. Return the canonical `worker_thread_id` as the raw ID and exactly
+   `::created-thread{threadId="<RAW_TASK_ID>"}`. The directive must occupy the
+   complete directive value and contain that same ID. `::codex-thread`, URLs,
+   single quotes, extra attributes/text/IDs, and multiple directives are
+   unsupported. Apply this response contract to builder, QA, and canonical
+   task-creation recovery responses.
 
 Creation success alone is not enough. List success without exact readback is not
 enough. A Desktop delegation is not successful until canonical writeback.
@@ -124,6 +125,22 @@ Close out the root task only after the cycle's final outcome is known:
    timeout/error text, requested title, and observed title when available. Never
    claim or imply a successful rename without matching readback.
 
+Before a standalone closeout, read the current root task ID directly from the
+portable process environment. This executable preflight uses the same source as
+the checker on every Node-supported host:
+
+```bash
+node -e 'const id=process.env.CODEX_THREAD_ID||"";if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)){console.error("invalid CODEX_THREAD_ID");process.exit(1)};console.log(id)'
+```
+
+`scripts/check-workboard-closeout.mjs` reads `process.env.CODEX_THREAD_ID`
+itself and requires `--title-task-id` to equal it exactly. Missing, malformed,
+or mismatched identity is an exact closeout blocker. Do not call `list_threads`,
+task search/list APIs, or inspect task history to discover the current root ID.
+Use a direct app-native read keyed by the known environment ID only for final
+title readback. The persistent-root heartbeat exception below does not require
+this standalone environment lookup.
+
 A heartbeat sent to an intentionally persistent root task may retain an
 existing useful state-first title only when neither its state nor useful label
 changed. Record the persistent-root heartbeat exception and read back the
@@ -132,7 +149,8 @@ heartbeats remain forbidden, and this exception never permits a generic title.
 
 For machine-checkable closeout evidence, run
 `node scripts/check-workboard-closeout.mjs` with the outcome, label, title
-status/readback, exact `--title-call` and `--title-failure` for an unavailable or
+status/readback, exact `--title-task-id` sourced from `CODEX_THREAD_ID`, exact
+`--title-call` and `--title-failure` for an unavailable or
 unverified title, and delegation identity when one was created. The
 `--title-blocker` record must contain the requested title, call, failure detail,
 and observed readback for a mismatch.

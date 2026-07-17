@@ -66,7 +66,7 @@ Use the result to open the smallest required lane:
 - `READY_WORK_AVAILABLE`: read the registry and only the ready packets needed for routing.
 - `QA_WORK_AVAILABLE`: read the registry and only the pending QA packets needed for routing. Pending QA takes precedence when ready implementation work also exists; rerun the classifier after routing QA to expose the remaining ready lane.
 - `QA_RESULT_AVAILABLE`: read only the emitted completed-QA packets, verify the recorded evidence, and route `PASS` to review, `FAIL` to ready, or `BLOCKED` to blocked. Do not launch another QA task.
-- `PROMOTION_REVIEW_NEEDED`: use the separate promotion policy/scanner workflow.
+- `PROMOTION_REVIEW_NEEDED`: follow `docs/dependency-promotion.md`; open only emitted review candidates, never the whole backlog or blocked lane.
 - `WORKBOARD_SYNC_NEEDED`: stop until a clean checkout is safely fast-forwarded.
 - `WORKBOARD_REQUIRES_JUDGMENT`: stop for dirty, ahead, diverged, non-main, malformed packet metadata, or unrecognized QA state/result.
 - `CHECK_FAILED`: report the exact classifier failure and stop.
@@ -188,7 +188,27 @@ not infer model policy from private memory or unrelated task history.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
 20. If `IDLE_PAUSE_REQUESTED=1`, call and verify the host-native pause operation. If only `IDLE_PAUSE_RECOMMENDED=1`, report the recommendation without claiming a pause.
-21. Commit/push every queue state transition.
+21. On `PROMOTION_REVIEW_NEEDED`, run the metadata-only scanner workflow. Root may move `auto` candidates after dependency-state verification; `review` candidates permit one bounded `ready_when` check. Omitted/manual and non-dependency blockers require new human/external proof.
+22. Commit/push every queue state transition and rerun classification after promotion.
+
+## Dependency promotion
+
+Workers stop after returning proof for their own packet. Root owns all downstream
+promotion. Packet authors declare `promotion_policy`, `dependency_ready_state`,
+`blocker_type`, `depends_on`, `unblocks`, and `ready_when`; the exact field
+semantics and scanner output contract are in
+[`docs/dependency-promotion.md`](dependency-promotion.md).
+
+The scanner reads frontmatter only and considers backlog plus blocked packets
+whose auto/review metadata has exact `blocker_type: dependency`. Empty or other
+blocker types fail closed. `auto` requires the exact
+`ready_when: dependencies_satisfied` sentinel and reciprocal
+`depends_on`/`unblocks` edges, so all readiness is mechanically represented by
+dependency states. Reachable dependency cycles fail explicitly before state
+checks. `review` allows root to open that candidate and check one named artifact
+or bounded condition. Manual, omitted, human, and external conditions are not
+poll candidates. Invalid scanner metadata is a hard stop, not permission to
+guess or promote.
 
 ## Completion callback contract
 
@@ -295,7 +315,7 @@ move it to blocked, or route another worker to the same target.
 3. Preserve the requested title, raw task ID (`unknown` is valid when none returned), selected model/reasoning, creation/recovery timestamps, every exact failed or stalled call, and all partial returned evidence.
 4. On the same live app-native surface, list tasks narrowly enough to find candidates, then read every plausible task by raw ID. Match title, target project/path, source handoff, and usability. A helper-process result or creation response without live readback is not sufficient.
 5. Do not create a replacement while the original outcome remains unknown. `replacement_authorized: true` is invalid while investigating. Authorize exactly one replacement call only after structured app-native list/read receipts conclusively prove the original absent or unusable, and record one explicit pre-call authorization. Before that call, mint a new unique `replacement_worker_creation_attempt_id`; preserve its returned ID as attempt evidence only.
-6. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`, its `canonical_worker_creation_attempt_id`, matching canonical read task ID, `CANONICAL_USABILITY: usable`, and `recovery_outcome: canonical_worker`. An authorized replacement becomes canonical only after complete readback. If conclusive app-native list/read instead proves no usable worker remains, set `recovery_outcome: no_usable_worker`, leave canonical fields empty, and complete the structured `No-canonical resolution` evidence with an exact next action.
+6. Read back the surviving original or authorized replacement and record exactly one raw `canonical_task_id`, exact same-ID `canonical_task_link: ::created-thread{threadId="<CANONICAL_TASK_ID>"}`, its `canonical_worker_creation_attempt_id`, matching canonical read task ID, `CANONICAL_USABILITY: usable`, and `recovery_outcome: canonical_worker`. Print the same raw ID and directive in the canonical recovery response. `::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and multiple directives are unsupported. An authorized replacement becomes canonical only after complete readback. If conclusive app-native list/read instead proves no usable worker remains, set `recovery_outcome: no_usable_worker`, leave canonical fields empty, and complete the structured `No-canonical resolution` evidence with an exact next action.
 7. Record either `DUPLICATE_STATE: none_found` with search receipt or one verified archive/stand-down JSON receipt per duplicate. Destructive disposal is forbidden and useful history remains preserved.
 8. Validate the recovery record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`. For `canonical_worker`, atomically write canonical task/attempt identity, canonical/verified statuses, visibility proof/timestamp, and `recovery_pending: false` back to the still-claimed source packet with `node scripts/reconcile-task-creation-recovery.mjs canonicalize --repo <WORKBOARD_PATH> --source-packet <WORKBOARD_PATH/tasks/claimed/PACKET> --recovery-packet <RECOVERY_PACKET>`. All three path arguments must be absolute and lexically canonical: no dot, dot-dot, redundant-component, or trailing-separator aliases. The canonicalizer rejects a repo root supplied through a symlink entry, symlinked `tasks` or `tasks/claimed`, duplicate frontmatter keys, non-regular or symlinked source packets, resolved escapes, and `no_usable_worker`. It compares source identity and exact content immediately before rename and rejects changes observed since its initial read. The fsynced same-directory temporary file plus atomic rename provides atomic replacement visibility and prevents partial packet contents. Ordinary POSIX/Node filesystems do not provide digest-conditioned compare-and-swap, so an uncooperative writer changing the source after that final comparison but before rename may be overwritten. Workboard's one-root/single-writer transition discipline is required to close that operational gap; a stronger multi-writer guarantee requires cooperative locking or transactional storage outside this protocol. After a completed `no_usable_worker` outcome validates, move the source to `tasks/blocked/` with its exact next action and release the lock.
 9. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record successful structured receipts, set the completion timestamps/status, and validate the completed record again.
@@ -377,9 +397,11 @@ When the host genuinely has no app-native task APIs, use the documented
 without claiming live Desktop visibility.
 
 Root output for a verified app-native delegation must include canonical
-`worker_thread_id` as a raw ID and the host-supported clickable task link or
-directive referencing that same ID. This applies to every builder and QA
-delegation.
+`worker_thread_id` as a raw ID and exactly the clickable
+`::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID. This applies to
+every builder, QA, and canonical task-creation recovery response. Reject
+`::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and
+multiple directives.
 
 ## State-first root closeout
 
@@ -395,6 +417,14 @@ readback differs, report the exact tool/call, status or elapsed timeout/error,
 requested title, and observed title when available. State explicitly that the
 title is unavailable or unverified; do not claim the rename happened.
 
+For standalone closeout, source the current root task ID only from
+`process.env.CODEX_THREAD_ID` and pass that exact UUID as `--title-task-id` to
+the closeout checker. Missing, malformed, or mismatched values fail closed.
+Do not use task list/search or history to discover the current root ID;
+only direct readback by the already-known environment ID is allowed for title
+verification. An intentionally persistent root heartbeat is exempt from the
+standalone environment-ID requirement.
+
 One exception exists for a heartbeat delivered to an intentionally persistent
 root task: when its state and useful label have not changed, retain the stable
 state-first title, record the exception, and verify that retained title with
@@ -403,8 +433,9 @@ heartbeat polling, and it does not preserve generic titles.
 
 Validate assembled closeout evidence with
 `node scripts/check-workboard-closeout.mjs`. A successful delegation includes
-the separately printed raw task ID, a supported clickable directive/link with
-the same ID, and verified app-native task readback. Unavailable or unverified
+the separately printed raw task ID, the exact same-ID `::created-thread`
+directive, and verified app-native
+task readback. Unavailable or unverified
 title proof supplies structured `--title-call` and `--title-failure` values and
 a blocker record containing the requested title, call, failure, and mismatch
 readback when applicable.

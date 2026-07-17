@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { validateRecoveryPacket } from '../scripts/check-task-creation-recovery.mjs';
+import { parseRecoveryPacket, validateRecoveryPacket } from '../scripts/check-task-creation-recovery.mjs';
 import {
   canonicalizeSourcePacket,
   classifyCompletionCallback,
@@ -67,6 +67,7 @@ function packet(overrides = {}, sections = {}) {
     requested_independent_verification: 'false', creation_started_at: times.creationStarted,
     creation_outcome_at: times.creationOutcome, raw_task_id: 'unknown',
     recovery_started_at: times.recoveryStarted, canonical_task_id: '',
+    canonical_task_link: '',
     canonical_worker_creation_attempt_id: '', canonical_selected_at: '',
     replacement_authorized: 'false', replacement_basis: 'none',
     replacement_authorization_id: '', replacement_worker_creation_attempt_id: '',
@@ -101,6 +102,7 @@ function reconciledPacket(overrides = {}, sections = {}) {
   return packet({
     recovery_status: 'reconciled', recovery_outcome: 'canonical_worker',
     canonical_task_id: canonicalTaskId,
+    canonical_task_link: `::created-thread{threadId="${canonicalTaskId}"}`,
     canonical_worker_creation_attempt_id: canonicalAttemptId,
     canonical_selected_at: times.canonicalSelected, ...overrides,
   }, {
@@ -112,6 +114,7 @@ function reconciledPacket(overrides = {}, sections = {}) {
     ].join('\n'),
     'Canonical selection': [
       `CANONICAL_TASK_ID: ${canonicalTaskId}`,
+      `CANONICAL_TASK_LINK: ::created-thread{threadId="${canonicalTaskId}"}`,
       'CANONICAL_ROOT_TASK_ID: root-task-1',
       `CANONICAL_WORKER_CREATION_ATTEMPT_ID: ${canonicalAttemptId}`,
       'CANONICAL_TARGET_PROJECT_ID: example',
@@ -199,7 +202,8 @@ function withReconciliationSurfaces(source, { worker, reconciliation, canonical 
 function sourcePacket(overrides = {}) {
   const fields = {
     id: 'packet-1', status: 'claimed', root_task_id: 'root-task-1',
-    worker_thread_id: '', worker_creation_attempt_id: 'creation-attempt-1',
+    worker_thread_id: '', worker_task_link: '',
+    worker_creation_attempt_id: 'creation-attempt-1',
     recovery_id: '20260716-001-recovery',
     worker_creation_surface: 'app-native task tools', worker_creation_status: 'ambiguous',
     worker_creation_proof: '', worker_visibility_status: 'ambiguous',
@@ -228,14 +232,14 @@ test('portable template exposes every structured recovery receipt', () => {
     'worker_creation_surface', 'requested_model', 'requested_reasoning',
     'requested_reason_category', 'requested_reason_note', 'requested_luna_eligibility',
     'requested_independent_verification', 'raw_task_id',
-    'canonical_task_id', 'replacement_authorized', 'replacement_basis',
+    'canonical_task_id', 'canonical_task_link', 'replacement_authorized', 'replacement_basis',
     'canonical_worker_creation_attempt_id', 'replacement_authorization_id',
     'replacement_worker_creation_attempt_id',
     'promotion_rerun_at', 'queue_classification_rerun_at',
   ]) assert.match(template, new RegExp(`^${field}:`, 'm'));
   for (const label of [
     'AUTHORIZATION_LIST_CALL', 'AUTHORIZATION_READ_TASK_ID', 'AUTHORIZATION_READ_STATUS',
-    'AUTHORIZATION_SURFACE', 'CANONICAL_READ_TASK_ID', 'CANONICAL_USABILITY',
+    'AUTHORIZATION_SURFACE', 'CANONICAL_TASK_LINK', 'CANONICAL_READ_TASK_ID', 'CANONICAL_USABILITY',
     'CANONICAL_TARGET_PATH', 'DUPLICATE_STATE',
     'DUPLICATE_RECEIPT', 'PROMOTION_STATUS', 'QUEUE_CLASSIFICATION_STATUS',
   ]) assert.match(template, new RegExp(`^${label}:`, 'm'));
@@ -430,6 +434,47 @@ test('canonical readback must identify the canonical task and mark it usable', (
   assert.ok(errors.includes('CANONICAL_READ_TASK_ID must match canonical_task_id'));
   assert.ok(errors.includes('CANONICAL_USABILITY must be usable'));
   assert.ok(errors.includes('CANONICAL_READ_RESULT must record a successful receipt'));
+});
+
+test('canonical recovery response requires the exact same-ID supported task directive', () => {
+  const withDirective = (directive) => reconciledPacket({
+    canonical_task_link: directive,
+  }, {
+    'Canonical selection': reconciledPacket().match(
+      /## Canonical selection\n([\s\S]*?)\n## Duplicate disposition/,
+    )[1].replace(/^CANONICAL_TASK_LINK:.*$/m, `CANONICAL_TASK_LINK: ${directive}`),
+  });
+
+  assert.deepEqual(validateRecoveryPacket(
+    withDirective('::created-thread{threadId="task-original"}'),
+  ), []);
+  for (const invalid of [
+    '',
+    '::codex-thread{threadId="task-original"}',
+    '::created-thread{threadId="other-task"}',
+    "::created-thread{threadId='task-original'}",
+    '::created-thread{threadId="task-original" extra="other-task"}',
+    '::created-thread{threadId="task-original"} other-task',
+    '::created-thread{threadId="task-original"} ::created-thread{threadId="other-task"}',
+    'https://example.test/tasks/task-original',
+  ]) {
+    assert.ok(validateRecoveryPacket(withDirective(invalid)).some((error) =>
+      /canonical_task_link|CANONICAL_TASK_LINK/.test(error)), invalid || '<missing>');
+  }
+});
+
+test('canonical recovery section and metadata task links must match', () => {
+  const mismatched = reconciledPacket({}, {
+    'Canonical selection': reconciledPacket().match(
+      /## Canonical selection\n([\s\S]*?)\n## Duplicate disposition/,
+    )[1].replace(
+      /^CANONICAL_TASK_LINK:.*$/m,
+      'CANONICAL_TASK_LINK: ::created-thread{threadId="other-task"}',
+    ),
+  });
+  const errors = validateRecoveryPacket(mismatched);
+  assert.ok(errors.includes('CANONICAL_TASK_LINK must match canonical_task_link'));
+  assert.ok(errors.includes('CANONICAL_TASK_LINK must be the exact supported ::created-thread directive for CANONICAL_TASK_ID'));
 });
 
 test('canonical readback must preserve the recovery ownership tuple and live surface', () => {
@@ -765,6 +810,10 @@ test('canonical reconciliation writes worker ID and proof without releasing the 
   const updated = canonicalizeSourcePacket(sourcePacket(), reconciledPacket());
   assert.match(updated, /^status: claimed$/m);
   assert.match(updated, /^worker_thread_id: task-original$/m);
+  assert.equal(
+    parseRecoveryPacket(updated).metadata.worker_task_link,
+    '::created-thread{threadId="task-original"}',
+  );
   assert.match(updated, /^worker_creation_attempt_id: creation-attempt-1$/m);
   assert.match(updated, /^worker_creation_status: canonical$/m);
   assert.match(updated, /^worker_visibility_status: verified$/m);
@@ -772,7 +821,7 @@ test('canonical reconciliation writes worker ID and proof without releasing the 
   assert.match(updated, /^recovery_pending: false$/m);
   assert.match(
     updated,
-    /^worker_creation_proof: 20260716-001-recovery\|task-original\|creation-attempt-1\|2026-07-16T10:09:00Z$/m,
+    /^worker_creation_proof: .*20260716-001-recovery.*task-original.*created-thread.*creation-attempt-1.*2026-07-16T10:09:00Z/m,
   );
 });
 
@@ -808,6 +857,10 @@ test('replacement canonicalization writes the replacement attempt and preserves 
   const updated = canonicalizeSourcePacket(sourcePacket(), replacement);
   assert.match(updated, /^recovery_id: 20260716-001-recovery$/m);
   assert.match(updated, /^worker_thread_id: task-replacement$/m);
+  assert.equal(
+    parseRecoveryPacket(updated).metadata.worker_task_link,
+    '::created-thread{threadId="task-replacement"}',
+  );
   assert.match(updated, /^worker_creation_attempt_id: creation-attempt-2$/m);
 });
 
@@ -849,6 +902,7 @@ test('reconciliation CLI preserves the claim, writes the canonical worker, and g
       '--recovery-packet', recoveryPath], { encoding: 'utf8' });
     assert.equal(canonicalized.status, 0, canonicalized.stderr);
     assert.match(canonicalized.stdout, /RECOVERY_RECONCILIATION_STATUS=CANONICALIZED/);
+    assert.match(canonicalized.stdout, /^::created-thread\{threadId="task-original"\}$/m);
     const updated = readFileSync(sourcePath, 'utf8');
     assert.match(updated, /^status: claimed$/m);
     assert.match(updated, /^worker_thread_id: task-original$/m);

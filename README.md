@@ -132,6 +132,7 @@ Do not turn the root orchestrator into a roaming implementation agent. That is h
 ```text
 docs/
   orchestrator-protocol.md  # standing instructions for the root loop
+  dependency-promotion.md   # promotion metadata and bounded root workflow
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   live-task-visibility.md   # app-native proof and portable fallback
@@ -275,6 +276,15 @@ classification before routing resumes. The full checklist is in
 `canonical_worker` from a conclusively proven `no_usable_worker`; only the
 latter permits a blocked transition and lock release without canonicalization.
 
+Dependency promotion uses the bundled read-only frontmatter scanner:
+
+```bash
+node scripts/check-workboard-promotions.mjs --repo <WORKBOARD_PATH>
+```
+
+Root owns the resulting queue transition. See `docs/dependency-promotion.md` for
+portable packet metadata, policy semantics, output encoding, and bounded review.
+
 ## Minimum rules
 
 - No secrets in this repo.
@@ -289,7 +299,8 @@ latter permits a blocked transition and lock release without canonicalization.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Root closeout titles are applied only after the final outcome is known, use `[idle|claimed|qa|review|blocked|done] <useful project or task label>`, and are app-native read back before success is claimed. Final `[poll]`, `WB`, and generic `Workboard` titles are invalid; unavailable or unverified title changes report the exact failed call, timeout/error, or requested-versus-observed mismatch.
-- Every verified builder/QA delegation reports both the raw canonical task ID and a supported clickable directive/link containing that same ID.
+- Every verified builder, QA, and canonical task-creation recovery response reports both the raw canonical task ID and exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with that same ID; other directive/link forms are unsupported.
+- Standalone closeout obtains its current root task UUID only from `process.env.CODEX_THREAD_ID`, rejects missing/malformed/mismatched identity, and never uses task list/search or history discovery. Persistent-root heartbeats are exempt.
 - Only a heartbeat delivered to an intentionally persistent root task may retain an unchanged useful state-first title, with the exception and exact readback recorded; worker heartbeat polling remains forbidden.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.
 - Unknown project/path means block and ask, not guess.
@@ -317,6 +328,7 @@ Start here:
 
 - `ORCHESTRATOR.md` — first-read instructions for the local root orchestrator
 - `docs/orchestrator-protocol.md`
+- `docs/dependency-promotion.md`
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
 - `docs/live-task-visibility.md`

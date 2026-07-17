@@ -20,6 +20,7 @@ creation_outcome_at: YYYY-MM-DDTHH:MM:SSZ
 raw_task_id: <returned-task-id-or-unknown>
 recovery_started_at: YYYY-MM-DDTHH:MM:SSZ
 canonical_task_id:
+canonical_task_link:
 canonical_worker_creation_attempt_id:
 canonical_selected_at:
 replacement_authorized: false
@@ -112,6 +113,7 @@ readback proves the title, target, cwd, host/local identity, and handoff.
 
 ```text
 CANONICAL_TASK_ID:
+CANONICAL_TASK_LINK: ::created-thread{threadId="<CANONICAL_TASK_ID>"}
 CANONICAL_ROOT_TASK_ID:
 CANONICAL_WORKER_CREATION_ATTEMPT_ID:
 CANONICAL_TARGET_PROJECT_ID:
@@ -124,6 +126,11 @@ CANONICAL_READ_RESULT:
 CANONICAL_USABILITY: usable
 CANONICAL_SELECTION_EVIDENCE:
 ```
+
+The recovery response must print `CANONICAL_TASK_ID` as the raw task ID and the
+exact same-ID `CANONICAL_TASK_LINK` directive shown above. `::codex-thread`,
+URLs, single quotes, extra attributes/text, multiple directives, and any other
+ID are unsupported. Do not report canonical recovery success without both.
 
 ## Duplicate disposition
 

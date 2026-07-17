@@ -79,6 +79,8 @@ Do not present standalone helper or app-server persistence as proof that the run
 
 ### [ST-005: add dependency promotion metadata and scanner](https://github.com/2xgrowthagency/workboard-starter/issues/5)
 
+Status: implemented.
+
 Port `promotion_policy`, `dependency_ready_state`, `blocker_type`, `depends_on`, `unblocks`, and `ready_when` semantics plus a metadata-only scanner.
 
 Rules:
@@ -136,7 +138,7 @@ Status: implemented by the state-first closeout/readback contract and
 
 Update automation examples and protocol so titles are applied after the outcome is known, include a useful task/project label, and never retain generic `[poll]` or raw Workboard prefixes after closeout.
 
-Every delegation response should include the raw task ID and a supported clickable task link/directive when the host provides one.
+Every builder, QA, and canonical recovery response includes the raw task ID and exact same-ID host-supported `::created-thread` directive.
 
 ### [ST-011: bring the packet template to production metadata parity](https://github.com/2xgrowthagency/workboard-starter/issues/11)
 
