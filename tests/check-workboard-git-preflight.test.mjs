@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,10 +35,10 @@ function configure(root) {
   git(root, 'config', 'user.email', 'workboard-test@example.com');
 }
 
-function createFixture() {
+function createFixture(rootName = 'workboard') {
   const parent = mkdtempSync(join(tmpdir(), 'workboard-git-preflight-'));
   const remote = join(parent, 'remote.git');
-  const root = join(parent, 'workboard');
+  const root = join(parent, rootName);
   run('git', ['init', '--bare', remote], parent);
   run('git', ['init', '-b', 'main', root], parent);
   configure(root);
@@ -224,8 +225,8 @@ async function withAsyncFixture(callback) {
   }
 }
 
-function withFixture(callback) {
-  const fixture = createFixture();
+function withFixture(callback, rootName = 'workboard') {
+  const fixture = createFixture(rootName);
   try {
     callback(fixture);
   } finally {
@@ -243,6 +244,71 @@ test('clean synchronized main is ready without changing HEAD', () => {
     assert.equal(git(root, 'status', '--porcelain'), '');
     assert.equal(existsSync(preflightLock(root)), false);
   });
+});
+
+test('nested repository directory is rejected as not top level', () => {
+  withFixture(({ root }) => {
+    const nested = join(root, 'docs');
+    mkdirSync(nested);
+
+    const output = check(nested, 1);
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=STOP /);
+    assert.match(output, /REASON=repo_path_not_top_level/);
+    assert.match(output, /DETAIL=requested_path_must_equal_git_toplevel/);
+    assert.equal(existsSync(preflightLock(root)), false);
+  });
+});
+
+test('symlink alias resolving to the repository root is accepted', () => {
+  withFixture(({ parent, root }) => {
+    const alias = join(parent, 'workboard-alias');
+    symlinkSync(root, alias, 'dir');
+
+    const output = check(alias);
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=READY /);
+    assert.equal(existsSync(preflightLock(root)), false);
+  });
+});
+
+test('dot-dot alias resolving to the repository root is accepted', () => {
+  withFixture(({ root }) => {
+    const nested = join(root, 'docs');
+    mkdirSync(nested);
+
+    const output = check(join(nested, '..'));
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=READY /);
+    assert.equal(existsSync(preflightLock(root)), false);
+  });
+});
+
+test('existing non-repository directory fails closed', () => {
+  withFixture(({ parent }) => {
+    const nonrepo = join(parent, 'not-a-repository');
+    mkdirSync(nonrepo);
+
+    const output = check(nonrepo, 1);
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=STOP /);
+    assert.match(output, /REASON=missing_workboard_git_repo/);
+  });
+});
+
+test('linked worktree root is accepted', () => {
+  withFixture(({ parent, root }) => {
+    const linked = join(parent, 'linked-worktree');
+    git(root, 'switch', '-c', 'holding');
+    run('git', ['worktree', 'add', linked, 'main'], root);
+
+    const output = check(linked);
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=READY /);
+    assert.equal(existsSync(preflightLock(linked)), false);
+  });
+});
+
+test('repository root with spaces is accepted', () => {
+  withFixture(({ root }) => {
+    const output = check(root);
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=READY /);
+  }, 'workboard root with spaces');
 });
 
 test('strictly behind clean main is fast-forwarded to fetched main', () => {

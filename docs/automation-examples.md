@@ -10,9 +10,9 @@ Run one Workboard orchestrator polling cycle.
 Workboard repo: <LOCAL_PATH_TO_WORKBOARD>
 
 Instructions:
-1. Run: node scripts/check-workboard-git-preflight.mjs --repo <LOCAL_PATH_TO_WORKBOARD>.
+1. Run: node scripts/check-workboard-git-preflight.mjs --repo <LOCAL_PATH_TO_WORKBOARD>. The path must resolve to the exact repository root; symlink and .. aliases resolving to that root are accepted, while nested directories are rejected.
 2. Continue only on GIT_PREFLIGHT_STATUS=READY or GIT_PREFLIGHT_STATUS=UPDATED; stop and report the exact REASON/DETAIL for GIT_PREFLIGHT_STATUS=STOP. STOP REASON=INTERRUPTED is final and requires a fresh run. The preflight lock coordinates compliant roots only: never auto-expire it, use explicit verified recovery for an abandoned lock, and retain one-root/single-writer discipline against external writers.
-3. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. Omit capacity only for the default of 3; omit all idle-control flags for a stateless manual poll.
+3. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. The classifier independently requires that canonical root identity without invoking Git. Omit capacity only for the default of 3; omit all idle-control flags for a stateless manual poll.
 4. Stop on WORKBOARD_REQUIRES_JUDGMENT or CHECK_FAILED.
 5. Stop on NOTHING_TO_CLAIM after reporting the preflight HEAD and classifier line. Do not read packet bodies, project registries, non-routable lanes, thread history, or old automation narratives.
 6. On WORK_IN_PROGRESS, report the preflight HEAD and classifier line, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.

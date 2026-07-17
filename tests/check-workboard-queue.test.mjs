@@ -50,8 +50,7 @@ function syncOriginRef(root) {
   run('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], root);
 }
 
-function createRepo() {
-  const root = mkdtempSync(join(tmpdir(), 'workboard-starter-queue-'));
+function initializeRepo(root) {
   for (const state of states) mkdirSync(join(root, 'tasks', state), { recursive: true });
   run('git', ['init', '-b', 'main'], root);
   run('git', ['config', 'user.name', 'Workboard Test'], root);
@@ -60,6 +59,10 @@ function createRepo() {
   commit(root, 'fixture');
   syncOriginRef(root);
   return root;
+}
+
+function createRepo() {
+  return initializeRepo(mkdtempSync(join(tmpdir(), 'workboard-starter-queue-')));
 }
 
 function classify(root, args = [], expectedStatus = 0) {
@@ -123,6 +126,80 @@ test('empty queue is idle, read-only, and supports an external no-action streak'
     assert.deepEqual(readdirSync(join(root, 'tasks', 'ready')), []);
     assert.doesNotMatch(output, /packet body/);
   });
+});
+
+test('nested repository directory is rejected before queue classification', () => {
+  withRepo((root) => {
+    const nested = join(root, 'docs');
+    mkdirSync(nested);
+
+    const output = classify(nested, [], 1);
+    assert.match(output, /^QUEUE_STATUS=CHECK_FAILED /);
+    assert.match(output, /REASON=repo_path_not_top_level/);
+    assert.match(output, /DETAIL=requested_path_must_identify_repository_root/);
+    assert.doesNotMatch(output, /CLAIMED=|READY=/);
+  });
+});
+
+test('symlink alias resolving to the repository root is accepted', () => {
+  withRepo((root) => {
+    const alias = `${root}-alias`;
+    try {
+      symlinkSync(root, alias, 'dir');
+      const output = classify(alias);
+      assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+    } finally {
+      if (existsSync(alias)) unlinkSync(alias);
+    }
+  });
+});
+
+test('dot-dot alias resolving to the repository root is accepted', () => {
+  withRepo((root) => {
+    const nested = join(root, 'docs');
+    mkdirSync(nested);
+
+    const output = classify(join(nested, '..'));
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+  });
+});
+
+test('existing non-repository directory fails closed', () => {
+  const root = mkdtempSync(join(tmpdir(), 'workboard-nonrepo-'));
+  try {
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=CHECK_FAILED /);
+    assert.match(output, /REASON=repo_path_not_top_level/);
+    assert.doesNotMatch(output, /CLAIMED=|READY=/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('linked worktree root is accepted without Git judgment', () => {
+  const root = createRepo();
+  const linked = `${root}-linked-worktree`;
+  try {
+    run('git', ['worktree', 'add', '-b', 'queue-linked', linked], root);
+    const output = classify(linked);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+  } finally {
+    rmSync(linked, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('repository root with spaces is accepted', () => {
+  const parent = mkdtempSync(join(tmpdir(), 'workboard-space-parent-'));
+  const root = join(parent, 'workboard root with spaces');
+  mkdirSync(root);
+  try {
+    initializeRepo(root);
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
 });
 
 test('run memory increments idle streak and requests pause at the configured threshold', () => {

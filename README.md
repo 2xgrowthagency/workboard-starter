@@ -173,7 +173,10 @@ Before queue classification, run the dependency-free root synchronization gate:
 node scripts/check-workboard-git-preflight.mjs --repo "$PWD"
 ```
 
-It inspects branch and status, fetches `origin/main`, and fast-forwards only when
+The requested path is canonicalized first and must exactly equal Git's canonical
+top-level directory. Symlink and `..` aliases are accepted only when they resolve
+to that same root; nested repository directories are rejected explicitly. It
+then inspects branch and status, fetches `origin/main`, and fast-forwards only when
 the checkout is clean `main` and strictly behind. Continue only for
 `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`. Dirty,
 conflicted, non-main, ahead, diverged, fetch/auth/network, and failed
@@ -213,7 +216,10 @@ It does not invoke Git, move packets, create directories, or write inside the
 Workboard repository. It reports local queue counts, claimed and active-QA
 target locks, completed QA results, configured/available capacity, and one
 routing status. Capacity defaults to 3; at capacity it reports
-`WORK_IN_PROGRESS` even when ready work is waiting.
+`WORK_IN_PROGRESS` even when ready work is waiting. As an independent path
+identity guard, it canonicalizes `--repo` and requires a real root `.git` file or
+directory; this rejects nested paths while keeping Git synchronization and
+judgment exclusively in the preflight.
 
 Scheduled polls can opt into a strict one-line state file outside the repo:
 

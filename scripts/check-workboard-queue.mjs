@@ -88,7 +88,7 @@ function parseArgs(argv) {
   options.repo = resolve(options.repo);
   options.promotionScript = options.promotionScript
     ? resolve(options.promotionScript)
-    : join(options.repo, 'scripts', 'check-workboard-promotions.mjs');
+    : null;
   options.runMemory = options.runMemory ? resolve(options.runMemory) : null;
   if (options.runMemory && options.noActionStreakProvided) {
     throw new Error('--run-memory and --no-action-streak cannot be used together');
@@ -170,6 +170,65 @@ function emit(status, fields = {}, exitCode = 0) {
     .join(' ');
   console.log(`QUEUE_STATUS=${status}${suffix ? ` ${suffix}` : ''}`);
   process.exit(exitCode);
+}
+
+function canonicalWorkboardRoot(requestedRepo) {
+  if (!existsSync(requestedRepo)) {
+    emit(
+      'CHECK_FAILED',
+      { REASON: 'missing_workboard_repo', DETAIL: sanitize(requestedRepo) },
+      1,
+    );
+  }
+
+  let repo;
+  try {
+    repo = realpathSync.native(requestedRepo);
+    if (!statSync(repo).isDirectory()) {
+      emit(
+        'CHECK_FAILED',
+        { REASON: 'invalid_workboard_repo_path', DETAIL: 'repo_path_must_be_a_directory' },
+        1,
+      );
+    }
+  } catch (error) {
+    emit(
+      'CHECK_FAILED',
+      { REASON: 'invalid_workboard_repo_path', DETAIL: sanitize(error.code ?? error.message) },
+      1,
+    );
+  }
+
+  let gitMarker;
+  try {
+    gitMarker = lstatSync(join(repo, '.git'));
+  } catch (error) {
+    emit(
+      'CHECK_FAILED',
+      {
+        REASON: 'repo_path_not_top_level',
+        DETAIL:
+          error.code === 'ENOENT'
+            ? 'requested_path_must_identify_repository_root'
+            : sanitize(error.code ?? error.message),
+      },
+      1,
+    );
+  }
+  if (
+    gitMarker.isSymbolicLink() ||
+    (!gitMarker.isDirectory() && !gitMarker.isFile())
+  ) {
+    emit(
+      'CHECK_FAILED',
+      {
+        REASON: 'invalid_git_root_marker',
+        DETAIL: 'git_marker_must_be_a_regular_file_or_real_directory',
+      },
+      1,
+    );
+  }
+  return repo;
 }
 
 function packetFiles(repo, state) {
@@ -561,14 +620,13 @@ try {
   process.exit(2);
 }
 
+options.repo = canonicalWorkboardRoot(options.repo);
+options.promotionScript ??= join(
+  options.repo,
+  'scripts',
+  'check-workboard-promotions.mjs',
+);
 const { repo } = options;
-if (!existsSync(repo)) {
-  emit(
-    'CHECK_FAILED',
-    { REASON: 'missing_workboard_repo', DETAIL: sanitize(repo) },
-    1,
-  );
-}
 
 // Parse every routable lane before deriving counts or lock output. A malformed
 // packet must fail closed without exposing a partial classification.

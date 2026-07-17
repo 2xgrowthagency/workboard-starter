@@ -34,16 +34,17 @@ node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>
 
 The preflight is root-owned and ordered deliberately:
 
-1. Discover the repository and Git common directory without inspecting queue or checkout state.
-2. Atomically create `<git-common-dir>/workboard-root-preflight.lock/` and write `owner.json` containing only version, random lock ID, host name, process ID, and start time; it contains no repository or private filesystem path.
-3. Verify the checkout is on `main`, has no unresolved conflict, and is clean.
-4. Fetch `main` from the intended remote with terminal prompting disabled.
-5. Compare `HEAD` with the fetched commit.
-6. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
-7. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
-8. Run every Git operation as an interruptible child process group and process pending interruption state after every child exit.
-9. Emit `READY`, `UPDATED`, or `STOP` synchronously while still owning the lock, then remove the owned lock on normal and failure paths.
-10. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+1. Canonicalize the requested path, obtain `git rev-parse --show-toplevel`, canonicalize that result, and require exact equality before queue or checkout inspection. Symlink and `..` aliases are accepted only when they resolve to the same canonical root; nested directories are rejected with `REASON=repo_path_not_top_level`.
+2. Discover the Git common directory without inspecting queue or checkout state.
+3. Atomically create `<git-common-dir>/workboard-root-preflight.lock/` and write `owner.json` containing only version, random lock ID, host name, process ID, and start time; it contains no repository or private filesystem path.
+4. Verify the checkout is on `main`, has no unresolved conflict, and is clean.
+5. Fetch `main` from the intended remote with terminal prompting disabled.
+6. Compare `HEAD` with the fetched commit.
+7. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
+8. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
+9. Run every Git operation as an interruptible child process group and process pending interruption state after every child exit.
+10. Emit `READY`, `UPDATED`, or `STOP` synchronously while still owning the lock, then remove the owned lock on normal and failure paths.
+11. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
 
 Stop on `GIT_PREFLIGHT_STATUS=STOP`. Its `REASON` distinguishes dirty,
 conflicted, non-main, ahead, diverged, fetch/auth/network failure, and failed
@@ -99,9 +100,12 @@ history to compute it.
 
 The classifier inspects only local queue metadata needed for counts, QA state,
 and target locks. It never invokes Git, moves packets, or creates task
-directories. Git synchronization and judgment belong exclusively to the root
-preflight. Its default mode writes nothing. A scheduled poll may opt into one
-strict memory record outside the repository:
+directories. Before classification it canonicalizes `--repo` and requires a
+real `.git` directory or regular `.git` file at that exact root. This independent
+identity guard accepts aliases resolving to the root and rejects nested paths;
+it does not discover or judge Git state. Git synchronization and judgment belong
+exclusively to the root preflight. Its default mode writes nothing. A scheduled
+poll may opt into one strict memory record outside the repository:
 
 ```bash
 node scripts/check-workboard-queue.mjs \

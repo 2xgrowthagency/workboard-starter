@@ -59,6 +59,23 @@ test('queue classifier contains no Git invocation or Git-state helper', () => {
   assert.doesNotMatch(classifier, /function (?:runGit|gitValue)\b/);
 });
 
+test('portable contract requires exact canonical repository-root identity', () => {
+  const preflight = read('scripts/check-workboard-git-preflight.mjs');
+  const classifier = read('scripts/check-workboard-queue.mjs');
+  const protocol = read('docs/orchestrator-protocol.md');
+
+  assert.match(preflight, /rev-parse', '--show-toplevel/);
+  assert.match(preflight, /REASON: 'repo_path_not_top_level'/);
+  assert.match(classifier, /realpathSync\.native\(requestedRepo\)/);
+  assert.match(classifier, /lstatSync\(join\(repo, '\.git'\)\)/);
+  assert.match(classifier, /REASON: 'repo_path_not_top_level'/);
+  assert.match(protocol, /require exact equality/);
+  assert.match(protocol, /Symlink and `\.\.` aliases are accepted/);
+  assert.match(protocol, /nested directories are rejected/);
+  assert.match(protocol, /It never invokes Git/);
+  assert.match(protocol, /independent\s+identity guard/);
+});
+
 test('docs define cooperative locking without claiming impossible checkout CAS', () => {
   const protocol = read('docs/orchestrator-protocol.md');
   assert.match(protocol, /<git-common-dir>\/workboard-root-preflight\.lock\//);

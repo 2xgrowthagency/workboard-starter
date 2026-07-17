@@ -10,7 +10,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 ## Start here
 
 1. Read `ORCHESTRATOR.md`.
-2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` and continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` with a path resolving to the exact repository root and continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`. Symlink and `..` aliases to that root are accepted; nested directories are rejected.
 3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>` before broad reads; scheduled polls may add an external one-line `--run-memory`, a nonzero `--idle-pause-threshold`, and `--idle-pause-action recommend|pause`.
 4. Stop on Git preflight `STOP`, `NOTHING_TO_CLAIM`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
 5. On `QA_RESULT_AVAILABLE`, read only the emitted QA packets, verify their evidence, and route each verdict to its exact next lane without launching duplicate QA.
@@ -21,6 +21,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 ## Core loop
 
 - Run the explicit root Git preflight; never replace it with generic pull guidance.
+- Pass the same exact canonical repository identity to preflight and classifier. The classifier's root-marker check is read-only and makes no Git-state judgment.
 - Treat its Git-common-directory lock as cooperative exclusion: stop on contention or invalid metadata, never auto-expire it, and use the protocol's explicit stale-lock recovery only after proving no owner remains. The lock cannot stop uncooperative external writers, so retain one-root/single-writer discipline.
 - Treat `STOP REASON=INTERRUPTED` as final: handled HUP/INT/TERM signals terminate active Git, forbid `READY`/`UPDATED`, clean only the owned lock, and require a fresh preflight run.
 - Trust classifier-emitted streak/pause fields; do not reconstruct them from old automation narratives. Verify any requested host-native pause before claiming it succeeded.

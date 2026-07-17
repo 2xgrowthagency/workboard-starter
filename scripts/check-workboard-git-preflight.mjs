@@ -6,7 +6,9 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
   writeSync,
 } from 'node:fs';
@@ -279,6 +281,69 @@ async function gitValue(repo, args, reason) {
   return result.stdout;
 }
 
+function canonicalDirectory(path) {
+  try {
+    const canonical = realpathSync.native(path);
+    if (!statSync(canonical).isDirectory()) {
+      emit(
+        'STOP',
+        { REASON: 'invalid_workboard_repo_path', DETAIL: 'repo_path_must_be_a_directory' },
+        1,
+      );
+    }
+    return canonical;
+  } catch (error) {
+    emit(
+      'STOP',
+      {
+        REASON: 'missing_workboard_git_repo',
+        DETAIL: error.code ?? 'cannot_resolve_repo_path',
+      },
+      1,
+    );
+  }
+}
+
+async function resolveRepositoryRoot(requestedRepo) {
+  const repo = canonicalDirectory(requestedRepo);
+  const insideWorktree = await git(repo, ['rev-parse', '--is-inside-work-tree']);
+  if (insideWorktree.status !== 0 || insideWorktree.stdout !== 'true') {
+    emit(
+      'STOP',
+      {
+        REASON: 'missing_workboard_git_repo',
+        DETAIL: insideWorktree.stderr || insideWorktree.stdout || 'not_a_git_worktree',
+      },
+      1,
+    );
+  }
+
+  const topLevel = await git(repo, ['rev-parse', '--show-toplevel']);
+  if (topLevel.status !== 0 || !topLevel.stdout) {
+    emit(
+      'STOP',
+      {
+        REASON: 'cannot_resolve_git_toplevel',
+        DETAIL: topLevel.stderr || topLevel.stdout || 'missing_git_toplevel',
+      },
+      1,
+    );
+  }
+
+  const canonicalTopLevel = canonicalDirectory(resolve(repo, topLevel.stdout));
+  if (repo !== canonicalTopLevel) {
+    emit(
+      'STOP',
+      {
+        REASON: 'repo_path_not_top_level',
+        DETAIL: 'requested_path_must_equal_git_toplevel',
+      },
+      1,
+    );
+  }
+  return canonicalTopLevel;
+}
+
 async function acquirePreflightLock(repo) {
   const commonDirectory = await git(repo, ['rev-parse', '--git-common-dir']);
   if (commonDirectory.status !== 0 || !commonDirectory.stdout) {
@@ -418,18 +483,8 @@ async function main() {
     process.exit(2);
   }
 
-  const { repo, remote } = options;
-  const insideWorktree = await git(repo, ['rev-parse', '--is-inside-work-tree']);
-  if (insideWorktree.status !== 0 || insideWorktree.stdout !== 'true') {
-    emit(
-      'STOP',
-      {
-        REASON: 'missing_workboard_git_repo',
-        DETAIL: insideWorktree.stderr || insideWorktree.stdout || repo,
-      },
-      1,
-    );
-  }
+  const repo = await resolveRepositoryRoot(options.repo);
+  const { remote } = options;
 
   await acquirePreflightLock(repo);
 
