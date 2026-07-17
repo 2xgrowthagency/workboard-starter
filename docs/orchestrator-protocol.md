@@ -122,6 +122,50 @@ Before claiming/delegating a tool-required packet:
 
 Do not silently skip required tools. A packet with unmet builder proof cannot move to `tasks/qa/` or `tasks/review/`, and QA-required work cannot move to `tasks/review/` without an independent `PASS`.
 
+## Model routing
+
+Use `gpt-5.6-sol` with medium reasoning as the portable default for root
+orchestration, implementation, documentation, tests, and routine QA. Resolve
+each role independently in this order:
+
+1. Explicit task-packet model and reasoning.
+2. Explicit target-project model and reasoning.
+3. Portable `gpt-5.6-sol` medium defaults.
+
+Packet and project overrides are intentional routing inputs, not defaults to
+rewrite. Template role fields stay blank so copied packets do not mask project
+settings. Any route using high reasoning must set the role's task-local
+`*_model_routing_reason_category` to exactly `high_stakes`,
+`security_sensitive`, `repeatedly_blocked`, or `unusually_complex` before
+dispatch. Optional descriptive prose belongs in the separate
+`*_model_routing_reason_note`. Portable reasoning values are `low`, `medium`,
+and `high`; malformed or unsupported values fail closed.
+
+`gpt-5.6-luna` is allowed only at medium reasoning when the role's
+`*_luna_eligibility` is exactly `bounded_high_volume` and the matching
+`*_independent_verification` is `true`. Any other eligibility value or missing
+verification rejects the route. Luna output is not its own verification.
+
+Validate any override, high escalation, or Luna route before dispatch:
+
+```bash
+node scripts/check-model-routing.mjs \
+  --packet-model "$PACKET_MODEL" \
+  --packet-reasoning "$PACKET_REASONING" \
+  --packet-reason-category "$PACKET_MODEL_ROUTING_REASON_CATEGORY" \
+  --packet-reason-note "$PACKET_MODEL_ROUTING_REASON_NOTE" \
+  --project-model "$PROJECT_MODEL" \
+  --project-reasoning "$PROJECT_REASONING" \
+  --luna-eligibility "$LUNA_ELIGIBILITY" \
+  --independent-verification "$INDEPENDENT_VERIFICATION"
+```
+
+`MODEL_ROUTING_STATUS=REJECTED` or `CHECK_FAILED` is a routing hard stop. Include
+the resolved model, reasoning, source, reason category/note, Luna eligibility,
+and verification requirement in the create handoff and recovery record. Unknown,
+duplicate, missing-value, and misspelled CLI options return `CHECK_FAILED`. Do
+not infer model policy from private memory or unrelated task history.
+
 ## Polling loop
 
 1. `cd` into the Workboard repo.
@@ -136,7 +180,7 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 10. Claim only independent eligible packets for unlocked targets, up to remaining capacity.
 11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, then commit/push before delegating.
 12. Persist a new `worker_creation_attempt_id` before every actual create call, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write canonical identity only after complete app-native proof. Keep one stable `recovery_id` for an ambiguous incident; an authorized replacement receives a new attempt ID. Preserve the original canonical builder as `builder_thread_id` before creating QA.
-13. Give the worker the full task packet plus the exact worker handoff prompt below.
+13. Resolve and validate the role's model/reasoning route, then give the worker the full task packet plus the exact worker handoff prompt below.
 14. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, and lane all match the source packet.
 15. Inspect `tasks/qa/`. For each pending packet, launch one separate `[qa] <short label>` task inside the existing target project against a pinned commit or immutable artifact.
 16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record receipts or exact fallback status.
@@ -369,6 +413,12 @@ Handoff identity:
 - target_path: <source-target_path>
 - worker_creation_surface: <source-worker_creation_surface>
 - worker_host_identity: <host-local-identity>
+- model: <resolved-model>
+- reasoning: <resolved-reasoning>
+- model_routing_reason_category: <allowed-category-or-none>
+- model_routing_reason_note: <descriptive-note-or-none>
+- luna_eligibility: <bounded_high_volume-or-none>
+- independent_verification: <true-or-false>
 
 Rules:
 - Work only inside the task target_path, except you may append proof/status to the Workboard packet.
@@ -412,6 +462,12 @@ Handoff identity:
 - worker_creation_attempt_id: <current-QA-creation-attempt-id>
 - target_project_id: <canonical-target-project-id>
 - target_path: <canonical-target-path>
+- model: <resolved-qa-model>
+- reasoning: <resolved-qa-reasoning>
+- model_routing_reason_category: <allowed-category-or-none>
+- model_routing_reason_note: <descriptive-note-or-none>
+- luna_eligibility: <bounded_high_volume-or-none>
+- independent_verification: <true-or-false>
 
 Rules:
 - Treat the builder's summary as a claim, not evidence.

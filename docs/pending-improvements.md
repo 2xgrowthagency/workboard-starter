@@ -129,7 +129,7 @@ Required behavior:
 
 Default root orchestration, implementation, documentation, tests, and routine QA to `gpt-5.6-sol` at medium reasoning.
 
-Packet/project overrides take precedence. Escalate Sol to high only with a recorded reason for ambiguous, high-stakes, security-sensitive, repeatedly blocked, or unusually complex architecture/visual work. Reserve Luna Medium for bounded high-volume exploration that will be independently verified.
+Packet/project overrides take precedence. Escalate Sol to high only with a machine-recognized packet category of `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`; keep descriptive prose separate. Reserve Luna Medium for exact `bounded_high_volume` eligibility with `independent_verification: true`.
 
 ### [ST-010: finish state-first task closeout and links](https://github.com/2xgrowthagency/workboard-starter/issues/10)
 

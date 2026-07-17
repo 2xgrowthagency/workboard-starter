@@ -62,7 +62,9 @@ function packet(overrides = {}, sections = {}) {
     requested_title: '[claimed] Example task', target_project_id: 'example',
     target_path: '/workspace/example', worker_creation_surface: 'app-native task tools',
     requested_model: 'example-model',
-    requested_reasoning: 'medium', creation_started_at: times.creationStarted,
+    requested_reasoning: 'medium', requested_reason_category: 'none',
+    requested_reason_note: 'none', requested_luna_eligibility: 'none',
+    requested_independent_verification: 'false', creation_started_at: times.creationStarted,
     creation_outcome_at: times.creationOutcome, raw_task_id: 'unknown',
     recovery_started_at: times.recoveryStarted, canonical_task_id: '',
     canonical_worker_creation_attempt_id: '', canonical_selected_at: '',
@@ -223,7 +225,9 @@ test('portable template exposes every structured recovery receipt', () => {
   for (const field of [
     'recovery_outcome', 'source_packet_id', 'root_task_id', 'worker_creation_attempt_id',
     'requested_title', 'target_project_id', 'target_path',
-    'worker_creation_surface', 'requested_model', 'requested_reasoning', 'raw_task_id',
+    'worker_creation_surface', 'requested_model', 'requested_reasoning',
+    'requested_reason_category', 'requested_reason_note', 'requested_luna_eligibility',
+    'requested_independent_verification', 'raw_task_id',
     'canonical_task_id', 'replacement_authorized', 'replacement_basis',
     'canonical_worker_creation_attempt_id', 'replacement_authorization_id',
     'replacement_worker_creation_attempt_id',
@@ -240,6 +244,34 @@ test('portable template exposes every structured recovery receipt', () => {
 
 test('unknown raw task ID is valid preserved evidence while investigating', () => {
   assert.deepEqual(validateRecoveryPacket(packet()), []);
+});
+
+test('recovery metadata preserves only recognized high and Luna routing eligibility', () => {
+  assert.deepEqual(validateRecoveryPacket(packet({
+    requested_reasoning: 'high',
+    requested_reason_category: 'security_sensitive',
+    requested_reason_note: 'authentication boundary',
+  })), []);
+
+  assert.ok(validateRecoveryPacket(packet({
+    requested_reasoning: 'high',
+    requested_reason_category: 'security-sensitive prose',
+  })).some((error) => /requested_reason_category/.test(error)));
+
+  assert.deepEqual(validateRecoveryPacket(packet({
+    requested_model: 'gpt-5.6-luna',
+    requested_luna_eligibility: 'bounded_high_volume',
+    requested_independent_verification: 'true',
+  })), []);
+
+  for (const overrides of [
+    { requested_model: 'gpt-5.6-luna' },
+    { requested_model: 'gpt-5.6-luna', requested_luna_eligibility: 'bounded' },
+    { requested_luna_eligibility: 'bounded_high_volume' },
+    { requested_independent_verification: 'yes' },
+  ]) {
+    assert.notDeepEqual(validateRecoveryPacket(packet(overrides)), []);
+  }
 });
 
 test('portable_only remains valid for non-live investigating recovery', () => {
