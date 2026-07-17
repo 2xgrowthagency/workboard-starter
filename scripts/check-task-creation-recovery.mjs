@@ -91,7 +91,7 @@ function serializeScalar(value) {
   return JSON.stringify(scalar);
 }
 
-export function serializePacketFrontmatter(source, updates) {
+export function serializePacketFrontmatter(source, updates, { insertMissingFields = [] } = {}) {
   const packet = parseRecoveryPacket(source);
   const remaining = new Set(Object.keys(updates));
   const lines = packet.frontmatter.entries.map(({ key, rawValue }) => {
@@ -99,8 +99,13 @@ export function serializePacketFrontmatter(source, updates) {
     remaining.delete(key);
     return `${key}: ${serializeScalar(updates[key])}`;
   });
-  if (remaining.size > 0) {
-    throw new Error(`source packet missing field: ${[...remaining].join(', ')}`);
+  const allowedInsertions = new Set(insertMissingFields);
+  const unsupported = [...remaining].filter((key) => !allowedInsertions.has(key));
+  if (unsupported.length > 0) {
+    throw new Error(`source packet missing field: ${unsupported.join(', ')}`);
+  }
+  for (const key of remaining) {
+    lines.push(`${key}: ${serializeScalar(updates[key])}`);
   }
   return `---\n${lines.join('\n')}\n---\n${packet.body}`;
 }

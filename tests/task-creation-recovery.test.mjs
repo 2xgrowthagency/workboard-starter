@@ -825,6 +825,22 @@ test('canonical reconciliation writes worker ID and proof without releasing the 
   );
 });
 
+test('canonical reconciliation adds worker_task_link to legacy source packets only', () => {
+  const legacySource = sourcePacket().replace(/^worker_task_link:.*\n/m, '');
+  const updated = canonicalizeSourcePacket(legacySource, reconciledPacket());
+  assert.equal(
+    parseRecoveryPacket(updated).metadata.worker_task_link,
+    '::created-thread{threadId="task-original"}',
+  );
+  assert.equal(updated.match(/^worker_task_link:/gm)?.length, 1);
+
+  const unrelatedMissingField = sourcePacket().replace(/^worker_creation_proof:.*\n/m, '');
+  assert.throws(
+    () => canonicalizeSourcePacket(unrelatedMissingField, reconciledPacket()),
+    /source packet missing field: worker_creation_proof/,
+  );
+});
+
 test('replacement canonicalization writes the replacement attempt and preserves incident ID', () => {
   const replacement = reconciledPacket({
     ...replacementIdentity,

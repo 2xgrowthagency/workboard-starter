@@ -98,7 +98,7 @@ export function canonicalizeSourcePacket(source, recovery) {
     worker_visibility_proof: proof,
     recovery_status: 'reconciled',
     recovery_pending: 'false',
-  });
+  }, { insertMissingFields: ['worker_task_link'] });
   const updatedFields = sourceMetadata(updated);
   if (updatedFields.worker_creation_status !== 'canonical' ||
       updatedFields.worker_visibility_status !== 'verified' ||
