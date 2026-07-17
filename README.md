@@ -136,10 +136,12 @@ docs/
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   live-task-visibility.md   # app-native proof and portable fallback
+  codex-task-finalization.md # optional local Codex task hygiene
   pending-improvements.md   # production hardening backlog for the starter
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
+  classify-codex-task-finalizer.mjs # read-only task-hygiene candidates
   check-workboard-target-lock.mjs # exact decoded target-lock check
   check-workboard-callback.mjs # canonical callback status/identity/role/lane check
   check-task-creation-recovery.mjs # validate recovery state and proof
@@ -161,6 +163,7 @@ tests/
   check-workboard-callback.test.mjs
   check-workboard-queue.test.mjs
   check-workboard-target-lock.test.mjs
+  codex-task-finalizer.test.mjs
   live-task-visibility-docs.test.mjs
   task-creation-recovery.test.mjs
 ```
@@ -200,6 +203,13 @@ At the threshold, `recommend` emits a recommendation; `pause` emits
 Ready or pending-QA inventory never requests a pause. The memory file contains
 only version, outcome, hashed queue signature, streak, and timestamp; malformed,
 multiline, oversized, symlinked, or in-repo memory fails closed.
+
+After an outcome is known, Codex operators may run the optional read-only task
+finalizer described in [`docs/codex-task-finalization.md`](docs/codex-task-finalization.md).
+It accepts only explicitly named local rollout files and exact configured
+automation IDs, emits bounded state-first candidates, and leaves every mutation
+and readback to app-native task tools. It does not scan private session roots,
+read a Codex database, or hard-delete task rows.
 
 Run the tests with:
 
@@ -326,5 +336,6 @@ Start here:
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
 - `docs/live-task-visibility.md`
+- `docs/codex-task-finalization.md`
 - `docs/pending-improvements.md`
 - `templates/task-packet.md`

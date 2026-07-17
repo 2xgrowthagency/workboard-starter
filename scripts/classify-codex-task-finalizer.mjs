@@ -1,0 +1,386 @@
+#!/usr/bin/env node
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 100;
+const DEFAULT_SETTLE_SECONDS = 120;
+const QUEUE_STATUSES = new Set([
+  'NOTHING_TO_CLAIM',
+  'WORK_IN_PROGRESS',
+  'READY_WORK_AVAILABLE',
+  'QA_WORK_AVAILABLE',
+  'QA_RESULT_AVAILABLE',
+  'PROMOTION_REVIEW_NEEDED',
+  'RECOVERY_NEEDED',
+  'WORKBOARD_SYNC_NEEDED',
+  'WORKBOARD_REQUIRES_JUDGMENT',
+  'CHECK_FAILED',
+]);
+
+function extractMessageText(item, role) {
+  const payload = item?.payload ?? {};
+  if (item?.type === 'response_item' && payload.type === 'message' && payload.role === role) {
+    return (Array.isArray(payload.content) ? payload.content : [])
+      .map((part) => part?.text ?? '')
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (item?.type === 'event_msg' && payload.type === `${role}_message`) {
+    return String(payload.message ?? '');
+  }
+  return '';
+}
+
+function extractOutputText(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(extractOutputText).filter(Boolean).join('\n');
+  if (typeof value === 'object') {
+    return Object.values(value).map(extractOutputText).filter(Boolean).join('\n');
+  }
+  return String(value);
+}
+
+function toolOutputFailed(payload) {
+  const output = payload?.output;
+  const records = [payload, output].filter((value) => value && typeof value === 'object');
+  const failedStatuses = new Set(['error', 'failed', 'failure', 'cancelled', 'timed_out', 'timeout']);
+  return records.some((record) =>
+    record.is_error === true
+    || record.isError === true
+    || record.success === false
+    || record.ok === false
+    || Boolean(record.error)
+    || failedStatuses.has(String(record.status ?? '').toLowerCase()));
+}
+
+function initialAutomationMessage(items) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (extractMessageText(item, 'assistant')) break;
+    const text = extractMessageText(item, 'user').trimStart();
+    if (text.startsWith('Automation:')) return { index, text };
+  }
+  return null;
+}
+
+function lastMatch(text, expression) {
+  return [...text.matchAll(expression)].at(-1);
+}
+
+function countField(text, field) {
+  const match = lastMatch(text, new RegExp(`(?:^|\\s)${field}=(\\d+)(?=\\s|$)`, 'gm'));
+  return match ? Number(match[1]) : null;
+}
+
+function hasCanonicalProof(text) {
+  const canonicalPair = /(?:^|\n)worker_creation_status:\s*canonical\s*$/im.test(text)
+    && /(?:^|\n)worker_visibility_status:\s*verified\s*$/im.test(text)
+    && /(?:^|\n)worker_thread_id:\s*\S+\s*$/im.test(text);
+  return canonicalPair || /(?:^|\s)(?:WORKER|QA)_DELEGATION_STATUS=VERIFIED(?=\s|$)/m.test(text);
+}
+
+function preservationReason(text) {
+  if (hasCanonicalProof(text)) return 'canonical_worker_proof';
+  if (/ROOT_RECONCILIATION_REQUIRED|recovery_pending:\s*true|worker_visibility_status:\s*ambiguous/i.test(text)) {
+    return 'worker_recovery_or_callback_blocker';
+  }
+  if (/IDLE_PAUSE_(?:REQUESTED|RECOMMENDED)=1/i.test(text)
+    && /(?:blocked|failed|timeout|timed out|unavailable|remains active)/i.test(text)) {
+    return 'idle_pause_blocker';
+  }
+  return '';
+}
+
+export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEFAULT_SETTLE_SECONDS } = {}) {
+  const lines = String(raw).split(/\r?\n/).filter((line) => line.trim());
+  const items = [];
+  for (const line of lines) {
+    try {
+      items.push(JSON.parse(line));
+    } catch {
+      return { valid: false, reason: 'malformed_jsonl' };
+    }
+  }
+  if (items.length === 0) return { valid: false, reason: 'empty_session' };
+
+  const automation = initialAutomationMessage(items);
+  if (!automation) return { valid: false, reason: 'missing_initial_automation_message' };
+  const automationMatches = [...automation.text.matchAll(/^Automation ID:\s*([A-Za-z0-9._-]+)\s*$/gm)];
+  if (automationMatches.length !== 1) {
+    return { valid: false, reason: 'missing_or_duplicate_automation_id' };
+  }
+
+  const threadId = items.find((item) => item?.type === 'session_meta')?.payload?.id
+    ?? items[0]?.payload?.id
+    ?? '';
+  if (!threadId) return { valid: false, reason: 'missing_thread_id' };
+
+  let hasManualFollowup = false;
+  let finalText = '';
+  let hasFinal = false;
+  const evidence = [];
+  const queueReceipts = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const userText = extractMessageText(item, 'user').trim();
+    if (
+      index > automation.index
+      && userText
+      && userText !== automation.text.trim()
+      && !userText.startsWith('<heartbeat>')
+    ) {
+      hasManualFollowup = true;
+    }
+    const payload = item?.payload ?? {};
+    if (item?.type === 'event_msg' && payload.type === 'agent_message' && payload.phase === 'final_answer') {
+      hasFinal = true;
+      finalText = String(payload.message ?? finalText);
+    }
+    if (
+      item?.type === 'response_item'
+      && payload.type === 'message'
+      && payload.role === 'assistant'
+      && payload.phase === 'final_answer'
+    ) {
+      hasFinal = true;
+      finalText = extractMessageText(item, 'assistant') || finalText;
+    }
+    if (
+      item?.type === 'response_item'
+      && (payload.type === 'function_call_output' || payload.type === 'custom_tool_call_output')
+    ) {
+      const outputText = extractOutputText(payload.output);
+      evidence.push(outputText);
+      const receipt = outputText.trim();
+      if (!toolOutputFailed(payload) && /^QUEUE_STATUS=[A-Z_]+(?: [A-Z][A-Z0-9_]*=\S+)*$/.test(receipt)) {
+        queueReceipts.push(receipt);
+      }
+    }
+  }
+
+  const lastTimestamp = items.map((item) => Date.parse(item?.timestamp ?? '')).filter(Number.isFinite).at(-1);
+  const recent = Number.isFinite(lastTimestamp)
+    && nowMs - lastTimestamp < settleSeconds * 1000;
+
+  return {
+    valid: true,
+    automationId: automationMatches[0][1],
+    threadId: String(threadId),
+    hasFinal,
+    recent,
+    hasManualFollowup,
+    finalText,
+    queueReceipt: queueReceipts.at(-1) ?? '',
+    evidenceText: `${evidence.join('\n')}\n${finalText}`,
+  };
+}
+
+function inferredStatus(finalText) {
+  const prefix = finalText.match(/^\[(idle|claimed|ready|qa|review|blocked|error)\](?=\s)/i)?.[1]?.toLowerCase();
+  if (prefix === 'claimed' && /\bdelegated\b/i.test(finalText)) return 'READY_WORK_AVAILABLE';
+  if (prefix === 'review' && /\bQA result\b/i.test(finalText)) return 'QA_RESULT_AVAILABLE';
+  return {
+    idle: 'NOTHING_TO_CLAIM',
+    claimed: 'WORK_IN_PROGRESS',
+    ready: 'READY_WORK_AVAILABLE',
+    qa: 'QA_WORK_AVAILABLE',
+    review: 'PROMOTION_REVIEW_NEEDED',
+    blocked: 'RECOVERY_NEEDED',
+    error: 'CHECK_FAILED',
+  }[prefix] ?? 'UNKNOWN';
+}
+
+export function classifyCodexSession(session) {
+  if (!session.hasFinal) {
+    return { type: 'FINALIZER_SKIP', status: session.recent ? 'IN_PROGRESS' : 'INCOMPLETE', reason: 'session_has_no_final_answer' };
+  }
+  if (session.hasManualFollowup) {
+    return { type: 'MANUAL_FOLLOWUP', status: 'MANUAL_FOLLOWUP', reason: 'thread_has_manual_followup' };
+  }
+
+  const text = session.evidenceText;
+  const receiptStatus = session.queueReceipt.match(/^QUEUE_STATUS=([A-Z_]+)/)?.[1] ?? 'UNKNOWN';
+  const finalStatus = inferredStatus(session.finalText);
+  const compatibleErrorFamily = finalStatus === 'CHECK_FAILED'
+    && ['CHECK_FAILED', 'WORKBOARD_SYNC_NEEDED', 'WORKBOARD_REQUIRES_JUDGMENT'].includes(receiptStatus);
+  if (
+    receiptStatus !== 'UNKNOWN'
+    && finalStatus !== 'UNKNOWN'
+    && receiptStatus !== finalStatus
+    && !compatibleErrorFamily
+  ) {
+    return { type: 'MANUAL_FOLLOWUP', status: 'CONFLICTING_OUTCOME', reason: 'queue_receipt_and_final_state_conflict' };
+  }
+  const status = compatibleErrorFamily ? receiptStatus : finalStatus !== 'UNKNOWN' ? finalStatus : receiptStatus;
+  if (!QUEUE_STATUSES.has(status)) {
+    return { type: 'FINALIZER_SKIP', status: 'UNKNOWN', reason: 'unrecognized_or_missing_outcome' };
+  }
+
+  const preserve = preservationReason(text);
+  if (status === 'NOTHING_TO_CLAIM') {
+    return {
+      type: 'FINALIZER_CANDIDATE',
+      action: preserve ? 'rename' : 'rename_archive',
+      title: '[idle] no work to claim',
+      status,
+      reason: preserve || 'exact_idle_outcome',
+    };
+  }
+  if (status === 'WORK_IN_PROGRESS') {
+    const claimed = countField(session.queueReceipt, 'CLAIMED');
+    const qaActive = countField(session.queueReceipt, 'QA_ACTIVE');
+    const ready = countField(session.queueReceipt, 'READY');
+    const qaPending = countField(session.queueReceipt, 'QA_PENDING');
+    const exactClaimedOnly = claimed !== null && qaActive !== null && ready === 0 && qaPending === 0
+      && claimed + qaActive > 0;
+    return {
+      type: 'FINALIZER_CANDIDATE',
+      action: exactClaimedOnly && !preserve ? 'rename_archive' : 'rename',
+      title: '[claimed] already in progress',
+      status,
+      reason: preserve || (exactClaimedOnly ? 'exact_claimed_only_outcome' : 'claimed_outcome_not_archive_safe'),
+    };
+  }
+  if (status === 'READY_WORK_AVAILABLE') {
+    const delegated = hasCanonicalProof(text);
+    const delegatedOutcome = /^\[claimed\].*\bdelegated\b/im.test(session.finalText);
+    return {
+      type: 'FINALIZER_CANDIDATE', action: 'rename',
+      title: delegated || delegatedOutcome ? '[claimed] work delegated' : '[ready] work available',
+      status, reason: delegated ? 'canonical_worker_proof' : delegatedOutcome ? 'delegated_outcome_reported' : 'ready_work_detected',
+    };
+  }
+  if (status === 'QA_WORK_AVAILABLE') {
+    const delegated = hasCanonicalProof(text);
+    const delegatedOutcome = /^\[qa\].*\bdelegated\b/im.test(session.finalText);
+    return {
+      type: 'FINALIZER_CANDIDATE', action: 'rename',
+      title: delegated || delegatedOutcome ? '[qa] verification delegated' : '[qa] verification available',
+      status, reason: delegated ? 'canonical_worker_proof' : delegatedOutcome ? 'delegated_outcome_reported' : 'qa_work_detected',
+    };
+  }
+  if (status === 'QA_RESULT_AVAILABLE') {
+    return { type: 'FINALIZER_CANDIDATE', action: 'rename', title: '[review] QA result ready', status, reason: 'qa_result_requires_reconciliation' };
+  }
+  if (status === 'PROMOTION_REVIEW_NEEDED') {
+    return { type: 'FINALIZER_CANDIDATE', action: 'rename', title: '[review] dependency promotion needed', status, reason: 'dependency_promotion_review' };
+  }
+  if (status === 'RECOVERY_NEEDED') {
+    return { type: 'FINALIZER_CANDIDATE', action: 'rename', title: '[blocked] worker recovery needed', status, reason: 'worker_recovery_needed' };
+  }
+  if (status === 'CHECK_FAILED') {
+    return { type: 'FINALIZER_CANDIDATE', action: 'rename', title: '[error] Workboard queue check', status, reason: 'queue_check_failed' };
+  }
+  return { type: 'FINALIZER_CANDIDATE', action: 'rename', title: '[error] Workboard checkout needs review', status, reason: 'checkout_needs_review' };
+}
+
+function parsePositiveInteger(value, name, maximum) {
+  if (!/^\d+$/.test(value ?? '')) throw new Error(`${name} must be a positive integer`);
+  const parsed = Number(value);
+  if (parsed < 1 || parsed > maximum) throw new Error(`${name} must be between 1 and ${maximum}`);
+  return parsed;
+}
+
+function parseArgs(argv) {
+  const parsed = { sessions: [], automationIds: [] };
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if (!['--session', '--automation-id', '--limit', '--settle-seconds', '--now'].includes(flag)) {
+      throw new Error(`unknown option: ${flag || '<empty>'}`);
+    }
+    if (!value || value.startsWith('--')) throw new Error(`missing value for ${flag}`);
+    if (flag === '--session') parsed.sessions.push(value);
+    else if (flag === '--automation-id') parsed.automationIds.push(value);
+    else {
+      const key = flag.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      if (Object.hasOwn(parsed, key)) throw new Error(`duplicate option: ${flag}`);
+      parsed[key] = value;
+    }
+  }
+  if (parsed.sessions.length === 0) throw new Error('at least one explicit --session is required');
+  if (parsed.automationIds.length === 0) throw new Error('at least one exact --automation-id is required');
+  if (new Set(parsed.sessions).size !== parsed.sessions.length) throw new Error('duplicate --session input');
+  if (new Set(parsed.automationIds).size !== parsed.automationIds.length) throw new Error('duplicate --automation-id input');
+  for (const id of parsed.automationIds) {
+    if (!/^[A-Za-z0-9._-]+$/.test(id)) throw new Error(`invalid automation ID: ${id}`);
+  }
+  return {
+    sessions: parsed.sessions,
+    automationIds: new Set(parsed.automationIds),
+    limit: parsed.limit ? parsePositiveInteger(parsed.limit, 'limit', MAX_LIMIT) : DEFAULT_LIMIT,
+    settleSeconds: parsed.settleSeconds
+      ? parsePositiveInteger(parsed.settleSeconds, 'settle-seconds', 3600)
+      : DEFAULT_SETTLE_SECONDS,
+    nowMs: parsed.now ? Date.parse(parsed.now) : Date.now(),
+  };
+}
+
+function encode(value) {
+  return encodeURIComponent(String(value ?? ''));
+}
+
+function emit(fields) {
+  console.log(Object.entries(fields).map(([key, value]) => `${key}=${encode(value)}`).join(' '));
+}
+
+function main() {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (!Number.isFinite(options.nowMs)) throw new Error('--now must be an ISO-8601 timestamp');
+
+    const parsedSessions = options.sessions.map((sessionPath) => {
+      try {
+        return parseCodexSession(readFileSync(sessionPath, 'utf8'), options);
+      } catch {
+        return { valid: false, reason: 'session_unreadable' };
+      }
+    });
+    const threadCounts = new Map();
+    for (const session of parsedSessions) {
+      if (session.valid) threadCounts.set(session.threadId, (threadCounts.get(session.threadId) ?? 0) + 1);
+    }
+
+    let candidates = 0;
+    let candidateMatches = 0;
+    let eligible = 0;
+    const duplicateThreadsEmitted = new Set();
+    for (const session of parsedSessions) {
+      if (!session.valid) {
+        emit({ type: 'FINALIZER_SKIP', status: 'INVALID_INPUT', reason: session.reason });
+        continue;
+      }
+      if (!options.automationIds.has(session.automationId)) {
+        emit({ type: 'FINALIZER_SKIP', thread_id: session.threadId, status: 'NOT_CONFIGURED', reason: 'automation_id_not_configured' });
+        continue;
+      }
+      eligible += 1;
+      if (threadCounts.get(session.threadId) > 1) {
+        if (!duplicateThreadsEmitted.has(session.threadId)) {
+          duplicateThreadsEmitted.add(session.threadId);
+          emit({ type: 'MANUAL_FOLLOWUP', thread_id: session.threadId, status: 'DUPLICATE_INPUT', reason: 'duplicate_thread_session_input' });
+        }
+        continue;
+      }
+      const result = classifyCodexSession(session);
+      if (result.type === 'FINALIZER_CANDIDATE') {
+        candidateMatches += 1;
+        if (candidates >= options.limit) continue;
+        candidates += 1;
+      }
+      emit({ type: result.type, thread_id: session.threadId, ...result });
+    }
+    emit({ type: 'FINALIZER_SUMMARY', eligible, candidates, limit: options.limit, truncated: candidateMatches > candidates ? 1 : 0 });
+  } catch (error) {
+    emit({ type: 'FINALIZER_CHECK_FAILED', reason: error.message });
+    process.exitCode = 1;
+  }
+}
+
+if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+  main();
+}

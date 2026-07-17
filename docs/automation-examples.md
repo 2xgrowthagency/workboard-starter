@@ -76,6 +76,25 @@ actionable lane or changed no-action queue signature resets it. In particular,
 ready work waiting at capacity suppresses pause so a paused schedule cannot hide
 work that becomes routable when capacity opens.
 
+## Optional Codex task finalization
+
+After the queue outcome and any routing/promotion work are complete, a separate
+local hygiene automation may classify exact Codex automation sessions:
+
+```bash
+node scripts/classify-codex-task-finalizer.mjs \
+  --session <EXPLICIT_LOCAL_ROLLOUT_JSONL> \
+  --automation-id <EXACT_AUTOMATION_ID> \
+  --limit 25
+```
+
+Follow [`codex-task-finalization.md`](codex-task-finalization.md). The script is
+read-only and emits candidates only. Rename/archive only exact emitted task IDs
+through app-native tools, read back every step, stop on duplicate/conflicting
+results, and preserve all manual follow-ups, useful errors, blockers, review or
+delegation evidence, and canonical worker proof. Do not scan implicit session
+roots, assume a user-specific database path, edit SQLite, or hard-delete tasks.
+
 ## Codex Desktop pattern
 
 Create a saved Codex project for the Workboard repo and saved projects for each
