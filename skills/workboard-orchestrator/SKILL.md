@@ -11,6 +11,13 @@ Use `docs/known-issues-and-recovery.md` to classify host, tool, callback,
 saved-project/path, and Git failures. Its bounded responses preserve the
 normative routing gates in this skill.
 
+When generalizing a production-derived change to this skill, follow
+`docs/upstream-synchronization.md`: update the protocol, this portable skill,
+task template, automation examples, focused tests, and one compatibility and
+migration record together. Validate the diff with `scripts/check-upstream-sync.mjs`;
+customized clones use the originating public starter issue/release as their
+adoption backlink and do not need fork ancestry.
+
 ## Start here
 
 1. Read `ORCHESTRATOR.md`.
