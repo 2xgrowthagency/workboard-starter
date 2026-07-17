@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parseRecoveryPacket, validateRecoveryPacket } from '../scripts/check-task-creation-recovery.mjs';
+import { validateTaskPacket } from '../scripts/check-task-packet.mjs';
 import {
   canonicalizeSourcePacket,
   classifyCompletionCallback,
@@ -29,6 +30,7 @@ import {
 
 const templatePath = fileURLToPath(new URL('../templates/task-creation-recovery.md', import.meta.url));
 const template = readFileSync(templatePath, 'utf8');
+const taskPacketTemplatePath = fileURLToPath(new URL('../templates/task-packet.md', import.meta.url));
 const reconcileScript = fileURLToPath(new URL('../scripts/reconcile-task-creation-recovery.mjs', import.meta.url));
 
 const times = {
@@ -68,6 +70,7 @@ function packet(overrides = {}, sections = {}) {
     creation_outcome_at: times.creationOutcome, raw_task_id: 'unknown',
     recovery_started_at: times.recoveryStarted, canonical_task_id: '',
     canonical_task_link: '',
+    canonical_task_title: '', canonical_host_identity: '',
     canonical_worker_creation_attempt_id: '', canonical_selected_at: '',
     replacement_authorized: 'false', replacement_basis: 'none',
     replacement_authorization_id: '', replacement_worker_creation_attempt_id: '',
@@ -103,6 +106,8 @@ function reconciledPacket(overrides = {}, sections = {}) {
     recovery_status: 'reconciled', recovery_outcome: 'canonical_worker',
     canonical_task_id: canonicalTaskId,
     canonical_task_link: `::created-thread{threadId="${canonicalTaskId}"}`,
+    canonical_task_title: '[claimed] Example task',
+    canonical_host_identity: 'desktop-local',
     canonical_worker_creation_attempt_id: canonicalAttemptId,
     canonical_selected_at: times.canonicalSelected, ...overrides,
   }, {
@@ -115,6 +120,8 @@ function reconciledPacket(overrides = {}, sections = {}) {
     'Canonical selection': [
       `CANONICAL_TASK_ID: ${canonicalTaskId}`,
       `CANONICAL_TASK_LINK: ::created-thread{threadId="${canonicalTaskId}"}`,
+      'CANONICAL_TASK_TITLE: [claimed] Example task',
+      'CANONICAL_HOST_IDENTITY: desktop-local',
       'CANONICAL_ROOT_TASK_ID: root-task-1',
       `CANONICAL_WORKER_CREATION_ATTEMPT_ID: ${canonicalAttemptId}`,
       'CANONICAL_TARGET_PROJECT_ID: example',
@@ -203,11 +210,13 @@ function sourcePacket(overrides = {}) {
   const fields = {
     id: 'packet-1', status: 'claimed', root_task_id: 'root-task-1',
     worker_thread_id: '', worker_task_link: '',
+    worker_task_title: '', worker_host_identity: '',
     worker_creation_attempt_id: 'creation-attempt-1',
     recovery_id: '20260716-001-recovery',
     worker_creation_surface: 'app-native task tools', worker_creation_status: 'ambiguous',
     worker_creation_proof: '', worker_visibility_status: 'ambiguous',
     worker_visibility_verified_at: '', worker_visibility_proof: '',
+    worker_routing_blocker: 'app-native readback timed out',
     recovery_status: 'investigating', recovery_pending: 'true',
     target_project_id: 'example', target_path: '/workspace/example',
     completion_callback_status: 'pending',
@@ -219,6 +228,43 @@ function sourcePacket(overrides = {}) {
 
 function addDuplicateFrontmatterKey(source, key, value) {
   return source.replace('\n---\n', `\n${key}: ${value}\n---\n`);
+}
+
+function v2AmbiguousSourcePacket() {
+  const values = {
+    id: '20260716-001-example', status: 'claimed', created_by: 'operator',
+    created_at: times.creationStarted, claimed_by: 'root', claimed_at: times.creationOutcome,
+    root_task_id: 'root-task-1', worker_task_title: '[claimed] Example task',
+    worker_creation_surface: 'app-native task tools',
+    worker_creation_attempt_id: 'creation-attempt-1', worker_creation_status: 'ambiguous',
+    worker_visibility_status: 'ambiguous', worker_routing_blocker: 'app-native readback timed out',
+    recovery_id: '20260716-001-recovery', recovery_status: 'investigating',
+    recovery_pending: 'true', dispatch_mode: 'app_native', target_project_id: 'example',
+    target_project_name: 'Example', target_path: '/workspace/example',
+    target_commit: '0123456789abcdef0123456789abcdef01234567',
+    immutable_target_type: 'commit',
+    immutable_target: '0123456789abcdef0123456789abcdef01234567',
+    target_lock_status: 'held', target_lock_project_id: 'example',
+    target_lock_path: '/workspace/example', target_lock_acquired_at: times.creationOutcome,
+    root_model: 'gpt-5.6-sol', root_reasoning: 'medium',
+    worker_model: 'gpt-5.6-sol', worker_reasoning: 'medium',
+  };
+  let source = readFileSync(taskPacketTemplatePath, 'utf8');
+  for (const [key, value] of Object.entries(values)) {
+    source = source.replace(new RegExp(`^${key}:.*$`, 'm'), `${key}: ${value}`);
+  }
+  const activeLog = [
+    `UPDATED_AT: ${times.creationStarted}`,
+    '',
+    'STATE: active',
+    'FROM: ready',
+    'SUMMARY: Packet claimed before one app-native creation attempt.',
+    'PROOF: claim and target lock receipt',
+    'BLOCKER: none',
+    'NEXT: Reconcile the ambiguous app-native creation outcome.',
+    `UPDATED_AT: ${times.creationOutcome}`,
+  ].join('\n');
+  return source.replace('UPDATED_AT: YYYY-MM-DDTHH:MM:SSZ', activeLog);
 }
 
 function tempPacketFiles(directory) {
@@ -810,6 +856,8 @@ test('canonical reconciliation writes worker ID and proof without releasing the 
   const updated = canonicalizeSourcePacket(sourcePacket(), reconciledPacket());
   assert.match(updated, /^status: claimed$/m);
   assert.match(updated, /^worker_thread_id: task-original$/m);
+  assert.match(updated, /^worker_task_title: "\[claimed\] Example task"$/m);
+  assert.match(updated, /^worker_host_identity: desktop-local$/m);
   assert.equal(
     parseRecoveryPacket(updated).metadata.worker_task_link,
     '::created-thread{threadId="task-original"}',
@@ -818,11 +866,24 @@ test('canonical reconciliation writes worker ID and proof without releasing the 
   assert.match(updated, /^worker_creation_status: canonical$/m);
   assert.match(updated, /^worker_visibility_status: verified$/m);
   assert.match(updated, /^worker_visibility_verified_at: 2026-07-16T10:09:00Z$/m);
+  assert.equal(
+    parseRecoveryPacket(updated).metadata.worker_visibility_proof,
+    'method=app_native_list_read|receipt=20260716-001-recovery|task-original|' +
+      '::created-thread{threadId="task-original"}|creation-attempt-1|2026-07-16T10:09:00Z',
+  );
   assert.match(updated, /^recovery_pending: false$/m);
   assert.match(
     updated,
     /^worker_creation_proof: .*20260716-001-recovery.*task-original.*created-thread.*creation-attempt-1.*2026-07-16T10:09:00Z/m,
   );
+});
+
+test('canonical recovery output satisfies the complete v2 packet validator', () => {
+  const source = v2AmbiguousSourcePacket();
+  assert.deepEqual(validateTaskPacket(source, { lane: 'claimed' }), []);
+  const recovery = reconciledPacket({ source_packet_id: '20260716-001-example' });
+  const updated = canonicalizeSourcePacket(source, recovery);
+  assert.deepEqual(validateTaskPacket(updated, { lane: 'claimed' }), []);
 });
 
 test('canonical reconciliation adds worker_task_link to legacy source packets only', () => {

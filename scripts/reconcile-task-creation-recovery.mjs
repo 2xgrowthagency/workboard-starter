@@ -22,6 +22,7 @@ import {
   serializePacketFrontmatter,
   validateRecoveryPacket,
 } from './check-task-creation-recovery.mjs';
+import { validateTaskPacket } from './check-task-packet.mjs';
 
 function parseArgs(argv) {
   const mode = argv.shift();
@@ -90,20 +91,33 @@ export function canonicalizeSourcePacket(source, recovery) {
   const updated = serializePacketFrontmatter(source, {
     worker_thread_id: recoveryFields.canonical_task_id,
     worker_task_link: recoveryFields.canonical_task_link,
+    worker_task_title: recoveryFields.canonical_task_title,
+    worker_host_identity: recoveryFields.canonical_host_identity,
     worker_creation_attempt_id: recoveryFields.canonical_worker_creation_attempt_id,
     worker_creation_status: 'canonical',
     worker_creation_proof: proof,
     worker_visibility_status: 'verified',
     worker_visibility_verified_at: recoveryFields.canonical_selected_at,
-    worker_visibility_proof: proof,
+    worker_visibility_proof: `method=app_native_list_read|receipt=${proof}`,
+    worker_routing_blocker: '',
     recovery_status: 'reconciled',
     recovery_pending: 'false',
-  }, { insertMissingFields: ['worker_task_link'] });
+  }, {
+    insertMissingFields: [
+      'worker_task_link', 'worker_task_title', 'worker_host_identity', 'worker_routing_blocker',
+    ],
+  });
   const updatedFields = sourceMetadata(updated);
   if (updatedFields.worker_creation_status !== 'canonical' ||
       updatedFields.worker_visibility_status !== 'verified' ||
       updatedFields.recovery_pending !== 'false') {
     throw new Error('canonical source packet failed post-serialization validation');
+  }
+  if (updatedFields.packet_schema_version === '2') {
+    const packetErrors = validateTaskPacket(updated, { lane: 'claimed' });
+    if (packetErrors.length > 0) {
+      throw new Error(`canonical v2 source packet is invalid: ${packetErrors.join('; ')}`);
+    }
   }
   return updated;
 }

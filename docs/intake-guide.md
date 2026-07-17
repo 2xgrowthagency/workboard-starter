@@ -14,6 +14,8 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 - Any model/reasoning override, its machine-recognized task-local reason category, and optional descriptive note.
 - Stop conditions.
 - Links or pasted task-local context.
+- `packet_schema_version: 2` metadata from the current template, including the
+  initial `STATE: ready` or `STATE: backlog` transition receipt.
 
 ## Keep out
 
@@ -34,9 +36,17 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 1. Copy `templates/task-packet.md` into `tasks/ready/YYYY-MM-DD-001-short-slug.md`.
 2. Fill metadata and all acceptance/proof sections.
 3. Check that `target_project_id` exists in `projects.yaml`.
-4. Leave role model/reasoning fields blank unless the packet intentionally overrides project/default routing. High requires exactly `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex` in the role reason-category field. Luna requires exact `bounded_high_volume` eligibility plus independent verification.
-5. Commit and push.
-6. Let the root orchestrator claim it during the next loop.
+4. Leave v2 `root_*` and `worker_*` model/reasoning fields blank unless the
+   packet intentionally overrides routing. Root resolves packet override,
+   project override, or portable default and writes the result before claim.
+   High requires exactly `high_stakes`, `security_sensitive`,
+   `repeatedly_blocked`, or `unusually_complex` in the role reason-category
+   field. Luna requires exact `bounded_high_volume` eligibility plus independent verification.
+   Do not use legacy `orchestrator_*` aliases.
+5. Append the initial transition log and run
+   `node scripts/check-task-packet.mjs <packet> --lane ready` (or `backlog`).
+6. Commit and push.
+7. Let the root orchestrator claim it during the next loop.
 
 ## When to require independent QA
 
@@ -49,5 +59,14 @@ Define the QA contract in the packet:
 - required tools, URLs, viewports, and interactions;
 - local artifact directory and screenshot policy;
 - checks that may return `BLOCKED` rather than being skipped.
+- the durable `qa_artifacts_root` and task-specific `qa_artifacts_dir`;
+- `qa_immutable_target_type` and `qa_immutable_target` copied from the pinned
+  target;
+- `qa_prior_head` and `qa_prior_result` together when resuming only unresolved
+  criteria from an earlier QA run;
+- publication status and receipt fields kept separate from the verdict.
 
 The QA companion reports `PASS`, `FAIL`, or `BLOCKED`. It does not quietly fix the implementation.
+
+See `docs/task-packet-schema.md` for state-specific fields, allowed transitions,
+receipt rules, fail-closed validation, and the explicit legacy migration path.

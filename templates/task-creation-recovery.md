@@ -21,6 +21,8 @@ raw_task_id: <returned-task-id-or-unknown>
 recovery_started_at: YYYY-MM-DDTHH:MM:SSZ
 canonical_task_id:
 canonical_task_link:
+canonical_task_title:
+canonical_host_identity:
 canonical_worker_creation_attempt_id:
 canonical_selected_at:
 replacement_authorized: false
@@ -114,6 +116,8 @@ readback proves the title, target, cwd, host/local identity, and handoff.
 ```text
 CANONICAL_TASK_ID:
 CANONICAL_TASK_LINK: ::created-thread{threadId="<CANONICAL_TASK_ID>"}
+CANONICAL_TASK_TITLE:
+CANONICAL_HOST_IDENTITY:
 CANONICAL_ROOT_TASK_ID:
 CANONICAL_WORKER_CREATION_ATTEMPT_ID:
 CANONICAL_TARGET_PROJECT_ID:
