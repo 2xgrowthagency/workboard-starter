@@ -15,8 +15,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 4. Stop on `NOTHING_TO_CLAIM`, `WORKBOARD_SYNC_NEEDED`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
 5. On `QA_RESULT_AVAILABLE`, read only the emitted QA packets, verify their evidence, and route each verdict to its exact next lane without launching duplicate QA.
 6. On `WORK_IN_PROGRESS`, report counts and locks, then stop without reading active packets or task history.
-7. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
-8. Read `projects.yaml` only when routing is needed. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
+7. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md` and inspect only emitted candidates.
+8. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
+9. Read `projects.yaml` only when routing is needed. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
 
 ## Core loop
 
@@ -42,6 +43,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
+- Run dependency promotion as a root-owned transition: `auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges, `review` permits one bounded `ready_when` check, and manual or human/external blockers require new proof. Never make workers promote downstream packets.
 - Commit and push every transition.
 
 ## Ambiguous creation hard stop
