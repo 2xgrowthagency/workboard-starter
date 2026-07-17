@@ -75,3 +75,16 @@ test('finalizer composes with dependency, idle, visibility, and Sol Medium contr
     assert.match(contents, /app-native/i, `${path} must preserve the app-native boundary`);
   }
 });
+
+test('shared operator surfaces retain finalizer and known-issues guidance', () => {
+  for (const path of [
+    'README.md',
+    'docs/automation-examples.md',
+    'docs/orchestrator-protocol.md',
+    'skills/workboard-orchestrator/SKILL.md',
+  ]) {
+    const contents = read(path);
+    assert.match(contents, /codex-task-finalization\.md/, `${path} must link task finalization`);
+    assert.match(contents, /known-issues-and-recovery\.md/, `${path} must link known-issues recovery`);
+  }
+});
