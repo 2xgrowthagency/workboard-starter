@@ -13,8 +13,10 @@ rules:
   orchestrator_default_reasoning: medium
   qa_default_model: gpt-5.6-sol
   qa_default_reasoning: medium
-  high_reasoning_requires_recorded_reason: true
-  luna_medium_requires_bounded_exploration_and_independent_verification: true
+  high_reasoning_allowed_categories: [high_stakes, security_sensitive, repeatedly_blocked, unusually_complex]
+  high_reasoning_requires_packet_category: true
+  luna_required_eligibility: bounded_high_volume
+  luna_requires_independent_verification: true
   no_thread_reparenting: true
   no_subworkers_by_default: true
   max_active_tasks: 3
@@ -52,7 +54,7 @@ projects:
     default_model: gpt-5.6-sol
     default_reasoning: medium
     escalation_reasoning: high
-    escalation_requires_recorded_reason: true
+    escalation_requires_packet_category: true
     qa_default_model: gpt-5.6-sol
     qa_default_reasoning: medium
     qa_requires_browser: false

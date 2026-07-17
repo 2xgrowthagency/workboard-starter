@@ -95,8 +95,8 @@ supported clickable task link or directive.
 - Max active claimed or active-QA tasks: 3.
 - Root orchestration, implementation, documentation, tests, and routine QA: `gpt-5.6-sol` with medium reasoning.
 - Packet model/reasoning overrides take precedence over project overrides; portable defaults apply only when neither is set.
-- Any high-reasoning escalation requires a recorded task-local reason. Appropriate reasons include high-stakes, security-sensitive, repeatedly blocked, or unusually complex work.
-- `gpt-5.6-luna` is limited to medium-reasoning, bounded high-volume exploration whose result will be independently verified.
+- Any high-reasoning escalation requires a task-local reason category of exactly `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`; optional prose is a separate note.
+- `gpt-5.6-luna` is limited to medium reasoning with exact `bounded_high_volume` eligibility and `independent_verification: true`.
 - Workers do not spawn subworkers unless explicitly authorized by the packet.
 - QA runs as a separate task, keeps the product target read-only, and does not quietly fix the implementation.
 - Claimed and active-QA packets lock only their exact target tuple; `parallel_safe` does not override a lock.

@@ -11,6 +11,10 @@ target_path: <portable-or-configured-target-path>
 worker_creation_surface: <app-native-tool-and-host>
 requested_model: <model-id-or-unknown>
 requested_reasoning: <reasoning-level-or-unknown>
+requested_reason_category: <allowed-category-or-none>
+requested_reason_note: <descriptive-note-or-none>
+requested_luna_eligibility: <bounded_high_volume-or-none>
+requested_independent_verification: <true-or-false>
 creation_started_at: YYYY-MM-DDTHH:MM:SSZ
 creation_outcome_at: YYYY-MM-DDTHH:MM:SSZ
 raw_task_id: <returned-task-id-or-unknown>

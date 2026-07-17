@@ -128,21 +128,23 @@ Use `gpt-5.6-sol` with medium reasoning as the portable default for root
 orchestration, implementation, documentation, tests, and routine QA. Resolve
 each role independently in this order:
 
-1. Explicit task-packet model, reasoning, and recorded reason.
-2. Explicit target-project model, reasoning, and recorded reason.
+1. Explicit task-packet model and reasoning.
+2. Explicit target-project model and reasoning.
 3. Portable `gpt-5.6-sol` medium defaults.
 
 Packet and project overrides are intentional routing inputs, not defaults to
 rewrite. Template role fields stay blank so copied packets do not mask project
-settings. Any route using high reasoning must record a task-local reason before
-dispatch. Reserve that escalation for high-stakes, security-sensitive,
-repeatedly blocked, or unusually complex work. Portable reasoning values are
-`low`, `medium`, and `high`; malformed or unsupported values fail closed.
+settings. Any route using high reasoning must set the role's task-local
+`*_model_routing_reason_category` to exactly `high_stakes`,
+`security_sensitive`, `repeatedly_blocked`, or `unusually_complex` before
+dispatch. Optional descriptive prose belongs in the separate
+`*_model_routing_reason_note`. Portable reasoning values are `low`, `medium`,
+and `high`; malformed or unsupported values fail closed.
 
-`gpt-5.6-luna` is allowed only at medium reasoning for bounded high-volume
-exploration. The packet must state the exploration boundary and require an
-independent verifier to inspect the result before completion. Luna output is
-not its own verification.
+`gpt-5.6-luna` is allowed only at medium reasoning when the role's
+`*_luna_eligibility` is exactly `bounded_high_volume` and the matching
+`*_independent_verification` is `true`. Any other eligibility value or missing
+verification rejects the route. Luna output is not its own verification.
 
 Validate any override, high escalation, or Luna route before dispatch:
 
@@ -150,19 +152,19 @@ Validate any override, high escalation, or Luna route before dispatch:
 node scripts/check-model-routing.mjs \
   --packet-model "$PACKET_MODEL" \
   --packet-reasoning "$PACKET_REASONING" \
-  --packet-reason "$PACKET_MODEL_ROUTING_REASON" \
+  --packet-reason-category "$PACKET_MODEL_ROUTING_REASON_CATEGORY" \
+  --packet-reason-note "$PACKET_MODEL_ROUTING_REASON_NOTE" \
   --project-model "$PROJECT_MODEL" \
   --project-reasoning "$PROJECT_REASONING" \
-  --work-kind "$WORK_KIND" \
-  --bounded-exploration "$BOUNDED_EXPLORATION" \
+  --luna-eligibility "$LUNA_ELIGIBILITY" \
   --independent-verification "$INDEPENDENT_VERIFICATION"
 ```
 
 `MODEL_ROUTING_STATUS=REJECTED` or `CHECK_FAILED` is a routing hard stop. Include
-the resolved model, reasoning, source, and recorded reason in the create handoff
-and recovery record. A project-level reason cannot substitute for the role's
-packet reason on a high route. Do not infer model policy from private memory or
-unrelated task history.
+the resolved model, reasoning, source, reason category/note, Luna eligibility,
+and verification requirement in the create handoff and recovery record. Unknown,
+duplicate, missing-value, and misspelled CLI options return `CHECK_FAILED`. Do
+not infer model policy from private memory or unrelated task history.
 
 ## Polling loop
 
@@ -393,7 +395,10 @@ Handoff identity:
 - worker_host_identity: <host-local-identity>
 - model: <resolved-model>
 - reasoning: <resolved-reasoning>
-- model_routing_reason: <recorded-reason-or-none>
+- model_routing_reason_category: <allowed-category-or-none>
+- model_routing_reason_note: <descriptive-note-or-none>
+- luna_eligibility: <bounded_high_volume-or-none>
+- independent_verification: <true-or-false>
 
 Rules:
 - Work only inside the task target_path, except you may append proof/status to the Workboard packet.
@@ -439,7 +444,10 @@ Handoff identity:
 - target_path: <canonical-target-path>
 - model: <resolved-qa-model>
 - reasoning: <resolved-qa-reasoning>
-- model_routing_reason: <recorded-reason-or-none>
+- model_routing_reason_category: <allowed-category-or-none>
+- model_routing_reason_note: <descriptive-note-or-none>
+- luna_eligibility: <bounded_high_volume-or-none>
+- independent_verification: <true-or-false>
 
 Rules:
 - Treat the builder's summary as a claim, not evidence.

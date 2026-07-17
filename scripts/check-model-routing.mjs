@@ -7,6 +7,24 @@ export const PORTABLE_MODEL = 'gpt-5.6-sol';
 export const PORTABLE_REASONING = 'medium';
 export const LUNA_MODEL = 'gpt-5.6-luna';
 export const PORTABLE_REASONING_LEVELS = new Set(['low', 'medium', 'high']);
+export const HIGH_REASON_CATEGORIES = new Set([
+  'high_stakes',
+  'security_sensitive',
+  'repeatedly_blocked',
+  'unusually_complex',
+]);
+export const LUNA_ELIGIBILITY = 'bounded_high_volume';
+
+const CLI_FLAGS = new Set([
+  'packet-model',
+  'packet-reasoning',
+  'packet-reason-category',
+  'packet-reason-note',
+  'project-model',
+  'project-reasoning',
+  'luna-eligibility',
+  'independent-verification',
+]);
 
 function firstValue(...values) {
   return values.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
@@ -25,40 +43,47 @@ function selectedValue(packetValue, projectValue, fallback) {
 export function resolveModelRouting({
   packetModel = '',
   packetReasoning = '',
-  packetReason = '',
+  packetReasonCategory = '',
+  packetReasonNote = '',
   projectModel = '',
   projectReasoning = '',
-  projectReason = '',
-  workKind = 'implementation',
-  boundedExploration = false,
+  lunaEligibility = '',
   independentVerification = false,
 } = {}) {
   const model = selectedValue(packetModel, projectModel, PORTABLE_MODEL);
   const reasoning = selectedValue(packetReasoning, projectReasoning, PORTABLE_REASONING);
-  const taskReason = firstValue(packetReason);
-  const reason = firstValue(taskReason, projectReason);
+  const reasonCategory = firstValue(packetReasonCategory);
+  const reasonNote = firstValue(packetReasonNote);
+  const eligibility = firstValue(lunaEligibility);
   const errors = [];
 
   if (!PORTABLE_REASONING_LEVELS.has(reasoning.value)) {
     errors.push('reasoning must be one of low, medium, or high');
   }
-  if (reasoning.value === 'high' && !taskReason) {
-    errors.push('high reasoning requires a recorded model-routing reason');
+  if (reasonCategory && !HIGH_REASON_CATEGORIES.has(reasonCategory)) {
+    errors.push('high reasoning category must be one of high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex');
+  }
+  if (reasoning.value === 'high' && !HIGH_REASON_CATEGORIES.has(reasonCategory)) {
+    errors.push('high reasoning requires a machine-recognized packet reason category');
+  } else if (reasoning.value !== 'high' && reasonCategory) {
+    errors.push('high reasoning category may only be set when reasoning is high');
+  }
+  if (reasonNote && !reasonCategory) {
+    errors.push('reason note requires a high reasoning category');
   }
 
   if (model.value === LUNA_MODEL) {
     if (reasoning.value !== PORTABLE_REASONING) {
       errors.push('Luna is limited to medium reasoning');
     }
-    if (workKind !== 'exploration') {
-      errors.push('Luna is limited to exploration work');
-    }
-    if (!boundedExploration) {
-      errors.push('Luna requires a bounded exploration scope');
+    if (eligibility !== LUNA_ELIGIBILITY) {
+      errors.push('Luna requires bounded_high_volume eligibility');
     }
     if (!independentVerification) {
-      errors.push('Luna requires independent verification');
+      errors.push('Luna requires independent_verification=true');
     }
+  } else if (eligibility) {
+    errors.push('Luna eligibility may only be set for gpt-5.6-luna');
   }
 
   return {
@@ -66,7 +91,10 @@ export function resolveModelRouting({
     reasoning: reasoning.value,
     modelSource: model.source,
     reasoningSource: reasoning.source,
-    reason,
+    reasonCategory,
+    reasonNote,
+    lunaEligibility: eligibility,
+    independentVerification,
     valid: errors.length === 0,
     errors,
   };
@@ -83,10 +111,20 @@ function parseArgs(args) {
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
-    if (!flag?.startsWith('--') || value === undefined) {
-      throw new Error('arguments must be --name value pairs');
+    if (!flag?.startsWith('--')) {
+      throw new Error(`invalid option name: ${flag || '<empty>'}`);
     }
-    options[flag.slice(2)] = value;
+    const name = flag.slice(2);
+    if (!CLI_FLAGS.has(name)) {
+      throw new Error(`unknown option: --${name}`);
+    }
+    if (Object.hasOwn(options, name)) {
+      throw new Error(`duplicate option: --${name}`);
+    }
+    if (value === undefined || value.startsWith('--')) {
+      throw new Error(`missing value for --${name}`);
+    }
+    options[name] = value;
   }
   return options;
 }
@@ -101,12 +139,11 @@ function main() {
     const result = resolveModelRouting({
       packetModel: options['packet-model'],
       packetReasoning: options['packet-reasoning'],
-      packetReason: options['packet-reason'],
+      packetReasonCategory: options['packet-reason-category'],
+      packetReasonNote: options['packet-reason-note'],
       projectModel: options['project-model'],
       projectReasoning: options['project-reasoning'],
-      projectReason: options['project-reason'],
-      workKind: options['work-kind'],
-      boundedExploration: parseBoolean(options['bounded-exploration'] || 'false', 'bounded-exploration'),
+      lunaEligibility: options['luna-eligibility'],
       independentVerification: parseBoolean(options['independent-verification'] || 'false', 'independent-verification'),
     });
     if (!result.valid) {
@@ -116,7 +153,9 @@ function main() {
     }
     console.log(
       `MODEL_ROUTING_STATUS=VALID MODEL=${encode(result.model)} REASONING=${encode(result.reasoning)} ` +
-      `MODEL_SOURCE=${result.modelSource} REASONING_SOURCE=${result.reasoningSource} RECORDED_REASON=${encode(result.reason)}`,
+      `MODEL_SOURCE=${result.modelSource} REASONING_SOURCE=${result.reasoningSource} ` +
+      `REASON_CATEGORY=${encode(result.reasonCategory)} REASON_NOTE=${encode(result.reasonNote)} ` +
+      `LUNA_ELIGIBILITY=${encode(result.lunaEligibility)} INDEPENDENT_VERIFICATION=${result.independentVerification}`,
     );
   } catch (error) {
     console.error(`MODEL_ROUTING_STATUS=CHECK_FAILED REASON=${encode(error.message)}`);

@@ -23,7 +23,7 @@ You should:
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
 13. Give every builder and QA create handoff the persistent source `root_task_id`, packet ID, current `worker_creation_attempt_id`, `target_project_id`, `target_path`, associated PR/issue URLs, and publication policy. Do not include a future worker task ID; app-native readback writes canonical `worker_thread_id` afterward.
-14. Resolve model and reasoning packet override first, project override second, and portable default last. Validate overrides/escalations with `scripts/check-model-routing.mjs` and include the resolved route plus any recorded reason in the handoff.
+14. Resolve model and reasoning packet override first, project override second, and portable default last. Validate overrides/escalations with `scripts/check-model-routing.mjs` and include the resolved route, reason category/note, Luna eligibility, and verification setting in the handoff.
 15. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
 16. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 17. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
@@ -90,11 +90,13 @@ tests, and routine QA is `gpt-5.6-sol` with medium reasoning. Resolve explicit
 packet fields first, project registry fields second, and these defaults last.
 Packet/project overrides may select another available model or reasoning level.
 
-Before using high reasoning, record a task-local reason in the role's packet
-field. High is an escalation for high-stakes, security-sensitive, repeatedly
-blocked, or unusually complex work, not a standing project default. Use
-`gpt-5.6-luna` only with medium reasoning for bounded high-volume exploration,
-and require independent verification of its result. Run
+Before using high reasoning, set the role's task-local
+`*_model_routing_reason_category` to exactly `high_stakes`,
+`security_sensitive`, `repeatedly_blocked`, or `unusually_complex`; optional
+prose belongs in `*_model_routing_reason_note`. High is an escalation, not a
+standing project default. Use `gpt-5.6-luna` only with medium reasoning when
+`*_luna_eligibility` is exactly `bounded_high_volume` and
+`*_independent_verification` is `true`. Run
 `node scripts/check-model-routing.mjs` before dispatching an override,
 high-reasoning route, or Luna route; a rejected route is a hard stop.
 

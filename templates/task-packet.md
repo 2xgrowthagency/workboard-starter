@@ -47,7 +47,10 @@ qa_status: not_required
 qa_codex_project:
 qa_model:
 qa_reasoning:
-qa_model_routing_reason:
+qa_model_routing_reason_category:
+qa_model_routing_reason_note:
+qa_luna_eligibility:
+qa_independent_verification: false
 qa_requires_browser: false
 qa_requires_computer_use: false
 qa_artifact_policy: local_paths_only
@@ -69,12 +72,15 @@ target_project_name: Workboard
 target_path: /Users/YOU/dev/workboard
 orchestrator_model:
 orchestrator_reasoning:
-orchestrator_model_routing_reason:
+orchestrator_model_routing_reason_category:
+orchestrator_model_routing_reason_note:
+orchestrator_luna_eligibility:
+orchestrator_independent_verification: false
 worker_model:
 worker_reasoning:
-worker_model_routing_reason:
-worker_work_kind: implementation
-worker_bounded_exploration: false
+worker_model_routing_reason_category:
+worker_model_routing_reason_note:
+worker_luna_eligibility:
 worker_independent_verification: false
 branch_policy: create_branch
 allowed_actions: [inspect, edit, test]
@@ -164,8 +170,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Resolve each role's routing packet override first, then project override, then the portable `gpt-5.6-sol` medium default.
-- Record the reason in the matching `*_model_routing_reason` field before escalating any role to high reasoning.
-- Use `gpt-5.6-luna` only at medium reasoning for `worker_work_kind: exploration` when the scope is bounded and `worker_independent_verification: true`; the independent verifier must inspect the result before completion.
+- Before escalating any role to high reasoning, set its `*_model_routing_reason_category` to exactly `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`. Put optional descriptive context in the separate `*_model_routing_reason_note` field.
+- Use `gpt-5.6-luna` only at medium reasoning when the role's `*_luna_eligibility` is exactly `bounded_high_volume` and `*_independent_verification: true`; the independent verifier must inspect the result before completion.
 - Keep all context task-local. No private memory dumps and no secrets.
 
 ## Status log
