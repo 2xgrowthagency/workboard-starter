@@ -161,6 +161,9 @@ test('ST-011 release record declares explicit v2 migration and adoption backlink
   assert.match(record, /^migration_impact: .*packet_schema_version 2.*--allow-legacy.*read-only/m);
   assert.match(record, /^source_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-starter\/issues\/11)$/m);
   assert.match(record, /^downstream_adoption_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-starter\/issues\/11)$/m);
+  assert.match(record, /11b54b41611a429eea406400e5a62f9487fdc360/);
+  assert.match(record, /merged ST-008\s+conservative task finalizer/);
+  assert.match(record, /packet v2[\s\S]*finalizer classification remains\s+read-only/);
 });
 
 test('accepts a locked active packet with immutable target metadata', () => {

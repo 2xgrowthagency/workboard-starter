@@ -31,3 +31,22 @@ history.
 
 Customized clones retain the public ST-011 issue link in their local adoption
 record. No fork relationship or remote naming convention is required.
+
+## Synchronized Surface Evidence
+
+This packet-schema upgrade is synchronized against starter main commit
+`11b54b41611a429eea406400e5a62f9487fdc360`, including the merged ST-008
+conservative task finalizer. The shared orchestrator protocol, portable skill,
+packet template, and automation examples retain both contracts: packet v2
+mutations remain strict and fail closed, while finalizer classification remains
+read-only, bounded, strictly parsed, and separate from packet movement, lock
+release, callback routing, and live visibility proof.
+
+Validate the complete production-derived surface with:
+
+```bash
+node scripts/check-upstream-sync.mjs \
+  --repo <WORKBOARD_STARTER_ROOT> \
+  --base 11b54b41611a429eea406400e5a62f9487fdc360 \
+  --record docs/releases/st-011-task-packet-metadata.md
+```
