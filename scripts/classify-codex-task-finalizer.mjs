@@ -7,6 +7,22 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const DEFAULT_SETTLE_SECONDS = 120;
+const SUMMARY_COUNTERS = new Set([
+  'CLAIMED',
+  'QA_ACTIVE',
+  'QA_PENDING',
+  'QA_COMPLETE',
+  'READY',
+  'CAPACITY',
+  'AVAILABLE_CAPACITY',
+  'NO_ACTION_STREAK',
+]);
+const BOOLEAN_SUMMARY_FIELDS = new Set([
+  'CAPACITY_REACHED',
+  'IDLE_PAUSE_RECOMMENDED',
+  'IDLE_PAUSE_REQUESTED',
+]);
+const PAUSE_ACTIONS = new Set(['none', 'recommend', 'pause']);
 const QUEUE_STATUSES = new Set([
   'NOTHING_TO_CLAIM',
   'WORK_IN_PROGRESS',
@@ -57,6 +73,79 @@ function toolOutputFailed(payload) {
     || failedStatuses.has(String(record.status ?? '').toLowerCase()));
 }
 
+function parseQueueReceipt(receipt) {
+  const fields = {};
+  for (const token of receipt.split(/\s+/)) {
+    const separator = token.indexOf('=');
+    const key = token.slice(0, separator);
+    const value = token.slice(separator + 1);
+    if (Object.hasOwn(fields, key)) {
+      return { error: 'duplicate_summary_key' };
+    }
+    fields[key] = value;
+  }
+
+  for (const key of SUMMARY_COUNTERS) {
+    if (Object.hasOwn(fields, key) && !/^\d+$/.test(fields[key])) {
+      return { error: 'malformed_summary_counter' };
+    }
+  }
+  for (const key of BOOLEAN_SUMMARY_FIELDS) {
+    if (Object.hasOwn(fields, key) && !/^[01]$/.test(fields[key])) {
+      return { error: 'malformed_summary_counter' };
+    }
+  }
+  if (Object.hasOwn(fields, 'IDLE_PAUSE_ACTION') && !PAUSE_ACTIONS.has(fields.IDLE_PAUSE_ACTION)) {
+    return { error: 'malformed_pause_bookkeeping' };
+  }
+  const hasUsefulErrorEvidence = Object.entries(fields).some(([key, value]) => {
+    if (key === 'QUEUE_STATUS' || /^IDLE_PAUSE_(?:RECOMMENDED|REQUESTED|ACTION)$/.test(key) || key === 'NO_ACTION_STREAK') {
+      return false;
+    }
+    return /ERROR|FAIL|BLOCKER|EXCEPTION|STALL|TIMEOUT/i.test(key)
+      || /(?:^|[_-])(?:error|fail(?:ed|ure)?|blocker|exception|stall(?:ed)?|timeout)(?:$|[_-])/i.test(value);
+  });
+  return { error: '', receipt, status: fields.QUEUE_STATUS, fields, hasUsefulErrorEvidence };
+}
+
+function isExactPauseBookkeeping(text) {
+  const tokens = String(text).trim().split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && tokens.every((token) =>
+    /^NO_ACTION_STREAK=\d+$/.test(token)
+    || /^IDLE_PAUSE_(?:RECOMMENDED|REQUESTED)=[01]$/.test(token)
+    || /^IDLE_PAUSE_ACTION=(?:none|recommend|pause)$/.test(token));
+}
+
+function usefulErrorEvidence(text) {
+  for (const rawLine of String(text).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || isExactPauseBookkeeping(line)) continue;
+    if (/\b(?:IDLE_PAUSE_[A-Z_]+|NO_ACTION_STREAK)=/i.test(line)) return true;
+    if (/^(?:\[(?:error|blocked)\]|(?:error|fail(?:ed|ure)?|blocker|exception)\s*[:=])/i.test(line)) {
+      return true;
+    }
+    if (/\b[A-Z0-9_]*(?:ERROR|FAIL(?:ED|URE)?|BLOCKER|EXCEPTION|STALL|TIMEOUT)[A-Z0-9_]*=[^\s]+/i.test(line)) {
+      return true;
+    }
+    const operationalLine = line
+      .replace(/\b(?:error|exception) handling\b/gi, '')
+      .replace(/\bfailure modes?\b/gi, '')
+      .replace(/\b(?:error|failure|blocker|exception|timeout) documentation\b/gi, '')
+      .replace(/\b(?:without|no)\s+(?:any\s+)?(?:tool\s+)?(?:errors?|failures?|blockers?|exceptions?|timeouts?|stalls?)(?:\s+(?:or|and)\s+(?:errors?|failures?|blockers?|exceptions?|timeouts?|stalls?))*\b/gi, '');
+    const subject = '(?:script|command|tool|call|request|readback|rename|archive|pause|fetch|checkout|queue check|classifier|automation|app-native|thread|operation)';
+    const problem = '(?:errors?|failed|failure|blockers?|exceptions?|timed?\\s*out|timeouts?|stalled?|hung|unavailable|did not return|no output)';
+    if (new RegExp(`\\b${subject}\\b.{0,80}\\b${problem}\\b`, 'i').test(operationalLine)
+      || new RegExp(`\\b${problem}\\b.{0,80}\\b${subject}\\b`, 'i').test(operationalLine)
+      || /\bno output for \d+\s*(?:seconds?|minutes?)\b/i.test(operationalLine)
+      || /\b(?:process|command|script) exit(?:ed)?(?: with)? (?:status|code) [1-9]\d*\b/i.test(operationalLine)
+      || /\b(?:uncaught|unhandled)\s+(?:error|exception)\b/i.test(operationalLine)
+      || /\b[A-Za-z]+(?:Error|Exception):\s*\S/i.test(operationalLine)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function initialAutomationMessage(items) {
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
@@ -67,15 +156,6 @@ function initialAutomationMessage(items) {
   return null;
 }
 
-function lastMatch(text, expression) {
-  return [...text.matchAll(expression)].at(-1);
-}
-
-function countField(text, field) {
-  const match = lastMatch(text, new RegExp(`(?:^|\\s)${field}=(\\d+)(?=\\s|$)`, 'gm'));
-  return match ? Number(match[1]) : null;
-}
-
 function hasCanonicalProof(text) {
   const canonicalPair = /(?:^|\n)worker_creation_status:\s*canonical\s*$/im.test(text)
     && /(?:^|\n)worker_visibility_status:\s*verified\s*$/im.test(text)
@@ -83,15 +163,19 @@ function hasCanonicalProof(text) {
   return canonicalPair || /(?:^|\s)(?:WORKER|QA)_DELEGATION_STATUS=VERIFIED(?=\s|$)/m.test(text);
 }
 
-function preservationReason(text) {
-  if (hasCanonicalProof(text)) return 'canonical_worker_proof';
-  if (/ROOT_RECONCILIATION_REQUIRED|recovery_pending:\s*true|worker_visibility_status:\s*ambiguous/i.test(text)) {
+function preservationReason(session) {
+  if (hasCanonicalProof(session.evidenceText)) return 'canonical_worker_proof';
+  if (/ROOT_RECONCILIATION_REQUIRED|recovery_pending:\s*true|worker_visibility_status:\s*ambiguous/i.test(session.evidenceText)) {
     return 'worker_recovery_or_callback_blocker';
   }
-  if (/IDLE_PAUSE_(?:REQUESTED|RECOMMENDED)=1/i.test(text)
-    && /(?:blocked|failed|timeout|timed out|unavailable|remains active)/i.test(text)) {
+  if (/IDLE_PAUSE_(?:REQUESTED|RECOMMENDED)=1/i.test(session.evidenceText)
+    && /(?:blocked|failed|timeout|timed out|unavailable|remains active)/i.test(session.archiveEvidenceText)) {
     return 'idle_pause_blocker';
   }
+  if (session.hasErroredToolOutput || usefulErrorEvidence(session.archiveEvidenceText)) {
+    return 'useful_error_evidence';
+  }
+  if (session.queueSummary?.hasUsefulErrorEvidence) return 'useful_error_evidence';
   return '';
 }
 
@@ -123,7 +207,11 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
   let finalText = '';
   let hasFinal = false;
   const evidence = [];
+  const archiveEvidence = [];
   const queueReceipts = [];
+  const receiptErrors = [];
+  let queueReceiptAttempts = 0;
+  let hasErroredToolOutput = false;
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index];
     const userText = extractMessageText(item, 'user').trim();
@@ -156,8 +244,17 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
       const outputText = extractOutputText(payload.output);
       evidence.push(outputText);
       const receipt = outputText.trim();
-      if (!toolOutputFailed(payload) && /^QUEUE_STATUS=[A-Z_]+(?: [A-Z][A-Z0-9_]*=\S+)*$/.test(receipt)) {
-        queueReceipts.push(receipt);
+      const failed = toolOutputFailed(payload);
+      hasErroredToolOutput ||= failed;
+      if (!failed && receipt.startsWith('QUEUE_STATUS=')) {
+        queueReceiptAttempts += 1;
+        if (/^QUEUE_STATUS=[A-Z_]+(?: [A-Z][A-Z0-9_]*=\S+)*$/.test(receipt)) {
+          queueReceipts.push(parseQueueReceipt(receipt));
+        } else {
+          receiptErrors.push('malformed_queue_receipt');
+        }
+      } else if (!isExactPauseBookkeeping(receipt)) {
+        archiveEvidence.push(outputText);
       }
     }
   }
@@ -165,6 +262,10 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
   const lastTimestamp = items.map((item) => Date.parse(item?.timestamp ?? '')).filter(Number.isFinite).at(-1);
   const recent = Number.isFinite(lastTimestamp)
     && nowMs - lastTimestamp < settleSeconds * 1000;
+  const receiptAmbiguity = queueReceiptAttempts > 1
+    ? 'multiple_queue_receipts'
+    : receiptErrors[0] ?? queueReceipts[0]?.error ?? '';
+  const queueSummary = receiptAmbiguity ? null : queueReceipts[0] ?? null;
 
   return {
     valid: true,
@@ -174,7 +275,11 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
     recent,
     hasManualFollowup,
     finalText,
-    queueReceipt: queueReceipts.at(-1) ?? '',
+    queueReceipt: queueSummary?.receipt ?? '',
+    queueSummary,
+    receiptAmbiguity,
+    hasErroredToolOutput,
+    archiveEvidenceText: `${archiveEvidence.join('\n')}\n${finalText}`,
     evidenceText: `${evidence.join('\n')}\n${finalText}`,
   };
 }
@@ -201,9 +306,12 @@ export function classifyCodexSession(session) {
   if (session.hasManualFollowup) {
     return { type: 'MANUAL_FOLLOWUP', status: 'MANUAL_FOLLOWUP', reason: 'thread_has_manual_followup' };
   }
+  if (session.receiptAmbiguity) {
+    return { type: 'MANUAL_FOLLOWUP', status: 'AMBIGUOUS_SUMMARY', reason: session.receiptAmbiguity };
+  }
 
   const text = session.evidenceText;
-  const receiptStatus = session.queueReceipt.match(/^QUEUE_STATUS=([A-Z_]+)/)?.[1] ?? 'UNKNOWN';
+  const receiptStatus = session.queueSummary?.status ?? 'UNKNOWN';
   const finalStatus = inferredStatus(session.finalText);
   const compatibleErrorFamily = finalStatus === 'CHECK_FAILED'
     && ['CHECK_FAILED', 'WORKBOARD_SYNC_NEEDED', 'WORKBOARD_REQUIRES_JUDGMENT'].includes(receiptStatus);
@@ -220,7 +328,7 @@ export function classifyCodexSession(session) {
     return { type: 'FINALIZER_SKIP', status: 'UNKNOWN', reason: 'unrecognized_or_missing_outcome' };
   }
 
-  const preserve = preservationReason(text);
+  const preserve = preservationReason(session);
   if (status === 'NOTHING_TO_CLAIM') {
     return {
       type: 'FINALIZER_CANDIDATE',
@@ -231,10 +339,14 @@ export function classifyCodexSession(session) {
     };
   }
   if (status === 'WORK_IN_PROGRESS') {
-    const claimed = countField(session.queueReceipt, 'CLAIMED');
-    const qaActive = countField(session.queueReceipt, 'QA_ACTIVE');
-    const ready = countField(session.queueReceipt, 'READY');
-    const qaPending = countField(session.queueReceipt, 'QA_PENDING');
+    const claimed = session.queueSummary?.fields.CLAIMED === undefined
+      ? null : Number(session.queueSummary.fields.CLAIMED);
+    const qaActive = session.queueSummary?.fields.QA_ACTIVE === undefined
+      ? null : Number(session.queueSummary.fields.QA_ACTIVE);
+    const ready = session.queueSummary?.fields.READY === undefined
+      ? null : Number(session.queueSummary.fields.READY);
+    const qaPending = session.queueSummary?.fields.QA_PENDING === undefined
+      ? null : Number(session.queueSummary.fields.QA_PENDING);
     const exactClaimedOnly = claimed !== null && qaActive !== null && ready === 0 && qaPending === 0
       && claimed + qaActive > 0;
     return {

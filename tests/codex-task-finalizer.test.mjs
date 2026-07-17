@@ -204,6 +204,110 @@ test('state-first error finals accept specific sync and judgment receipts', () =
   }
 });
 
+test('duplicate summary keys fail closed even when values agree', () => {
+  for (const output of [
+    'QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=1 QA_ACTIVE=0 QA_PENDING=0 READY=1 READY=0',
+    'QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=1 QA_ACTIVE=0 QA_PENDING=0 READY=0 READY=0',
+    'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    'QUEUE_STATUS=NOTHING_TO_CLAIM HEAD=abc HEAD=abc',
+  ]) {
+    const result = classifyCodexSession(parsed({ output }));
+    assert.equal(result.type, 'MANUAL_FOLLOWUP');
+    assert.equal(result.status, 'AMBIGUOUS_SUMMARY');
+    assert.equal(result.reason, 'duplicate_summary_key');
+    assert.equal(result.action, undefined);
+  }
+});
+
+test('malformed counters and pause bookkeeping fail closed', () => {
+  for (const output of [
+    'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=zero QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    'QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=-1 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    'QUEUE_STATUS=NOTHING_TO_CLAIM IDLE_PAUSE_RECOMMENDED=yes',
+    'QUEUE_STATUS=NOTHING_TO_CLAIM IDLE_PAUSE_ACTION=archive',
+    'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0\nunexpected trailing summary',
+  ]) {
+    const result = classifyCodexSession(parsed({ output }));
+    assert.equal(result.type, 'MANUAL_FOLLOWUP');
+    assert.equal(result.status, 'AMBIGUOUS_SUMMARY');
+    assert.equal(result.action, undefined);
+  }
+});
+
+test('multiple or mixed queue receipts fail closed without a mutation candidate', () => {
+  for (const output of [
+    [
+      'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+      'QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=1 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    ],
+    [
+      'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+      'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    ],
+  ]) {
+    const result = classifyCodexSession(parsed({ output }));
+    assert.equal(result.type, 'MANUAL_FOLLOWUP');
+    assert.equal(result.reason, 'multiple_queue_receipts');
+    assert.equal(result.action, undefined);
+  }
+});
+
+test('useful error, blocker, exception, and tool-stall evidence suppresses archival', () => {
+  const cases = [
+    'Git fetch FAILED: authentication unavailable',
+    'BLOCKER: saved project readback is missing',
+    'Unhandled Exception while calling the automation API',
+    'set_thread_title call had no output for 60 seconds',
+    'FETCH_ERROR=credential_failure',
+  ];
+  for (const evidence of cases) {
+    for (const receipt of [
+      'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+      'QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=1 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    ]) {
+      const result = classifyCodexSession(parsed({ output: [receipt, evidence] }));
+      assert.equal(result.type, 'FINALIZER_CANDIDATE');
+      assert.equal(result.action, 'rename', evidence);
+      assert.equal(result.reason, 'useful_error_evidence', evidence);
+    }
+  }
+
+  const receiptEvidence = classifyCodexSession(parsed({
+    output: 'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0 TOOL_STALL=readback_timeout',
+  }));
+  assert.equal(receiptEvidence.action, 'rename');
+  assert.equal(receiptEvidence.reason, 'useful_error_evidence');
+});
+
+test('only exact pause bookkeeping is ignored by archival evidence scanning', () => {
+  const receipt = 'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0';
+  const pauseOnly = classifyCodexSession(parsed({ output: [
+    receipt,
+    'NO_ACTION_STREAK=4 IDLE_PAUSE_RECOMMENDED=1 IDLE_PAUSE_REQUESTED=0 IDLE_PAUSE_ACTION=recommend',
+  ] }));
+  assert.equal(pauseOnly.action, 'rename_archive');
+  assert.equal(pauseOnly.reason, 'exact_idle_outcome');
+
+  for (const malformed of [
+    'IDLE_PAUSE_RECOMMENDED=yes',
+    'IDLE_PAUSE_ACTION=archive',
+    'NO_ACTION_STREAK=many',
+  ]) {
+    const result = classifyCodexSession(parsed({ output: [receipt, malformed] }));
+    assert.equal(result.action, 'rename');
+    assert.equal(result.reason, 'useful_error_evidence');
+  }
+
+  for (const prose of [
+    'Documentation describes error handling and failure modes.',
+    'The tool error handling documentation was updated.',
+    'All tool calls completed without errors or blockers.',
+  ]) {
+    const adjacentProse = classifyCodexSession(parsed({ output: [receipt, prose] }));
+    assert.equal(adjacentProse.action, 'rename_archive', prose);
+  }
+});
+
 test('response-item final answers are recognized without treating commentary as final', () => {
   const responseFinal = parsed({ finalShape: 'response_item', final: '[idle] no work to claim', output: '' });
   assert.equal(responseFinal.hasFinal, true);

@@ -45,6 +45,16 @@ test('privacy and preservation boundaries are explicit', () => {
   assert.match(contract, /stop processing that task and preserve it for manual\s+review/i);
 });
 
+test('ambiguous summaries and useful errors cannot authorize archival', () => {
+  assert.match(contract, /every duplicate summary key \(even\s+when its values agree\)/i);
+  assert.match(contract, /malformed numeric\/boolean counters/i);
+  assert.match(contract, /Ambiguous summaries emit no mutation candidate/i);
+  assert.match(contract, /useful error evidence always\s+suppresses archival/i);
+  assert.match(contract, /ordinary prose about error handling is not treated as\s+an operational failure/i);
+  assert.match(contract, /NO_ACTION_STREAK=<integer>/);
+  assert.match(contract, /IDLE_PAUSE_ACTION=none\|recommend\|pause/);
+});
+
 test('finalizer composes with dependency, idle, visibility, and Sol Medium contracts', () => {
   assert.match(contract, /after any required\s+dependency promotion/i);
   assert.match(contract, /Ready or\s+pending-QA inventory suppresses claimed-only archival/i);

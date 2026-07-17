@@ -40,10 +40,12 @@ The classifier recognizes only successful, isolated one-line `QUEUE_STATUS`
 tool receipts and exact state-first final-answer prefixes. A token quoted inside
 documentation, packet text, multiline output, or a tool output marked as an
 error is not a receipt. Conflicting receipt and final-answer states produce
-`MANUAL_FOLLOWUP`. The classifier also fails
-closed on malformed JSONL, missing identity, duplicate automation markers,
-unknown outcomes, duplicate task input, manual follow-ups, and incomplete
-sessions.
+`MANUAL_FOLLOWUP`. So do multiple receipts, every duplicate summary key (even
+when its values agree), malformed numeric/boolean counters, and invalid pause
+bookkeeping. Ambiguous summaries emit no mutation candidate. The classifier
+also fails closed on malformed JSONL, missing identity, duplicate automation
+markers, unknown outcomes, duplicate task input, manual follow-ups, and
+incomplete sessions.
 
 | Outcome | Candidate title | Archive eligible |
 | --- | --- | --- |
@@ -64,6 +66,19 @@ proof uses the same `worker_creation_status: canonical`,
 `worker_visibility_status: verified`, and nonblank `worker_thread_id` contract
 as [live task visibility](live-task-visibility.md). The finalizer may improve a
 title around that evidence; it does not replace, weaken, or delete the proof.
+
+For otherwise idle or claimed-only outcomes, useful error evidence always
+suppresses archival. This includes errored tool metadata; structured
+`ERROR`/`FAIL`/`BLOCKER`/`EXCEPTION`/stall/timeout fields; fetch, command,
+readback, task-tool, or automation failures; unhandled exceptions; nonzero
+process exits; and tool stalls such as a call returning no output. Matching is
+case-insensitive but requires those structured markers or a failure tied to a
+recognized operation, so ordinary prose about error handling is not treated as
+an operational failure. The only pause/no-action evidence ignored by this scan
+is an exact allowlisted combination of `NO_ACTION_STREAK=<integer>`,
+`IDLE_PAUSE_RECOMMENDED=0|1`, `IDLE_PAUSE_REQUESTED=0|1`, and
+`IDLE_PAUSE_ACTION=none|recommend|pause`. Malformed or other pause fields
+suppress archival or make the receipt ambiguous.
 
 Duplicate rollout inputs for one task produce `MANUAL_FOLLOWUP`. If app-native
 list/read returns duplicate candidates or any rename/archive call reports a
