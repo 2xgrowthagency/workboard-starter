@@ -11,10 +11,10 @@ Workboard repo: <LOCAL_PATH_TO_WORKBOARD>
 
 Instructions:
 1. Inspect and safely synchronize the Workboard checkout.
-2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS>. Omit capacity only for the default of 3.
+2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. Omit capacity only for the default of 3; omit all idle-control flags for a stateless manual poll.
 3. Stop on WORKBOARD_SYNC_NEEDED, WORKBOARD_REQUIRES_JUDGMENT, or CHECK_FAILED.
-4. Stop on NOTHING_TO_CLAIM after reporting HEAD and queue counts.
-5. On WORK_IN_PROGRESS, report counts, locks, CAPACITY, and AVAILABLE_CAPACITY, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.
+4. Stop on NOTHING_TO_CLAIM after reporting the classifier line. Do not read packet bodies, project registries, non-routable lanes, thread history, or old automation narratives.
+5. On WORK_IN_PROGRESS, report the classifier line, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.
 6. For a routable lane, read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
 7. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
 8. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
@@ -26,10 +26,53 @@ Instructions:
 14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
 15. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
 16. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
-17. After recovery, rerun dependency promotion and queue classification, then commit/push every transition.
+17. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
+18. After recovery, rerun dependency promotion and queue classification, then commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
+
+## Idle and pause controls
+
+Use one state file per scheduled automation, outside the Workboard checkout. The
+file is machine-owned one-line JSON; do not append summaries or read historical
+automation prose to recover the streak. Create its external parent directory
+once during automation setup; the classifier creates or atomically replaces the
+file itself.
+
+Recommendation-only example:
+
+```bash
+node scripts/check-workboard-queue.mjs \
+  --repo <LOCAL_PATH_TO_WORKBOARD> \
+  --capacity 3 \
+  --run-memory <EXTERNAL_STATE_PATH>/poll.json \
+  --idle-pause-threshold 4 \
+  --idle-pause-action recommend
+```
+
+Automatic-pause example:
+
+```bash
+node scripts/check-workboard-queue.mjs \
+  --repo <LOCAL_PATH_TO_WORKBOARD> \
+  --capacity 3 \
+  --run-memory <EXTERNAL_STATE_PATH>/poll.json \
+  --idle-pause-threshold 4 \
+  --idle-pause-action pause
+```
+
+The second form emits `IDLE_PAUSE_REQUESTED=1` at the threshold. That is a
+request, not a successful mutation. The automation host must pause the exact
+current schedule through its supported API and read it back as paused. If the
+pause API is absent, times out, or readback remains active, report that exact
+blocker and leave the real automation state unchanged in the closeout. A host
+without pause support should use `recommend`.
+
+The streak counts only stable idle and claimed/active-QA-only snapshots. Any
+actionable lane or changed no-action queue signature resets it. In particular,
+ready work waiting at capacity suppresses pause so a paused schedule cannot hide
+work that becomes routable when capacity opens.
 
 ## Codex Desktop pattern
 
