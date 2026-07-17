@@ -3,20 +3,31 @@
 import {
   closeSync,
   existsSync,
+  lstatSync,
   openSync,
+  readFileSync,
   readSync,
   readdirSync,
+  realpathSync,
+  renameSync,
   statSync,
+  unlinkSync,
+  writeFileSync,
 } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
+
+const RUN_MEMORY_VERSION = 1;
+const MAX_RUN_MEMORY_BYTES = 4096;
 
 function usage() {
   console.error(
     'Usage: node scripts/check-workboard-queue.mjs [--repo /path/to/workboard] ' +
       '[--promotion-script /path/to/scanner.mjs] [--no-action-streak count] ' +
-      '[--idle-pause-threshold count] [--capacity count]',
+      '[--run-memory /path/outside/repo.json] [--idle-pause-threshold count] ' +
+      '[--idle-pause-action recommend|pause] [--capacity count]',
   );
 }
 
@@ -25,7 +36,10 @@ function parseArgs(argv) {
     repo: process.cwd(),
     promotionScript: null,
     noActionStreak: 0,
+    noActionStreakProvided: false,
+    runMemory: null,
     idlePauseThreshold: 0,
+    idlePauseAction: 'recommend',
     capacity: 3,
   };
 
@@ -48,9 +62,19 @@ function parseArgs(argv) {
         break;
       case '--no-action-streak':
         options.noActionStreak = parseCount(value, flag);
+        options.noActionStreakProvided = true;
+        break;
+      case '--run-memory':
+        options.runMemory = value;
         break;
       case '--idle-pause-threshold':
         options.idlePauseThreshold = parseCount(value, flag);
+        break;
+      case '--idle-pause-action':
+        if (!['recommend', 'pause'].includes(value)) {
+          throw new Error(`${flag} must be recommend or pause`);
+        }
+        options.idlePauseAction = value;
         break;
       case '--capacity':
         options.capacity = parsePositiveCount(value, flag);
@@ -65,12 +89,33 @@ function parseArgs(argv) {
   options.promotionScript = options.promotionScript
     ? resolve(options.promotionScript)
     : join(options.repo, 'scripts', 'check-workboard-promotions.mjs');
+  options.runMemory = options.runMemory ? resolve(options.runMemory) : null;
+  if (options.runMemory && options.noActionStreakProvided) {
+    throw new Error('--run-memory and --no-action-streak cannot be used together');
+  }
+  if (options.runMemory) {
+    let realRepo;
+    let realMemoryParent;
+    try {
+      realRepo = realpathSync(options.repo);
+      realMemoryParent = realpathSync(dirname(options.runMemory));
+    } catch {
+      throw new Error('--repo and the --run-memory parent directory must exist');
+    }
+    const realMemory = join(realMemoryParent, basename(options.runMemory));
+    if (realMemory === realRepo || realMemory.startsWith(`${realRepo}/`)) {
+      throw new Error('--run-memory must be outside the Workboard repository');
+    }
+  }
   return options;
 }
 
 function parseCount(value, flag) {
-  if (!/^\d+$/.test(value)) throw new Error(`${flag} must be a non-negative integer`);
-  return Number(value);
+  const parsed = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed)) {
+    throw new Error(`${flag} must be a non-negative safe integer`);
+  }
+  return parsed;
 }
 
 function parsePositiveCount(value, flag) {
@@ -394,6 +439,147 @@ function pauseRecommended(streak, threshold) {
   return threshold > 0 && streak >= threshold ? 1 : 0;
 }
 
+function failRunMemory(reason, detail) {
+  emit('CHECK_FAILED', { REASON: reason, DETAIL: sanitize(detail) }, 1);
+}
+
+function readRunMemory(file) {
+  if (!file) return null;
+
+  let stats;
+  try {
+    stats = lstatSync(file);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    failRunMemory('cannot_read_run_memory', error.message);
+  }
+  if (!stats.isFile() || stats.isSymbolicLink()) {
+    failRunMemory('invalid_run_memory', 'memory_path_must_be_a_regular_file');
+  }
+  if (stats.size > MAX_RUN_MEMORY_BYTES) {
+    failRunMemory('invalid_run_memory', `memory_exceeds_${MAX_RUN_MEMORY_BYTES}_bytes`);
+  }
+
+  let raw;
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch (error) {
+    failRunMemory('cannot_read_run_memory', error.message);
+  }
+  if (raw.trimEnd().includes('\n')) {
+    failRunMemory('invalid_run_memory', 'memory_must_be_one_line');
+  }
+
+  let memory;
+  try {
+    memory = JSON.parse(raw);
+  } catch {
+    failRunMemory('invalid_run_memory', 'memory_must_be_valid_json');
+  }
+
+  if (!memory || typeof memory !== 'object' || Array.isArray(memory)) {
+    failRunMemory('invalid_run_memory', 'memory_must_be_an_object');
+  }
+  const keys = Object.keys(memory).sort();
+  const expectedKeys = ['outcome', 'signature', 'streak', 'updated_at', 'version'];
+  if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
+    failRunMemory('invalid_run_memory', 'memory_schema_mismatch');
+  }
+  if (
+    memory.version !== RUN_MEMORY_VERSION ||
+    !['action', 'no_action'].includes(memory.outcome) ||
+    !/^[a-f0-9]{16}$/.test(memory.signature) ||
+    !Number.isSafeInteger(memory.streak) ||
+    memory.streak < 0 ||
+    typeof memory.updated_at !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(memory.updated_at)
+  ) {
+    failRunMemory('invalid_run_memory', 'memory_value_mismatch');
+  }
+  return memory;
+}
+
+function queueSignature(status, fields) {
+  const signatureFields = [
+    status,
+    fields.CLAIMED,
+    fields.QA_ACTIVE,
+    fields.QA_PENDING,
+    fields.QA_COMPLETE,
+    fields.READY,
+    fields.CLAIMED_LOCKS,
+    fields.QA_ACTIVE_LOCKS,
+  ];
+  return createHash('sha256')
+    .update(JSON.stringify(signatureFields))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function isNoActionOutcome(status, fields) {
+  if (status === 'NOTHING_TO_CLAIM') return true;
+  return (
+    status === 'WORK_IN_PROGRESS' &&
+    fields.READY === 0 &&
+    fields.QA_PENDING === 0 &&
+    fields.QA_COMPLETE === 0
+  );
+}
+
+function writeRunMemory(file, memory) {
+  if (!file) return;
+  const temporary = `${file}.tmp-${process.pid}`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(memory)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    renameSync(temporary, file);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // Best-effort cleanup; the original write error is the useful failure.
+    }
+    failRunMemory('cannot_write_run_memory', error.message);
+  }
+}
+
+function withIdleControl(status, fields) {
+  const noAction = isNoActionOutcome(status, fields);
+  const signature = queueSignature(status, fields);
+  const previous = readRunMemory(options.runMemory);
+  let streak = options.noActionStreak;
+
+  if (options.runMemory) {
+    const sameNoActionSnapshot =
+      noAction && previous?.outcome === 'no_action' && previous.signature === signature;
+    streak = noAction ? (sameNoActionSnapshot ? previous.streak + 1 : 1) : 0;
+    if (!Number.isSafeInteger(streak)) {
+      failRunMemory('invalid_run_memory', 'streak_exceeds_safe_integer');
+    }
+    writeRunMemory(options.runMemory, {
+      version: RUN_MEMORY_VERSION,
+      outcome: noAction ? 'no_action' : 'action',
+      signature,
+      streak,
+      updated_at: new Date().toISOString(),
+    });
+  } else if (!noAction) {
+    streak = 0;
+  }
+
+  const recommended = noAction ? pauseRecommended(streak, options.idlePauseThreshold) : 0;
+  const requested = recommended && options.idlePauseAction === 'pause' ? 1 : 0;
+  return {
+    ...fields,
+    NO_ACTION_STREAK: streak,
+    IDLE_PAUSE_RECOMMENDED: recommended,
+    IDLE_PAUSE_REQUESTED: requested,
+    IDLE_PAUSE_ACTION: requested ? 'pause' : recommended ? 'recommend' : 'none',
+  };
+}
+
 let options;
 try {
   options = parseArgs(process.argv.slice(2));
@@ -538,23 +724,16 @@ const common = {
 };
 
 if (qa.terminal.length > 0) {
-  emit('QA_RESULT_AVAILABLE', {
+  emit('QA_RESULT_AVAILABLE', withIdleControl('QA_RESULT_AVAILABLE', {
     ...common,
     QA_RESULTS: sanitizeComposite(
       qa.terminal.map(({ id, result }) => `${encodeComponent(id)}|${result}`).join(';'),
     ),
-  });
+  }));
 }
 
 if (activeCount >= options.capacity) {
-  emit('WORK_IN_PROGRESS', {
-    ...common,
-    NO_ACTION_STREAK: options.noActionStreak,
-    IDLE_PAUSE_RECOMMENDED: pauseRecommended(
-      options.noActionStreak,
-      options.idlePauseThreshold,
-    ),
-  });
+  emit('WORK_IN_PROGRESS', withIdleControl('WORK_IN_PROGRESS', common));
 }
 
 let promotion = { status: 'NONE', count: 0, candidates: 'none' };
@@ -568,37 +747,23 @@ if (
   activeCount === 0 &&
   promotion.status === 'CANDIDATES'
 ) {
-  emit('PROMOTION_REVIEW_NEEDED', {
+  emit('PROMOTION_REVIEW_NEEDED', withIdleControl('PROMOTION_REVIEW_NEEDED', {
     ...common,
     PROMOTION_COUNT: promotion.count,
     PROMOTION_CANDIDATES: promotion.candidates,
-  });
+  }));
 }
 
 if (activeCount === 0 && readyPackets.length === 0 && qa.pending.length === 0) {
-  emit('NOTHING_TO_CLAIM', {
-    ...common,
-    NO_ACTION_STREAK: options.noActionStreak,
-    IDLE_PAUSE_RECOMMENDED: pauseRecommended(
-      options.noActionStreak,
-      options.idlePauseThreshold,
-    ),
-  });
+  emit('NOTHING_TO_CLAIM', withIdleControl('NOTHING_TO_CLAIM', common));
 }
 
 if (qa.pending.length > 0) {
-  emit('QA_WORK_AVAILABLE', common);
+  emit('QA_WORK_AVAILABLE', withIdleControl('QA_WORK_AVAILABLE', common));
 }
 
 if (readyPackets.length === 0) {
-  emit('WORK_IN_PROGRESS', {
-    ...common,
-    NO_ACTION_STREAK: options.noActionStreak,
-    IDLE_PAUSE_RECOMMENDED: pauseRecommended(
-      options.noActionStreak,
-      options.idlePauseThreshold,
-    ),
-  });
+  emit('WORK_IN_PROGRESS', withIdleControl('WORK_IN_PROGRESS', common));
 }
 
-emit('READY_WORK_AVAILABLE', common);
+emit('READY_WORK_AVAILABLE', withIdleControl('READY_WORK_AVAILABLE', common));
