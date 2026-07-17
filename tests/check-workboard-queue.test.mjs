@@ -4,11 +4,14 @@ import assert from 'node:assert/strict';
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -81,6 +84,15 @@ function withRepo(callback) {
   }
 }
 
+function withRunMemory(root, callback) {
+  const memory = `${root}-run-memory.json`;
+  try {
+    callback(memory);
+  } finally {
+    rmSync(memory, { force: true });
+  }
+}
+
 function assertDuplicateRejected(state, fields, key, duplicateValue) {
   withRepo((root) => {
     const file = join(root, 'tasks', state, `duplicate-${key}.md`);
@@ -115,6 +127,227 @@ test('empty queue is idle, read-only, and supports an external no-action streak'
     assert.deepEqual(readdirSync(join(root, 'tasks', 'ready')), []);
     assert.doesNotMatch(output, /packet body/);
   });
+});
+
+test('run memory increments idle streak and requests pause at the configured threshold', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    const beforeStatus = run('git', ['status', '--porcelain'], root);
+    const args = [
+      '--run-memory', memory,
+      '--idle-pause-threshold', '3',
+      '--idle-pause-action', 'pause',
+    ];
+
+    for (const expectedStreak of [1, 2, 3]) {
+      const output = classify(root, args);
+      assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+      assert.match(output, new RegExp(`NO_ACTION_STREAK=${expectedStreak}(?: |$)`));
+      assert.match(output, new RegExp(`IDLE_PAUSE_RECOMMENDED=${expectedStreak >= 3 ? 1 : 0}`));
+      assert.match(output, new RegExp(`IDLE_PAUSE_REQUESTED=${expectedStreak >= 3 ? 1 : 0}`));
+      assert.match(output, new RegExp(`IDLE_PAUSE_ACTION=${expectedStreak >= 3 ? 'pause' : 'none'}`));
+    }
+
+    const raw = readFileSync(memory, 'utf8');
+    assert.equal(raw.trim().split('\n').length, 1);
+    assert.deepEqual(Object.keys(JSON.parse(raw)).sort(), [
+      'outcome', 'signature', 'streak', 'updated_at', 'version',
+    ]);
+    assert.equal(JSON.parse(raw).streak, 3);
+    assert.equal(run('git', ['status', '--porcelain'], root), beforeStatus);
+  }));
+});
+
+test('stable claimed-only work increments no-action streak without reading packet bodies', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'active.md'),
+      packet({
+        id: 'active-task',
+        status: 'claimed',
+        target_project_id: 'example',
+        target_path: '/work/example',
+      }).replace('packet body must not appear', 'private claimed narrative'),
+    );
+    commit(root, 'add claimed task');
+    syncOriginRef(root);
+
+    const args = ['--run-memory', memory, '--idle-pause-threshold', '2'];
+    const first = classify(root, args);
+    const second = classify(root, args);
+
+    assert.match(first, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
+    assert.match(first, /NO_ACTION_STREAK=1 IDLE_PAUSE_RECOMMENDED=0/);
+    assert.match(second, /NO_ACTION_STREAK=2 IDLE_PAUSE_RECOMMENDED=1/);
+    assert.match(second, /IDLE_PAUSE_REQUESTED=0 IDLE_PAUSE_ACTION=recommend/);
+    assert.doesNotMatch(`${first}\n${second}`, /private claimed narrative/);
+  }));
+});
+
+test('a changed claimed lock starts a new no-action streak', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    const claimedFile = join(root, 'tasks', 'claimed', 'active.md');
+    const writeClaim = (id, path) => {
+      writeFileSync(claimedFile, packet({
+        id,
+        status: 'claimed',
+        target_project_id: 'example',
+        target_path: path,
+      }));
+      commit(root, `set claimed task ${id}`);
+      syncOriginRef(root);
+    };
+    const args = ['--run-memory', memory, '--idle-pause-threshold', '3'];
+
+    writeClaim('first', '/work/first');
+    classify(root, args);
+    assert.match(classify(root, args), /NO_ACTION_STREAK=2/);
+
+    writeClaim('second', '/work/second');
+    assert.match(classify(root, args), /NO_ACTION_STREAK=1 IDLE_PAUSE_RECOMMENDED=0/);
+  }));
+});
+
+test('routable work resets persisted streak and the next idle run restarts at one', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    const args = ['--run-memory', memory, '--idle-pause-threshold', '2'];
+    classify(root, args);
+    assert.match(classify(root, args), /NO_ACTION_STREAK=2 IDLE_PAUSE_RECOMMENDED=1/);
+
+    const readyFile = join(root, 'tasks', 'ready', 'ready.md');
+    writeFileSync(readyFile, packet({ id: 'ready-task', status: 'ready' }));
+    commit(root, 'add ready task');
+    syncOriginRef(root);
+    const routable = classify(root, args);
+    assert.match(routable, /^QUEUE_STATUS=READY_WORK_AVAILABLE /);
+    assert.match(routable, /NO_ACTION_STREAK=0 IDLE_PAUSE_RECOMMENDED=0/);
+    assert.equal(JSON.parse(readFileSync(memory, 'utf8')).outcome, 'action');
+
+    rmSync(readyFile);
+    commit(root, 'remove ready task');
+    syncOriginRef(root);
+    assert.match(classify(root, args), /NO_ACTION_STREAK=1 IDLE_PAUSE_RECOMMENDED=0/);
+  }));
+});
+
+test('ready work waiting at capacity suppresses idle pause and resets the streak', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    const args = [
+      '--run-memory', memory,
+      '--idle-pause-threshold', '1',
+      '--idle-pause-action', 'pause',
+      '--capacity', '1',
+    ];
+    classify(root, args);
+
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'active.md'),
+      packet({
+        id: 'active', status: 'claimed', target_project_id: 'one', target_path: '/work/one',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'waiting.md'),
+      packet({ id: 'waiting', status: 'ready' }),
+    );
+    commit(root, 'add active and waiting work');
+    syncOriginRef(root);
+
+    const output = classify(root, args);
+    assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
+    assert.match(output, /READY=1/);
+    assert.match(output, /NO_ACTION_STREAK=0 IDLE_PAUSE_RECOMMENDED=0/);
+    assert.match(output, /IDLE_PAUSE_REQUESTED=0 IDLE_PAUSE_ACTION=none/);
+  }));
+});
+
+test('idle control does not read project registries or non-routable packet lanes', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    const privateMarker = 'must-never-enter-idle-output';
+    writeFileSync(join(root, 'projects.yaml'), privateMarker);
+    for (const state of ['backlog', 'blocked', 'review', 'done', 'archive']) {
+      writeFileSync(join(root, 'tasks', state, `${state}.md`), privateMarker);
+    }
+    commit(root, 'add non-routable lane fixtures');
+    syncOriginRef(root);
+
+    const output = classify(root, ['--run-memory', memory, '--idle-pause-threshold', '1']);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+    assert.doesNotMatch(output, new RegExp(privateMarker));
+  }));
+});
+
+test('run memory fails closed on malformed, multiline, oversized, and unsafe inputs', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    for (const [contents, detail] of [
+      ['not json\n', 'memory_must_be_valid_json'],
+      ['{}\n{}\n', 'memory_must_be_one_line'],
+      ['x'.repeat(4097), 'memory_exceeds_4096_bytes'],
+    ]) {
+      writeFileSync(memory, contents);
+      const output = classify(root, ['--run-memory', memory], 1);
+      assert.match(output, /^QUEUE_STATUS=CHECK_FAILED REASON=invalid_run_memory /);
+      assert.match(output, new RegExp(detail));
+    }
+
+    const incompatible = classify(root, [
+      '--run-memory', memory, '--no-action-streak', '1',
+    ], 2);
+    assert.equal(incompatible, '');
+
+    const unsafe = classify(root, ['--idle-pause-threshold', '9007199254740992'], 2);
+    assert.equal(unsafe, '');
+  }));
+});
+
+test('run memory inside the repository is rejected', () => {
+  withRepo((root) => {
+    const output = classify(root, ['--run-memory', join(root, 'memory.json')], 2);
+    assert.equal(output, '');
+    assert.equal(existsSync(join(root, 'memory.json')), false);
+  });
+});
+
+test('run memory cannot enter the repository through a symlinked parent', () => {
+  withRepo((root) => {
+    const linkedParent = `${root}-state-link`;
+    symlinkSync(root, linkedParent, 'dir');
+    try {
+      const output = classify(root, ['--run-memory', join(linkedParent, 'memory.json')], 2);
+      assert.equal(output, '');
+      assert.equal(existsSync(join(root, 'memory.json')), false);
+    } finally {
+      unlinkSync(linkedParent);
+    }
+  });
+});
+
+test('run memory rejects an existing symlink file', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    const target = `${memory}-target`;
+    writeFileSync(target, '{}\n');
+    symlinkSync(target, memory);
+    try {
+      const output = classify(root, ['--run-memory', memory], 1);
+      assert.match(output, /^QUEUE_STATUS=CHECK_FAILED REASON=invalid_run_memory /);
+      assert.match(output, /memory_path_must_be_a_regular_file/);
+    } finally {
+      unlinkSync(memory);
+      rmSync(target, { force: true });
+    }
+  }));
+});
+
+test('run memory rejects a dangling symlink file', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    symlinkSync(`${memory}-missing-target`, memory);
+    try {
+      const output = classify(root, ['--run-memory', memory], 1);
+      assert.match(output, /^QUEUE_STATUS=CHECK_FAILED REASON=invalid_run_memory /);
+      assert.match(output, /memory_path_must_be_a_regular_file/);
+    } finally {
+      unlinkSync(memory);
+    }
+  }));
 });
 
 test('read-only classification does not require a writable Git directory', () => {
@@ -780,10 +1013,23 @@ test('promotion scanner candidates become a queue outcome without policy logic i
   });
 });
 
-test('bundled promotion scanner integrates with the default classifier path', () => {
-  withRepo((root) => {
+test('bundled promotion scanner resets idle controls on the default classifier path', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
     mkdirSync(join(root, 'scripts'));
     copyFileSync(promotionScanner, join(root, 'scripts', 'check-workboard-promotions.mjs'));
+    commit(root, 'add bundled promotion scanner');
+    syncOriginRef(root);
+
+    const args = [
+      '--run-memory', memory,
+      '--idle-pause-threshold', '1',
+      '--idle-pause-action', 'pause',
+    ];
+    const idle = classify(root, args);
+    assert.match(idle, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+    assert.match(idle, /NO_ACTION_STREAK=1 IDLE_PAUSE_RECOMMENDED=1/);
+    assert.match(idle, /IDLE_PAUSE_REQUESTED=1 IDLE_PAUSE_ACTION=pause/);
+
     writeFileSync(join(root, 'tasks', 'done', 'dependency.md'), packet({ id: 'dependency' }));
     writeFileSync(join(root, 'tasks', 'backlog', 'downstream.md'), packet({
       id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
@@ -794,11 +1040,13 @@ test('bundled promotion scanner integrates with the default classifier path', ()
     commit(root, 'add bundled promotion fixture');
     syncOriginRef(root);
 
-    const output = classify(root);
+    const output = classify(root, args);
     assert.match(output, /^QUEUE_STATUS=PROMOTION_REVIEW_NEEDED /);
     assert.match(output, /PROMOTION_COUNT=1/);
     assert.match(output, /PROMOTION_CANDIDATES=downstream\|backlog\|auto\|done\|dependency/);
-  });
+    assert.match(output, /NO_ACTION_STREAK=0 IDLE_PAUSE_RECOMMENDED=0/);
+    assert.match(output, /IDLE_PAUSE_REQUESTED=0 IDLE_PAUSE_ACTION=none/);
+  }));
 });
 
 test('active work remains the current lane instead of being hidden by promotion', () => {

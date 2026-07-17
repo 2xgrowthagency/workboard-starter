@@ -93,7 +93,9 @@ Rules:
 
 ### [ST-006: add idle/no-action pause controls](https://github.com/2xgrowthagency/workboard-starter/issues/6)
 
-Automation examples should support a configurable idle threshold, preserve concise one-line run memory, and pause after repeated `NOTHING_TO_CLAIM` or no-action `WORK_IN_PROGRESS` outcomes.
+Status: implemented.
+
+Automation examples support a configurable idle threshold, preserve concise one-line run memory, and pause after repeated `NOTHING_TO_CLAIM` or no-action `WORK_IN_PROGRESS` outcomes.
 
 Idle and claimed-only paths must not read packet bodies, project registries, blocked/review/backlog lanes, thread history, or old automation narratives.
 

@@ -167,10 +167,33 @@ node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 ```
 
 It does not fetch, merge, rebase, push, move packets, create directories, or
-write automation memory. It reports checkout safety, queue counts, claimed and
+write inside the Workboard repository. It reports checkout safety, queue counts, claimed and
 active-QA target locks, completed QA results, configured/available capacity,
 and one routing status. Capacity defaults to 3; at capacity it reports
-`WORK_IN_PROGRESS` even when ready work is waiting. Run its tests with:
+`WORK_IN_PROGRESS` even when ready work is waiting.
+
+Scheduled polls can opt into a strict one-line state file outside the repo:
+
+```bash
+node scripts/check-workboard-queue.mjs \
+  --repo "$PWD" \
+  --run-memory "$HOME/.local/state/workboard/poll.json" \
+  --idle-pause-threshold 4 \
+  --idle-pause-action recommend
+```
+
+Create the external parent directory during automation setup; the classifier
+creates and atomically replaces only the state file.
+
+Stable `NOTHING_TO_CLAIM` and claimed-only `WORK_IN_PROGRESS` snapshots increment
+`NO_ACTION_STREAK`. A changed queue signature or any actionable lane resets it.
+At the threshold, `recommend` emits a recommendation; `pause` emits
+`IDLE_PAUSE_REQUESTED=1` for the host automation controller to execute and verify.
+Ready or pending-QA inventory never requests a pause. The memory file contains
+only version, outcome, hashed queue signature, streak, and timestamp; malformed,
+multiline, oversized, symlinked, or in-repo memory fails closed.
+
+Run the tests with:
 
 ```bash
 node --test tests/*.test.mjs

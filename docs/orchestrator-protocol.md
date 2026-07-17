@@ -39,7 +39,25 @@ history to compute it.
 
 The classifier inspects only Git state and the queue metadata needed for counts,
 QA state, and target locks. It never fetches, merges, rebases, pushes, moves
-packets, creates task directories, or writes automation state.
+packets, or creates task directories. Its default mode writes nothing. A
+scheduled poll may opt into one strict memory record outside the repository:
+
+```bash
+node scripts/check-workboard-queue.mjs \
+  --repo <WORKBOARD_PATH> \
+  --capacity <MAX_ACTIVE_TASKS> \
+  --run-memory <EXTERNAL_STATE_PATH>/poll.json \
+  --idle-pause-threshold <NO_ACTION_RUNS> \
+  --idle-pause-action <recommend|pause>
+```
+
+Do not combine `--run-memory` with the compatibility input
+`--no-action-streak`. Persistent mode increments a stable no-action signature,
+starts at one after a queue transition, and resets to zero for an actionable
+lane. The signature hashes only status, counts, and locks; the one-line JSON
+record stores no packet body, path, project registry, thread history, or prior
+narrative. Memory must remain outside the repo and fails closed when malformed,
+multiline, oversized, symlinked, or incompatible.
 
 Use the result to open the smallest required lane:
 
@@ -52,6 +70,15 @@ Use the result to open the smallest required lane:
 - `WORKBOARD_SYNC_NEEDED`: stop until a clean checkout is safely fast-forwarded.
 - `WORKBOARD_REQUIRES_JUDGMENT`: stop for dirty, ahead, diverged, non-main, malformed packet metadata, or unrecognized QA state/result.
 - `CHECK_FAILED`: report the exact classifier failure and stop.
+
+Every successful lane emits `NO_ACTION_STREAK`, `IDLE_PAUSE_RECOMMENDED`,
+`IDLE_PAUSE_REQUESTED`, and `IDLE_PAUSE_ACTION`. Only stable
+`NOTHING_TO_CLAIM` and claimed/active-QA-only `WORK_IN_PROGRESS` snapshots count
+as no action. Ready, pending-QA, completed-QA, or promotion inventory resets the
+streak and suppresses pause, including ready work waiting at full capacity.
+`recommend` is advisory. For `pause`, the classifier requests the action but the
+host controller must call its native automation pause operation and read back
+the paused state. Never claim success from the request field alone.
 
 Claimed and active-QA lock values are metadata summaries in the form
 `packet_id|target_project_id|target_path`. Each component is percent-encoded so
@@ -99,9 +126,9 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 
 1. `cd` into the Workboard repo.
 2. Inspect and synchronize Git using the environment's explicit safe preflight.
-3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; omit `--capacity` only when using the default of 3.
+3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; a scheduled poll may add the external memory, threshold, and pause-action flags above.
 4. Stop immediately on synchronization, judgment, or classifier failure statuses.
-5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context.
+5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context. On an idle/claimed-only lane, use only the classifier line and strict run-memory record, never old automation narratives.
 6. Treat claimed and active-QA packets only as capacity usage and per-target locks. Never inspect, monitor, heartbeat, or babysit their task history during an ordinary poll.
 7. Trust the classifier's `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED` fields. `WORK_IN_PROGRESS` machine-enforces a stop when available capacity is zero.
 8. If the classifier returns a routable lane and capacity remains, inspect `tasks/ready/` by priority and age even when another target is active.
@@ -116,8 +143,9 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 17. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
-20. On `PROMOTION_REVIEW_NEEDED`, run the metadata-only scanner workflow. Root may move `auto` candidates after dependency-state verification; `review` candidates permit one bounded `ready_when` check. Omitted/manual and non-dependency blockers require new human/external proof.
-21. Commit/push every state transition and rerun classification after promotion.
+20. If `IDLE_PAUSE_REQUESTED=1`, call and verify the host-native pause operation. If only `IDLE_PAUSE_RECOMMENDED=1`, report the recommendation without claiming a pause.
+21. On `PROMOTION_REVIEW_NEEDED`, run the metadata-only scanner workflow. Root may move `auto` candidates after dependency-state verification; `review` candidates permit one bounded `ready_when` check. Omitted/manual and non-dependency blockers require new human/external proof.
+22. Commit/push every queue state transition and rerun classification after promotion.
 
 ## Dependency promotion
 
