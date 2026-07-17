@@ -136,6 +136,7 @@ docs/
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   live-task-visibility.md   # app-native proof and portable fallback
+  known-issues-and-recovery.md # operator symptoms, stops, evidence, recovery
   pending-improvements.md   # production hardening backlog for the starter
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
@@ -315,6 +316,11 @@ classification before routing resumes. The full checklist is in
 `docs/orchestrator-protocol.md`. Recovery records distinguish a verified
 `canonical_worker` from a conclusively proven `no_usable_worker`; only the
 latter permits a blocked transition and lock release without canonicalization.
+
+For external platform and environment failures beyond creation ambiguity, use
+`docs/known-issues-and-recovery.md`. Each record maps symptoms and impact to a
+bounded safe response, forbidden shortcuts, evidence, and the existing portable
+mitigation contract.
 
 Dependency promotion uses the bundled read-only frontmatter scanner:
 
