@@ -26,17 +26,22 @@ ready_when:
   value and `promotion_policy: manual`.
 - `depends_on`: inline list of canonical packet IDs that must all reach the
   declared dependency state.
-- `unblocks`: informational inline list of known downstream packet IDs. The
-  scanner does not trust this reverse index when deciding readiness.
-- `ready_when`: the exact readiness condition. For `auto`, it may only restate
-  the declared dependency-state condition. For `review`, it names one bounded
-  artifact or condition that root can check once after dependencies resolve.
+- `unblocks`: inline list of known downstream packet IDs. Every `depends_on`
+  edge used by `auto` must be reciprocated by the dependency packet listing the
+  downstream packet here; missing, duplicate, or inconsistent reciprocity fails
+  closed.
+- `ready_when`: the exact readiness condition. For `auto`, this must be the
+  machine-readable sentinel `dependencies_satisfied`; free-form text, human or
+  external conditions, approvals, and artifact checks are rejected. For
+  `review`, it names one bounded artifact or condition that root checks once
+  after dependencies resolve.
 
 ## Policies
 
-- `auto` is dependency-only. Once every declared dependency reaches
-  `dependency_ready_state`, root may promote the packet without opening task
-  bodies or external systems.
+- `auto` is dependency-only. It requires `ready_when: dependencies_satisfied`
+  plus reciprocal `depends_on`/`unblocks` edges. Once every declared dependency
+  reaches `dependency_ready_state`, root may promote the packet without opening
+  task bodies or external systems.
 - `review` becomes a candidate after the dependency test passes. Root opens only
   the candidate packet and performs the single bounded check in `ready_when`.
 - `manual` and omitted policies never become scanner candidates. New human or
@@ -71,6 +76,11 @@ nonzero and must stop the poll. A candidate must also retain nonblank
 unroutable ready work. Candidate receipts longer than the classifier's bounded
 2,000-character promotion field fail explicitly instead of truncating routing
 metadata.
+
+For auto candidates, `invalid_auto_ready_when` means the condition was not the
+exact dependency-only sentinel. `missing_reciprocal_unblock` and
+`inconsistent_reciprocal_unblock` identify dependency graph edges that are not
+represented consistently in both packets.
 
 ## Root procedure
 

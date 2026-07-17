@@ -134,7 +134,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Orchestration notes
 
 - Root owns dependency promotion. Workers report completion proof but do not move downstream packets.
-- `promotion_policy: auto` is dependency-only; `review` permits one bounded `ready_when` check; omitted or `manual` requires new human/external proof.
+- `promotion_policy: auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges; `review` permits one bounded `ready_when` check; omitted or `manual` requires new human/external proof.
 - Only blocked packets with `blocker_type: dependency` are scanner-eligible. Human/external blockers stay manual until new proof arrives.
 - Root/orchestrator claims and reconciles one-shot completion callbacks; workers execute without periodic monitoring or heartbeats.
 - Root assigns one stable `recovery_id` per ambiguous incident and persists a new immutable `worker_creation_attempt_id` before every actual create call, including an authorized replacement.

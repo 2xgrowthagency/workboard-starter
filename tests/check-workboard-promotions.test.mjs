@@ -38,12 +38,16 @@ test('reports no candidates for an empty board', () => {
 
 test('emits deterministic auto and review candidates when dependencies satisfy policy', () => {
   withBoard((root) => {
-    add(root, 'review', 'dependency-review', { id: 'dependency-review' });
-    add(root, 'done', 'dependency-done', { id: 'dependency-done' });
+    add(root, 'review', 'dependency-review', {
+      id: 'dependency-review', unblocks: '[auto downstream]',
+    });
+    add(root, 'done', 'dependency-done', {
+      id: 'dependency-done', unblocks: '[auto downstream]',
+    });
     add(root, 'backlog', 'auto downstream', {
       id: 'auto downstream', promotion_policy: 'auto', dependency_ready_state: 'review',
       blocker_type: 'dependency', depends_on: '[dependency-review, dependency-done]',
-      unblocks: '[]', ready_when: 'all dependencies are in review or done',
+      unblocks: '[]', ready_when: 'dependencies_satisfied',
       target_project_id: 'example project', target_path: '/workspace/example project',
     });
     add(root, 'blocked', 'review-downstream', {
@@ -62,11 +66,13 @@ test('emits deterministic auto and review candidates when dependencies satisfy p
 
 test('strictly encodes candidate metadata that the classifier sanitizer would rewrite', () => {
   withBoard((root) => {
-    add(root, 'done', 'dependency', { id: 'dependency' });
+    add(root, 'done', 'dependency', {
+      id: 'dependency', unblocks: "[team's downstream]",
+    });
     add(root, 'backlog', "team's downstream", {
       id: "team's downstream", promotion_policy: 'auto', dependency_ready_state: 'done',
       blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
-      ready_when: 'dependency is done', target_project_id: "team's project",
+      ready_when: 'dependencies_satisfied', target_project_id: "team's project",
       target_path: "/workspace/team's project",
     });
     const output = run(root);
@@ -78,11 +84,11 @@ test('strictly encodes candidate metadata that the classifier sanitizer would re
 
 test('done policy does not accept a dependency that is only in review', () => {
   withBoard((root) => {
-    add(root, 'review', 'dependency', { id: 'dependency' });
+    add(root, 'review', 'dependency', { id: 'dependency', unblocks: '[downstream]' });
     add(root, 'backlog', 'downstream', {
       id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
       blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
-      ready_when: 'dependency is done',
+      ready_when: 'dependencies_satisfied',
     });
     assert.equal(run(root), 'PROMOTION_STATUS=NONE COUNT=0');
   });
@@ -94,8 +100,10 @@ test('manual, omitted, and non-dependency blockers never become candidates', () 
     for (const [name, fields] of [
       ['manual', { promotion_policy: 'manual', blocker_type: 'dependency' }],
       ['omitted', { blocker_type: 'dependency' }],
+      ['empty-auto', { promotion_policy: 'auto', blocker_type: '' }],
       ['human', { promotion_policy: 'review', blocker_type: 'human' }],
       ['external', { promotion_policy: 'auto', blocker_type: 'external' }],
+      ['artifact', { promotion_policy: 'review', blocker_type: 'artifact' }],
     ]) {
       add(root, 'blocked', name, {
         id: name, dependency_ready_state: 'done', depends_on: '[dependency]',
@@ -109,6 +117,56 @@ test('manual, omitted, and non-dependency blockers never become candidates', () 
     });
     assert.equal(run(root), 'PROMOTION_STATUS=NONE COUNT=0');
   });
+});
+
+test('auto rejects free-form human, external, approval, and artifact conditions', () => {
+  for (const readyWhen of [
+    'human confirmation received',
+    'external system is available',
+    'manager approval granted',
+    'generated artifact exists',
+    'dependencies_satisfied after approval',
+    'DEPENDENCIES_SATISFIED',
+  ]) {
+    withBoard((root) => {
+      add(root, 'done', 'dependency', { id: 'dependency', unblocks: '[downstream]' });
+      add(root, 'backlog', 'downstream', {
+        id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
+        blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
+        ready_when: readyWhen, target_project_id: 'example', target_path: '/workspace/example',
+      });
+
+      const result = spawnSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' });
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /PROMOTION_STATUS=INVALID REASON=invalid_auto_ready_when/);
+      assert.doesNotMatch(result.stdout, /PROMOTION_STATUS=CANDIDATES/);
+    });
+  }
+});
+
+test('auto fails closed when depends_on and dependency unblocks are not reciprocal', () => {
+  for (const [dependencyFields, reason] of [
+    [{ id: 'dependency' }, 'missing_reciprocal_unblock'],
+    [{ id: 'dependency', unblocks: '[]' }, 'inconsistent_reciprocal_unblock'],
+    [{ id: 'dependency', unblocks: '[different-downstream]' }, 'inconsistent_reciprocal_unblock'],
+    [{ id: 'dependency', unblocks: '[downstream, downstream]' }, 'inconsistent_reciprocal_unblock'],
+  ]) {
+    withBoard((root) => {
+      add(root, 'done', 'dependency', dependencyFields);
+      add(root, 'backlog', 'downstream', {
+        id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
+        blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
+        ready_when: 'dependencies_satisfied', target_project_id: 'example',
+        target_path: '/workspace/example',
+      });
+
+      const result = spawnSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' });
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, new RegExp(`PROMOTION_STATUS=INVALID REASON=${reason}`));
+      assert.match(result.stderr, /dependency%3Adownstream/);
+      assert.doesNotMatch(result.stdout, /PROMOTION_STATUS=CANDIDATES/);
+    });
+  }
 });
 
 test('unknown dependencies fail closed without opening packet bodies', () => {
@@ -135,7 +193,7 @@ test('fails closed on ambiguous or incomplete promotable metadata', () => {
   });
 
   withBoard((root) => {
-    add(root, 'done', 'dependency', { id: 'dependency' });
+    add(root, 'done', 'dependency', { id: 'dependency', unblocks: '[bad]' });
     add(root, 'backlog', 'bad', {
       id: 'bad', promotion_policy: 'auto', dependency_ready_state: 'done',
       blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]', ready_when: '',
@@ -146,11 +204,11 @@ test('fails closed on ambiguous or incomplete promotable metadata', () => {
   });
 
   withBoard((root) => {
-    add(root, 'done', 'dependency', { id: 'dependency' });
+    add(root, 'done', 'dependency', { id: 'dependency', unblocks: '[unroutable]' });
     add(root, 'backlog', 'unroutable', {
       id: 'unroutable', promotion_policy: 'auto', dependency_ready_state: 'done',
       blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
-      ready_when: 'dependency is done', target_project_id: '', target_path: '/workspace/example',
+      ready_when: 'dependencies_satisfied', target_project_id: '', target_path: '/workspace/example',
     });
     const result = spawnSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' });
     assert.equal(result.status, 2);
@@ -171,11 +229,11 @@ test('fails explicitly when the task root is missing', () => {
 
 test('fails instead of truncating an oversized candidate receipt', () => {
   withBoard((root) => {
-    add(root, 'done', 'dependency', { id: 'dependency' });
+    add(root, 'done', 'dependency', { id: 'dependency', unblocks: '[oversized]' });
     add(root, 'backlog', 'oversized', {
       id: 'oversized', promotion_policy: 'auto', dependency_ready_state: 'done',
       blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
-      ready_when: 'dependency is done', target_project_id: 'example',
+      ready_when: 'dependencies_satisfied', target_project_id: 'example',
       target_path: `/workspace/${'segment'.repeat(400)}`,
     });
     const result = spawnSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' });

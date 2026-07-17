@@ -156,11 +156,12 @@ semantics and scanner output contract are in
 [`docs/dependency-promotion.md`](dependency-promotion.md).
 
 The scanner reads frontmatter only and considers backlog plus dependency-blocked
-packets. `auto` means all readiness is mechanically represented by dependency
-states. `review` allows root to open that candidate and check one named artifact
-or bounded condition. Manual, omitted, human, and external conditions are not
-poll candidates. Invalid scanner metadata is a hard stop, not permission to
-guess or promote.
+packets. `auto` requires the exact `ready_when: dependencies_satisfied` sentinel
+and reciprocal `depends_on`/`unblocks` edges, so all readiness is mechanically
+represented by dependency states. `review` allows root to open that candidate
+and check one named artifact or bounded condition. Manual, omitted, human, and
+external conditions are not poll candidates. Invalid scanner metadata is a hard
+stop, not permission to guess or promote.
 
 ## Completion callback contract
 

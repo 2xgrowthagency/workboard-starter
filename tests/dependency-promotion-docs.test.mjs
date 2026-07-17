@@ -39,4 +39,6 @@ test('promotion guide defines the scanner privacy and eligibility boundary', () 
   assert.match(guide, /`tasks\/blocked\/` packets with\s+`blocker_type: dependency`/i);
   assert.match(guide, /Workers finish[\s\S]*do not move downstream packets/i);
   assert.match(guide, /percent-encoded fields/i);
+  assert.match(guide, /`ready_when: dependencies_satisfied`/i);
+  assert.match(guide, /reciprocal `depends_on`\/`unblocks` edges/i);
 });

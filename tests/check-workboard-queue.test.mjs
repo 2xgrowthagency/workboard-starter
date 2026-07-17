@@ -1030,11 +1030,14 @@ test('bundled promotion scanner resets idle controls on the default classifier p
     assert.match(idle, /NO_ACTION_STREAK=1 IDLE_PAUSE_RECOMMENDED=1/);
     assert.match(idle, /IDLE_PAUSE_REQUESTED=1 IDLE_PAUSE_ACTION=pause/);
 
-    writeFileSync(join(root, 'tasks', 'done', 'dependency.md'), packet({ id: 'dependency' }));
+    writeFileSync(
+      join(root, 'tasks', 'done', 'dependency.md'),
+      packet({ id: 'dependency', unblocks: '[downstream]' }),
+    );
     writeFileSync(join(root, 'tasks', 'backlog', 'downstream.md'), packet({
       id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
       blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
-      ready_when: 'dependency is done', target_project_id: 'example',
+      ready_when: 'dependencies_satisfied', target_project_id: 'example',
       target_path: '/workspace/example',
     }));
     commit(root, 'add bundled promotion fixture');

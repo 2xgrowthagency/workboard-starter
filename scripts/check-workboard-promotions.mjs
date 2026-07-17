@@ -5,6 +5,7 @@ import { basename, join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
 
 const packetStates = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
+const AUTO_READY_WHEN = 'dependencies_satisfied';
 
 function usage() {
   console.error('Usage: node scripts/check-workboard-promotions.mjs [--repo /path/to/workboard] [--tasks-root /path/to/tasks]');
@@ -175,11 +176,28 @@ for (const packet of packets) {
   if (!['review', 'done'].includes(requiredState)) {
     fail('invalid_dependency_ready_state', `${packet.id}:${requiredState || 'missing'}`);
   }
-  if (!stripQuotes(packet.fields.ready_when)) fail('missing_ready_when', packet.id);
+  const readyWhen = stripQuotes(packet.fields.ready_when);
+  if (!readyWhen) fail('missing_ready_when', packet.id);
+  if (policy === 'auto' && readyWhen !== AUTO_READY_WHEN) {
+    fail('invalid_auto_ready_when', `${packet.id}:expected_${AUTO_READY_WHEN}`);
+  }
 
   const resolved = dependencies.map((id) => ({ id, packet: packetsById.get(id) }));
   const missing = resolved.find(({ packet: dependency }) => !dependency);
   if (missing) fail('unknown_dependency', `${packet.id}:${missing.id}`);
+
+  if (policy === 'auto') {
+    for (const { id: dependencyId, packet: dependency } of resolved) {
+      if (!Object.hasOwn(dependency.fields, 'unblocks')) {
+        fail('missing_reciprocal_unblock', `${dependencyId}:${packet.id}`);
+      }
+      const unblocks = parseList(dependency.fields.unblocks, dependency.file, 'unblocks');
+      if (new Set(unblocks).size !== unblocks.length || !unblocks.includes(packet.id)) {
+        fail('inconsistent_reciprocal_unblock', `${dependencyId}:${packet.id}`);
+      }
+    }
+  }
+
   if (!resolved.every(({ packet: dependency }) => dependencySatisfied(dependency.state, requiredState))) continue;
 
   const targetProjectId = stripQuotes(packet.fields.target_project_id);
