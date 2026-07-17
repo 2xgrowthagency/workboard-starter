@@ -2,7 +2,7 @@
 
 Task finalization is an optional local Codex hygiene pass. It runs only after a
 Workboard outcome is known, classifies explicitly supplied automation sessions,
-and emits bounded rename/archive candidates. The classifier never mutates a
+and emits bounded, versioned JSONL rename/archive candidates. The classifier never mutates a
 task, discovers session directories, reads a Codex database, or changes the
 Workboard queue.
 
@@ -38,11 +38,36 @@ mutation candidate. The heartbeat exemption requires the entire trimmed message
 to be one `<heartbeat>...</heartbeat>` envelope; prefixed or trailing manual
 text is follow-up evidence.
 
-The rollout remains local. Output contains only candidate control fields such
-as task ID, state-first title, action, status, and reason. It never emits source
+The rollout remains local. Output contains only versioned JSON candidate control
+fields such as task ID, state-first title, action, status, and reason. It never emits source
 paths, automation prompts, transcript text, tool output, packet bodies, private
 project names, or local database contents. Operators remain responsible for
 keeping the local rollout file and task ID within their intended trust boundary.
+
+## JSONL output contract
+
+Every stdout line is one canonical JSON object with exact schema
+`codex-task-finalizer/v1`. There is no legacy token or percent-encoded output.
+A candidate line has this shape:
+
+```json
+{"schema":"codex-task-finalizer/v1","type":"FINALIZER_CANDIDATE","thread_id":"task-123","action":"rename_archive","title":"[idle] no work to claim","status":"NOTHING_TO_CLAIM","reason":"exact_idle_outcome"}
+```
+
+Parse each complete line with the exported `parseFinalizerJsonLine` function
+from `scripts/classify-codex-task-finalizer.mjs`. It performs JSON parsing plus
+schema, exact-field, primitive-type, canonical-serialization, and control
+character validation. It rejects unknown or duplicate fields, noncanonical
+JSON, embedded newlines, C0/C1 controls, and Unicode line/paragraph separators.
+Do not parse output with whitespace splitting, regular expressions, shell
+evaluation, or `key=value` logic.
+
+After strict parsing, `record.thread_id`, `record.title`, and `record.action` are
+the raw operator values. Brackets, spaces, Unicode, percent signs, and equals
+signs round-trip exactly as data. Do not call `decodeURIComponent`, infer URL
+decoding, or apply the serialized JSON text as a title. A literal title such as
+`[idle] no work to claim` must reach app-native mutation and exact readback with
+those exact characters; `%5Bidle%5D%20...` is invalid operator input.
 
 ## Classification
 
@@ -105,14 +130,18 @@ review. Do not guess a canonical task or retry a destructive action.
 most the emitted candidate limit, and only through the running host's app-native
 task tools:
 
-1. Read the exact emitted task ID. If it is missing, duplicated, has a manual
+1. Strictly parse one complete JSONL line with `parseFinalizerJsonLine`. Process
+   only schema `codex-task-finalizer/v1` records whose type is exactly
+   `FINALIZER_CANDIDATE`; reject the whole record on any parser error.
+2. Read the exact raw `record.thread_id`. If it is missing, duplicated, has a manual
    follow-up, or no longer matches the classified automation session, stop.
-2. Apply the emitted state-first title to that exact task ID.
-3. Read the same task back and require the exact title. A timeout, error, stale
+3. Apply raw `record.title` to that exact task ID. Never apply encoded or
+   serialized wire text.
+4. Read the same task back and require exact equality with raw `record.title`. A timeout, error, stale
    title, ambiguous response, or duplicate result is a blocker.
-4. Only for `action=rename_archive`, archive that exact task after title
+5. Only when raw `record.action` is exactly `rename_archive`, archive that exact task after title
    readback succeeds.
-5. Read the task again and require the app-native archived state. Count the
+6. Read the task again and require the app-native archived state. Count the
    archive only after this readback.
 
 Continue neither to archival nor to another mutation for that task after an

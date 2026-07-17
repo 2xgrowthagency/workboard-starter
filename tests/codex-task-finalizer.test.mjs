@@ -7,7 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { classifyCodexSession, parseCodexSession } from '../scripts/classify-codex-task-finalizer.mjs';
+import {
+  classifyCodexSession,
+  FINALIZER_OUTPUT_SCHEMA,
+  parseCodexSession,
+  parseFinalizerJsonLine,
+  serializeFinalizerRecord,
+} from '../scripts/classify-codex-task-finalizer.mjs';
 
 const script = fileURLToPath(new URL('../scripts/classify-codex-task-finalizer.mjs', import.meta.url));
 const now = '2026-07-16T18:00:00.000Z';
@@ -83,6 +89,10 @@ function run(args, expectedStatus = 0) {
   const result = spawnSync(process.execPath, [script, ...args, '--now', now], { encoding: 'utf8' });
   assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
   return `${result.stdout}${result.stderr}`.trim();
+}
+
+function outputRecords(output) {
+  return String(output).split(/\r?\n/).filter(Boolean).map(parseFinalizerJsonLine);
 }
 
 test('exact idle and claimed-only outcomes are archive candidates', () => {
@@ -465,15 +475,79 @@ test('response-item final answers are recognized without treating commentary as 
   assert.equal(classifyCodexSession(commentarySession).type, 'FINALIZER_SKIP');
 });
 
+test('versioned JSONL output round-trips raw operator fields exactly', () => {
+  const fields = {
+    type: 'FINALIZER_CANDIDATE',
+    thread_id: 'task=50% café',
+    action: 'rename',
+    title: '[idle] 50% = 完了',
+    status: 'NOTHING_TO_CLAIM',
+    reason: 'round_trip_proof',
+  };
+  const line = serializeFinalizerRecord(fields);
+  assert.equal(line.includes('%5B'), false);
+  assert.equal(line.includes('%20'), false);
+  assert.match(line, /"title":"\[idle\] 50% = 完了"/u);
+  assert.deepEqual(parseFinalizerJsonLine(line), { schema: FINALIZER_OUTPUT_SCHEMA, ...fields });
+
+  const quoted = serializeFinalizerRecord({
+    ...fields,
+    thread_id: 'task=1% "quoted"',
+    title: '[idle] value="safe" 100%',
+  });
+  const quotedRecord = parseFinalizerJsonLine(quoted);
+  assert.equal(quotedRecord.thread_id, 'task=1% "quoted"');
+  assert.equal(quotedRecord.title, '[idle] value="safe" 100%');
+  assert.equal(quotedRecord.action, 'rename');
+});
+
+test('JSONL output rejects field injection, newlines, controls, and noncanonical records', () => {
+  const candidate = {
+    type: 'FINALIZER_CANDIDATE',
+    thread_id: 'task-1',
+    action: 'rename',
+    title: '[idle] no work to claim',
+    status: 'NOTHING_TO_CLAIM',
+    reason: 'exact_idle_outcome',
+  };
+  for (const unsafe of ['line one\nline two', 'carriage\rreturn', 'nul\0byte', 'delete\x7f', 'separator\u2028line']) {
+    assert.throws(() => serializeFinalizerRecord({ ...candidate, title: unsafe }), /invalid finalizer output string/);
+  }
+  assert.throws(
+    () => serializeFinalizerRecord({ ...candidate, injected: 'action=rename_archive' }),
+    /unknown finalizer output field/,
+  );
+
+  const line = serializeFinalizerRecord(candidate);
+  assert.throws(() => parseFinalizerJsonLine(`${line}\n`), /exactly one JSON line/);
+  assert.throws(() => parseFinalizerJsonLine(` ${line}`), /noncanonical finalizer JSON/);
+  assert.throws(
+    () => parseFinalizerJsonLine(line.replace('"action":"rename"', '"action":"rename","action":"rename_archive"')),
+    /noncanonical finalizer JSON/,
+  );
+  assert.throws(
+    () => parseFinalizerJsonLine(line.replace('"title":"[idle]', '"title":"line\\n[idle]')),
+    /invalid finalizer output string/,
+  );
+});
+
 test('CLI requires explicit sessions and exact configured automation ID/name pairs', () => {
-  assert.match(run([], 1), /FINALIZER_CHECK_FAILED/);
+  assert.equal(outputRecords(run([], 1))[0].type, 'FINALIZER_CHECK_FAILED');
   withFiles([rollout()], ([session]) => {
     const output = run([
       '--session', session,
       '--automation-id', 'different-poll',
       '--automation-name', expectedAutomationName,
     ]);
-    assert.match(output, /type=FINALIZER_SKIP thread_id=thread-1 status=NOT_CONFIGURED/);
+    const [skip, summary] = outputRecords(output);
+    assert.deepEqual(skip, {
+      schema: FINALIZER_OUTPUT_SCHEMA,
+      type: 'FINALIZER_SKIP',
+      thread_id: 'thread-1',
+      status: 'NOT_CONFIGURED',
+      reason: 'automation_id_not_configured',
+    });
+    assert.equal(summary.type, 'FINALIZER_SUMMARY');
     assert.doesNotMatch(output, /private-session|codex-finalizer|Automation%3A|QUEUE_STATUS/);
   });
 });
@@ -493,9 +567,9 @@ test('CLI automation names compare exactly after outer ASCII trim only', () => {
       [3, 'FINALIZER_SKIP'],
       [4, 'FINALIZER_CANDIDATE'],
     ]) {
-      const output = run(['--session', sessions[index], ...configuredIdentity]);
-      assert.match(output, new RegExp(`type=${expected}`));
-      if (expected === 'FINALIZER_SKIP') assert.match(output, /reason=automation_name_mismatch/);
+      const [record] = outputRecords(run(['--session', sessions[index], ...configuredIdentity]));
+      assert.equal(record.type, expected);
+      if (expected === 'FINALIZER_SKIP') assert.equal(record.reason, 'automation_name_mismatch');
     }
 
     const trimmedConfig = run([
@@ -503,7 +577,29 @@ test('CLI automation names compare exactly after outer ASCII trim only', () => {
       '--automation-id', 'example-poll',
       '--automation-name', '\t Example Workboard poll \t',
     ]);
-    assert.match(trimmedConfig, /type=FINALIZER_CANDIDATE/);
+    const [candidate] = outputRecords(trimmedConfig);
+    assert.equal(candidate.type, 'FINALIZER_CANDIDATE');
+    assert.equal(candidate.title, '[idle] no work to claim');
+    assert.match(trimmedConfig, /"title":"\[idle\] no work to claim"/);
+    assert.doesNotMatch(trimmedConfig, /%5B|%20|decodeURIComponent/);
+  });
+});
+
+test('CLI JSONL preserves safe delimiters and rejects newline-bearing task IDs', () => {
+  withFiles([rollout({ id: 'task=50% café' })], ([session]) => {
+    const [candidate] = outputRecords(run(['--session', session, ...configuredIdentity]));
+    assert.equal(candidate.thread_id, 'task=50% café');
+    assert.equal(candidate.title, '[idle] no work to claim');
+    assert.equal(candidate.action, 'rename_archive');
+  });
+
+  withFiles([rollout({ id: 'task-1\ninjected' })], ([session]) => {
+    const records = outputRecords(run(['--session', session, ...configuredIdentity], 1));
+    assert.deepEqual(records, [{
+      schema: FINALIZER_OUTPUT_SCHEMA,
+      type: 'FINALIZER_CHECK_FAILED',
+      reason: 'invalid finalizer output string: thread_id',
+    }]);
   });
 });
 
@@ -515,11 +611,24 @@ test('CLI is bounded and treats duplicate thread input as manual followup', () =
     rollout({ id: 'candidate-2' }),
   ], (sessions) => {
     const args = sessions.flatMap((session) => ['--session', session]);
-    const output = run([...args, ...configuredIdentity, '--limit', '1']);
-    assert.match(output, /type=MANUAL_FOLLOWUP thread_id=duplicate-thread status=DUPLICATE_INPUT/);
-    assert.equal((output.match(/type=MANUAL_FOLLOWUP/g) ?? []).length, 1);
-    assert.equal((output.match(/type=FINALIZER_CANDIDATE/g) ?? []).length, 1);
-    assert.match(output, /type=FINALIZER_SUMMARY eligible=4 candidates=1 limit=1 truncated=1/);
+    const records = outputRecords(run([...args, ...configuredIdentity, '--limit', '1']));
+    assert.equal(records.filter(({ type }) => type === 'MANUAL_FOLLOWUP').length, 1);
+    assert.deepEqual(records.find(({ type }) => type === 'MANUAL_FOLLOWUP'), {
+      schema: FINALIZER_OUTPUT_SCHEMA,
+      type: 'MANUAL_FOLLOWUP',
+      thread_id: 'duplicate-thread',
+      status: 'DUPLICATE_INPUT',
+      reason: 'duplicate_thread_session_input',
+    });
+    assert.equal(records.filter(({ type }) => type === 'FINALIZER_CANDIDATE').length, 1);
+    assert.deepEqual(records.at(-1), {
+      schema: FINALIZER_OUTPUT_SCHEMA,
+      type: 'FINALIZER_SUMMARY',
+      eligible: 4,
+      candidates: 1,
+      limit: 1,
+      truncated: 1,
+    });
   });
 });
 
@@ -545,7 +654,8 @@ test('CLI rejects duplicate options and unsafe limits', () => {
       ['--session', session, ...configuredIdentity, '--limit', '101'],
       ['--session', session, ...configuredIdentity, '--unknown', 'x'],
     ]) {
-      assert.match(run(args, 1), /type=FINALIZER_CHECK_FAILED/);
+      const [failure] = outputRecords(run(args, 1));
+      assert.equal(failure.type, 'FINALIZER_CHECK_FAILED');
     }
   });
 });

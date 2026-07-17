@@ -7,6 +7,30 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const DEFAULT_SETTLE_SECONDS = 120;
+export const FINALIZER_OUTPUT_SCHEMA = 'codex-task-finalizer/v1';
+const OUTPUT_CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/u;
+const OUTPUT_RECORD_SHAPES = new Map([
+  ['FINALIZER_CANDIDATE', {
+    required: ['schema', 'type', 'thread_id', 'action', 'title', 'status', 'reason'],
+    optional: [],
+  }],
+  ['FINALIZER_SKIP', {
+    required: ['schema', 'type', 'status', 'reason'],
+    optional: ['thread_id'],
+  }],
+  ['MANUAL_FOLLOWUP', {
+    required: ['schema', 'type', 'thread_id', 'status', 'reason'],
+    optional: [],
+  }],
+  ['FINALIZER_SUMMARY', {
+    required: ['schema', 'type', 'eligible', 'candidates', 'limit', 'truncated'],
+    optional: [],
+  }],
+  ['FINALIZER_CHECK_FAILED', {
+    required: ['schema', 'type', 'reason'],
+    optional: [],
+  }],
+]);
 const SUMMARY_COUNTERS = new Set([
   'CLAIMED',
   'QA_ACTIVE',
@@ -485,12 +509,67 @@ function parseArgs(argv) {
   };
 }
 
-function encode(value) {
-  return encodeURIComponent(String(value ?? ''));
+function validateFinalizerRecord(record) {
+  if (!record || typeof record !== 'object' || Array.isArray(record)
+    || Object.getPrototypeOf(record) !== Object.prototype) {
+    throw new Error('finalizer output record must be a plain object');
+  }
+  if (record.schema !== FINALIZER_OUTPUT_SCHEMA) throw new Error('invalid finalizer output schema');
+  const shape = OUTPUT_RECORD_SHAPES.get(record.type);
+  if (!shape) throw new Error('invalid finalizer output type');
+  const required = new Set(shape.required);
+  const allowed = new Set([...shape.required, ...shape.optional]);
+  for (const key of required) {
+    if (!Object.hasOwn(record, key)) throw new Error(`missing finalizer output field: ${key}`);
+  }
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) throw new Error(`unknown finalizer output field: ${key}`);
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (['eligible', 'candidates', 'limit', 'truncated'].includes(key)) {
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error(`invalid finalizer output integer: ${key}`);
+      continue;
+    }
+    if (typeof value !== 'string' || !value || OUTPUT_CONTROL_CHARACTERS.test(value)) {
+      throw new Error(`invalid finalizer output string: ${key}`);
+    }
+  }
+  if (record.type === 'FINALIZER_CANDIDATE' && !['rename', 'rename_archive'].includes(record.action)) {
+    throw new Error('invalid finalizer candidate action');
+  }
+  if (record.type === 'FINALIZER_SUMMARY') {
+    if (![0, 1].includes(record.truncated) || record.candidates > record.limit || record.candidates > record.eligible) {
+      throw new Error('invalid finalizer summary counters');
+    }
+  }
+  return record;
+}
+
+export function serializeFinalizerRecord(fields) {
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields) || Object.hasOwn(fields, 'schema')) {
+    throw new Error('invalid finalizer output fields');
+  }
+  const record = validateFinalizerRecord({ schema: FINALIZER_OUTPUT_SCHEMA, ...fields });
+  return JSON.stringify(record);
+}
+
+export function parseFinalizerJsonLine(line) {
+  if (typeof line !== 'string' || !line || /[\r\n]/.test(line)) {
+    throw new Error('finalizer output must be exactly one JSON line');
+  }
+  let record;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    throw new Error('invalid finalizer JSON');
+  }
+  validateFinalizerRecord(record);
+  if (JSON.stringify(record) !== line) throw new Error('noncanonical finalizer JSON');
+  return record;
 }
 
 function emit(fields) {
-  console.log(Object.entries(fields).map(([key, value]) => `${key}=${encode(value)}`).join(' '));
+  console.log(serializeFinalizerRecord(fields));
 }
 
 function main() {
@@ -545,7 +624,9 @@ function main() {
     }
     emit({ type: 'FINALIZER_SUMMARY', eligible, candidates, limit: options.limit, truncated: candidateMatches > candidates ? 1 : 0 });
   } catch (error) {
-    emit({ type: 'FINALIZER_CHECK_FAILED', reason: error.message });
+    const message = String(error?.message ?? 'unknown_error');
+    const reason = message && !OUTPUT_CONTROL_CHARACTERS.test(message) ? message : 'unsafe_classifier_error';
+    emit({ type: 'FINALIZER_CHECK_FAILED', reason });
     process.exitCode = 1;
   }
 }

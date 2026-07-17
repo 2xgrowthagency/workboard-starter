@@ -165,12 +165,17 @@ may run `scripts/classify-codex-task-finalizer.mjs`. Follow
 local rollout files and exact configured automation ID/name pairs, honor the bounded
 candidate limit, and treat every output as a read-only proposal.
 
+Each output line must strictly parse through `parseFinalizerJsonLine` as schema
+`codex-task-finalizer/v1`. Use only raw parsed `record.thread_id`,
+`record.title`, and `record.action`; never split tokens, infer percent-decoding,
+call `decodeURIComponent`, or apply serialized JSON/encoded text as a UI title.
+
 The first user message must carry the exact configured automation name and ID.
 Every later non-heartbeat user message is manual follow-up evidence, even when
 it repeats the initial trigger byte-for-byte.
 
-Mutate only `FINALIZER_CANDIDATE` task IDs through app-native task tools. Read
-the exact task before mutation, verify the title after rename, and verify the
+Mutate only strictly parsed `FINALIZER_CANDIDATE` task IDs through app-native task tools. Read
+the exact raw task ID before mutation, apply the raw title, verify that exact raw title after rename, and verify the
 archived state after any archive. Stop on missing/duplicate tasks, conflicts,
 timeouts, stale readback, or manual follow-up. Preserve useful errors, blockers,
 review/QA/delegation evidence, canonical worker proof, and idle-pause blockers.

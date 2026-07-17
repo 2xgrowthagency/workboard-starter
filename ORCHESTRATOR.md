@@ -81,7 +81,8 @@ After the outcome is known, an optional local Codex hygiene pass may use
 `scripts/classify-codex-task-finalizer.mjs` under
 `docs/codex-task-finalization.md`. Supply rollout files and exact paired
 automation IDs/names explicitly. Mutate only emitted candidates through app-native task tools and
-verify each rename and archive by readback. Preserve manual follow-ups, useful
+strictly parse `codex-task-finalizer/v1` JSONL first; apply only raw parsed task IDs, titles,
+and actions, never encoded or serialized text. Verify each rename and archive by readback. Preserve manual follow-ups, useful
 errors, blockers, review/delegation/canonical proof, and never hard-delete
 SQLite rows.
 

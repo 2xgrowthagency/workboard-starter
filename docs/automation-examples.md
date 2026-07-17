@@ -118,7 +118,10 @@ node scripts/classify-codex-task-finalizer.mjs \
 ```
 
 Follow [`codex-task-finalization.md`](codex-task-finalization.md). The script is
-read-only and emits candidates only. Require the first user message's exact
+read-only and emits canonical `codex-task-finalizer/v1` JSONL candidates only.
+Parse each complete line with `parseFinalizerJsonLine`; use only raw parsed
+`thread_id`, `title`, and `action`. Never split `key=value` tokens, URL-decode
+fields, or apply serialized/percent-encoded text as a task title. Require the first user message's exact
 configured automation ID/name pair and preserve every later non-heartbeat user
 message, including an identical repeated trigger. Rename/archive only exact emitted task IDs
 through app-native tools, read back every step, stop on duplicate/conflicting

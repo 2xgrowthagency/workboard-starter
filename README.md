@@ -261,6 +261,9 @@ It accepts only explicitly named local rollout files and exact configured
 automation ID/name pairs, emits bounded state-first candidates, and leaves every mutation
 and readback to app-native task tools. It does not scan private session roots,
 read a Codex database, or hard-delete task rows.
+Its output is canonical `codex-task-finalizer/v1` JSONL: strict parsing yields
+raw task IDs/titles/actions, and encoded or serialized wire text must never be
+used as an app-native title.
 
 Run the tests with:
 

@@ -35,10 +35,36 @@ test('automation identity requires an exact configured name and ID pair', () => 
 test('classifier and mutation responsibilities stay separate', () => {
   assert.match(contract, /FINALIZER_CANDIDATE.*proposal, not proof/is);
   assert.match(contract, /only through the running host's app-native\s+task tools/i);
-  assert.match(contract, /Read the same task back and require the exact title/i);
+  assert.match(contract, /require exact equality with raw `record\.title`/i);
   assert.match(contract, /require the app-native archived state/i);
   assert.match(contract, /Never update or hard-delete SQLite rows/i);
   assert.doesNotMatch(classifier, /set_thread_title|set_thread_archived|archiveThread|renameThread/);
+});
+
+test('versioned JSONL exposes only strict raw operator fields', () => {
+  assert.match(contract, /Every stdout line is one canonical JSON object/i);
+  assert.match(contract, /codex-task-finalizer\/v1/);
+  assert.match(contract, /parseFinalizerJsonLine/);
+  assert.match(contract, /Brackets, spaces, Unicode, percent signs, and equals\s+signs round-trip exactly/i);
+  assert.match(contract, /Do not call `decodeURIComponent`/);
+  assert.match(contract, /`%5Bidle%5D%20[.][.][.]` is invalid operator input/);
+  assert.match(contract, /unknown or duplicate fields, noncanonical\s+JSON, embedded newlines, C0\/C1 controls/i);
+  assert.doesNotMatch(classifier, /encodeURIComponent|decodeURIComponent/);
+  assert.match(classifier, /JSON\.stringify\(record\)/);
+  assert.match(classifier, /JSON\.parse\(line\)/);
+
+  for (const path of [
+    'ORCHESTRATOR.md',
+    'README.md',
+    'docs/automation-examples.md',
+    'docs/orchestrator-protocol.md',
+    'skills/workboard-orchestrator/SKILL.md',
+  ]) {
+    const contents = read(path);
+    assert.match(contents, /codex-task-finalizer\/v1/, `${path} must name the JSONL schema`);
+    assert.match(contents, /raw/i, `${path} must require raw parsed fields`);
+    assert.match(contents, /encoded|percent/i, `${path} must reject encoded title application`);
+  }
 });
 
 test('privacy and preservation boundaries are explicit', () => {
