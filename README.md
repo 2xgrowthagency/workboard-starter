@@ -124,6 +124,7 @@ Do not turn the root orchestrator into a roaming implementation agent. That is h
 ```text
 docs/
   orchestrator-protocol.md  # standing instructions for the root loop
+  dependency-promotion.md   # promotion metadata and bounded root workflow
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   live-task-visibility.md   # app-native proof and portable fallback
@@ -234,6 +235,15 @@ classification before routing resumes. The full checklist is in
 `canonical_worker` from a conclusively proven `no_usable_worker`; only the
 latter permits a blocked transition and lock release without canonicalization.
 
+Dependency promotion uses the bundled read-only frontmatter scanner:
+
+```bash
+node scripts/check-workboard-promotions.mjs --repo <WORKBOARD_PATH>
+```
+
+Root owns the resulting queue transition. See `docs/dependency-promotion.md` for
+portable packet metadata, policy semantics, output encoding, and bounded review.
+
 ## Minimum rules
 
 - No secrets in this repo.
@@ -273,6 +283,7 @@ Start here:
 
 - `ORCHESTRATOR.md` — first-read instructions for the local root orchestrator
 - `docs/orchestrator-protocol.md`
+- `docs/dependency-promotion.md`
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
 - `docs/live-task-visibility.md`

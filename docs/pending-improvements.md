@@ -79,6 +79,8 @@ Do not present standalone helper or app-server persistence as proof that the run
 
 ### [ST-005: add dependency promotion metadata and scanner](https://github.com/2xgrowthagency/workboard-starter/issues/5)
 
+Status: implemented.
+
 Port `promotion_policy`, `dependency_ready_state`, `blocker_type`, `depends_on`, `unblocks`, and `ready_when` semantics plus a metadata-only scanner.
 
 Rules:

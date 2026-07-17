@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -18,6 +19,9 @@ import { fileURLToPath } from 'node:url';
 
 const classifier = fileURLToPath(
   new URL('../scripts/check-workboard-queue.mjs', import.meta.url),
+);
+const promotionScanner = fileURLToPath(
+  new URL('../scripts/check-workboard-promotions.mjs', import.meta.url),
 );
 const states = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
 
@@ -773,6 +777,27 @@ test('promotion scanner candidates become a queue outcome without policy logic i
     assert.match(output, /^QUEUE_STATUS=PROMOTION_REVIEW_NEEDED /);
     assert.match(output, /PROMOTION_COUNT=1/);
     assert.match(output, /PROMOTION_CANDIDATES=downstream\|backlog\|review/);
+  });
+});
+
+test('bundled promotion scanner integrates with the default classifier path', () => {
+  withRepo((root) => {
+    mkdirSync(join(root, 'scripts'));
+    copyFileSync(promotionScanner, join(root, 'scripts', 'check-workboard-promotions.mjs'));
+    writeFileSync(join(root, 'tasks', 'done', 'dependency.md'), packet({ id: 'dependency' }));
+    writeFileSync(join(root, 'tasks', 'backlog', 'downstream.md'), packet({
+      id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
+      blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
+      ready_when: 'dependency is done', target_project_id: 'example',
+      target_path: '/workspace/example',
+    }));
+    commit(root, 'add bundled promotion fixture');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=PROMOTION_REVIEW_NEEDED /);
+    assert.match(output, /PROMOTION_COUNT=1/);
+    assert.match(output, /PROMOTION_CANDIDATES=downstream\|backlog\|auto\|done\|dependency/);
   });
 });
 
