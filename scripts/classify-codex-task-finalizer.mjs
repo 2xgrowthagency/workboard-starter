@@ -64,12 +64,20 @@ function toolOutputFailed(payload) {
   const output = payload?.output;
   const records = [payload, output].filter((value) => value && typeof value === 'object');
   const failedStatuses = new Set(['error', 'failed', 'failure', 'cancelled', 'timed_out', 'timeout']);
+  const hasNonzeroExitCode = (record) => ['exit_code', 'exitCode', 'returncode', 'returnCode']
+    .some((key) => {
+      if (!Object.hasOwn(record, key)) return false;
+      const value = record[key];
+      return (typeof value === 'number' && Number.isInteger(value) && value !== 0)
+        || (typeof value === 'string' && /^-?\d+$/.test(value) && Number(value) !== 0);
+    });
   return records.some((record) =>
     record.is_error === true
     || record.isError === true
     || record.success === false
     || record.ok === false
     || Boolean(record.error)
+    || hasNonzeroExitCode(record)
     || failedStatuses.has(String(record.status ?? '').toLowerCase()));
 }
 
@@ -94,6 +102,12 @@ function parseQueueReceipt(receipt) {
     if (Object.hasOwn(fields, key) && !/^[01]$/.test(fields[key])) {
       return { error: 'malformed_summary_counter' };
     }
+  }
+  if (Object.keys(fields).some((key) =>
+    key.startsWith('IDLE_PAUSE_')
+    && !BOOLEAN_SUMMARY_FIELDS.has(key)
+    && key !== 'IDLE_PAUSE_ACTION')) {
+    return { error: 'malformed_pause_bookkeeping' };
   }
   if (Object.hasOwn(fields, 'IDLE_PAUSE_ACTION') && !PAUSE_ACTIONS.has(fields.IDLE_PAUSE_ACTION)) {
     return { error: 'malformed_pause_bookkeeping' };
@@ -157,6 +171,14 @@ function initialAutomationMessage(items) {
   return null;
 }
 
+function normalizeAutomationName(value) {
+  return String(value ?? '').replace(/^[ \t]+|[ \t]+$/g, '');
+}
+
+function isExactHeartbeatMessage(value) {
+  return /^<heartbeat>(?:(?!<\/?heartbeat>)[\s\S])*<\/heartbeat>$/.test(String(value ?? '').trim());
+}
+
 function hasCanonicalProof(text) {
   const canonicalPair = /(?:^|\n)worker_creation_status:\s*canonical\s*$/im.test(text)
     && /(?:^|\n)worker_visibility_status:\s*verified\s*$/im.test(text)
@@ -164,8 +186,24 @@ function hasCanonicalProof(text) {
   return canonicalPair || /(?:^|\s)(?:WORKER|QA)_DELEGATION_STATUS=VERIFIED(?=\s|$)/m.test(text);
 }
 
+function hasReviewQaOrDelegationEvidence(text) {
+  return String(text).split(/\r?\n/).some((rawLine) => {
+    const line = rawLine.trim();
+    return /^worker_creation_status:\s*(?:pending|ambiguous|canonical)$/i.test(line)
+      || /^worker_visibility_status:\s*(?:pending|ambiguous|verified|portable_only)$/i.test(line)
+      || /^worker_(?:thread_id|portable_session_id|creation_attempt_id):\s*\S+$/i.test(line)
+      || /^(?:WORKER|QA)_DELEGATION_STATUS=VERIFIED$/.test(line)
+      || /^qa_status:\s*(?:pending|required|active|in_progress|pass|passed|fail|failed|blocked)$/i.test(line)
+      || /^qa_result:\s*(?:pass|passed|fail|failed|blocked)$/i.test(line)
+      || /^promotion_policy:\s*review$/i.test(line)
+      || /^PROMOTION_STATUS=CANDIDATES(?:\s|$)/.test(line)
+      || /^QUEUE_STATUS=(?:READY_WORK_AVAILABLE|QA_WORK_AVAILABLE|QA_RESULT_AVAILABLE|PROMOTION_REVIEW_NEEDED)(?:\s|$)/.test(line);
+  });
+}
+
 function preservationReason(session) {
   if (hasCanonicalProof(session.evidenceText)) return 'canonical_worker_proof';
+  if (hasReviewQaOrDelegationEvidence(session.evidenceText)) return 'review_qa_or_delegation_evidence';
   if (/ROOT_RECONCILIATION_REQUIRED|recovery_pending:\s*true|worker_visibility_status:\s*ambiguous/i.test(session.evidenceText)) {
     return 'worker_recovery_or_callback_blocker';
   }
@@ -194,6 +232,11 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
 
   const automation = initialAutomationMessage(items);
   if (!automation) return { valid: false, reason: 'missing_initial_automation_message' };
+  const automationNameMatches = [...automation.text.matchAll(/^Automation:[ \t]*(.*?)[ \t]*\r?$/gm)];
+  const automationName = normalizeAutomationName(automationNameMatches[0]?.[1]);
+  if (automationNameMatches.length !== 1 || !automationName) {
+    return { valid: false, reason: 'missing_or_duplicate_automation_name' };
+  }
   const automationMatches = [...automation.text.matchAll(/^Automation ID:\s*([A-Za-z0-9._-]+)\s*$/gm)];
   if (automationMatches.length !== 1) {
     return { valid: false, reason: 'missing_or_duplicate_automation_id' };
@@ -219,8 +262,7 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
     if (
       index > automation.index
       && userText
-      && userText !== automation.text.trim()
-      && !userText.startsWith('<heartbeat>')
+      && !isExactHeartbeatMessage(userText)
     ) {
       hasManualFollowup = true;
     }
@@ -270,6 +312,7 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
 
   return {
     valid: true,
+    automationName,
     automationId: automationMatches[0][1],
     threadId: String(threadId),
     hasFinal,
@@ -399,16 +442,17 @@ function parsePositiveInteger(value, name, maximum) {
 }
 
 function parseArgs(argv) {
-  const parsed = { sessions: [], automationIds: [] };
+  const parsed = { sessions: [], automationIds: [], automationNames: [] };
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!['--session', '--automation-id', '--limit', '--settle-seconds', '--now'].includes(flag)) {
+    if (!['--session', '--automation-id', '--automation-name', '--limit', '--settle-seconds', '--now'].includes(flag)) {
       throw new Error(`unknown option: ${flag || '<empty>'}`);
     }
     if (!value || value.startsWith('--')) throw new Error(`missing value for ${flag}`);
     if (flag === '--session') parsed.sessions.push(value);
     else if (flag === '--automation-id') parsed.automationIds.push(value);
+    else if (flag === '--automation-name') parsed.automationNames.push(value);
     else {
       const key = flag.slice(2).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
       if (Object.hasOwn(parsed, key)) throw new Error(`duplicate option: ${flag}`);
@@ -417,14 +461,22 @@ function parseArgs(argv) {
   }
   if (parsed.sessions.length === 0) throw new Error('at least one explicit --session is required');
   if (parsed.automationIds.length === 0) throw new Error('at least one exact --automation-id is required');
+  if (parsed.automationNames.length === 0) throw new Error('at least one exact --automation-name is required');
+  if (parsed.automationIds.length !== parsed.automationNames.length) {
+    throw new Error('each --automation-id requires one paired --automation-name');
+  }
   if (new Set(parsed.sessions).size !== parsed.sessions.length) throw new Error('duplicate --session input');
   if (new Set(parsed.automationIds).size !== parsed.automationIds.length) throw new Error('duplicate --automation-id input');
+  const automationNames = parsed.automationNames.map(normalizeAutomationName);
+  if (automationNames.some((name) => !name)) throw new Error('automation names must not be blank');
+  if (automationNames.some((name) => /[\r\n]/.test(name))) throw new Error('automation names must be one line');
+  if (new Set(automationNames).size !== automationNames.length) throw new Error('duplicate --automation-name input');
   for (const id of parsed.automationIds) {
     if (!/^[A-Za-z0-9._-]+$/.test(id)) throw new Error(`invalid automation ID: ${id}`);
   }
   return {
     sessions: parsed.sessions,
-    automationIds: new Set(parsed.automationIds),
+    automationConfigs: new Map(parsed.automationIds.map((id, index) => [id, automationNames[index]])),
     limit: parsed.limit ? parsePositiveInteger(parsed.limit, 'limit', MAX_LIMIT) : DEFAULT_LIMIT,
     settleSeconds: parsed.settleSeconds
       ? parsePositiveInteger(parsed.settleSeconds, 'settle-seconds', 3600)
@@ -467,8 +519,12 @@ function main() {
         emit({ type: 'FINALIZER_SKIP', status: 'INVALID_INPUT', reason: session.reason });
         continue;
       }
-      if (!options.automationIds.has(session.automationId)) {
+      if (!options.automationConfigs.has(session.automationId)) {
         emit({ type: 'FINALIZER_SKIP', thread_id: session.threadId, status: 'NOT_CONFIGURED', reason: 'automation_id_not_configured' });
+        continue;
+      }
+      if (options.automationConfigs.get(session.automationId) !== session.automationName) {
+        emit({ type: 'FINALIZER_SKIP', thread_id: session.threadId, status: 'NOT_CONFIGURED', reason: 'automation_name_mismatch' });
         continue;
       }
       eligible += 1;

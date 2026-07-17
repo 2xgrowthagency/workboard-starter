@@ -21,7 +21,7 @@ normative routing gates in this skill.
 6. On `WORK_IN_PROGRESS`, report counts and locks, then stop without reading active packets or task history.
 7. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md` and inspect only emitted candidates.
 8. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
-9. Optionally, after the outcome is known, classify explicitly supplied local Codex automation sessions with `scripts/classify-codex-task-finalizer.mjs`; follow `docs/codex-task-finalization.md` and mutate only emitted candidates through verified app-native readback.
+9. Optionally, after the outcome is known, classify explicitly supplied local Codex automation sessions with `scripts/classify-codex-task-finalizer.mjs`; require the first user message's exact configured automation ID/name pair, preserve every later non-heartbeat user message, follow `docs/codex-task-finalization.md`, and mutate only emitted candidates through verified app-native readback.
 10. Read `projects.yaml` only when routing is needed. If it does not exist, copy `projects.example.yaml` to `projects.yaml` and ask the human/local operator to fill real paths.
 
 ## Core loop
@@ -45,7 +45,7 @@ normative routing gates in this skill.
 - Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
 - Structurally reject duplicate source frontmatter keys, then validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status`. Only exact callback status `pending` with canonical creation can return `ROUTABLE` and authorize one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs is logged but cannot route.
 - Never periodically inspect, monitor, heartbeat, or babysit active workers.
-- Task finalization is read-only classification: require exact configured automation IDs and explicit rollout inputs, bound candidates, preserve manual follow-ups/useful errors/blockers/review/delegation/canonical proof, stop on duplicates, verify app-native rename/archive mutations, and never hard-delete SQLite rows.
+- Task finalization is read-only classification: require exact configured automation ID/name pairs and explicit rollout inputs, bound candidates, preserve every later non-heartbeat user message plus useful errors/blockers/review/delegation/canonical proof, stop on duplicates, verify app-native rename/archive mutations, and never hard-delete SQLite rows.
 - Rename the root task only after the cycle's final outcome is known. Use `[idle|claimed|qa|review|blocked|done] <useful project or task label>` and require exact app-native title readback before claiming success. Final `[poll]` titles are invalid. Match whole tokens/phrases: reject leading `WB`, `Workboard`, `poll`/`polling`, `queue check`, and `manual Workboard`, plus generic-only closeout/check/status labels, while allowing those character sequences inside larger real names.
 - On callback unavailability/failure, require `ROOT_RECONCILIATION_REQUIRED` with the identical envelope and error; do not replace it with monitoring.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.

@@ -15,10 +15,21 @@ const classifier = read('scripts/classify-codex-task-finalizer.mjs');
 test('finalizer input is explicit, bounded, and free of private path assumptions', () => {
   assert.match(contract, /--session <EXPLICIT_LOCAL_ROLLOUT_JSONL>/);
   assert.match(contract, /--automation-id <EXACT_AUTOMATION_ID>/);
+  assert.match(contract, /--automation-name <EXACT_AUTOMATION_NAME>/);
   assert.match(contract, /cannot exceed 100/);
-  assert.match(contract, /no built-in\s+automation IDs, session roots, database paths, or home-directory assumptions/i);
+  assert.match(contract, /no built-in automation identities, session roots,\s+database paths, or home-directory assumptions/i);
   assert.doesNotMatch(classifier, /\/Users\/|\.codex\/sessions|state_\d+\.sqlite|sessionsRoot|stateDb/);
   assert.doesNotMatch(classifier, /child_process|sqlite|UPDATE\s+threads|DELETE\s+FROM/i);
+});
+
+test('automation identity requires an exact configured name and ID pair', () => {
+  assert.match(contract, /first user message must be the automation trigger/i);
+  assert.match(contract, /exactly one\s+standalone `Automation:` name line/i);
+  assert.match(contract, /Both values must match the same configured pair/i);
+  assert.match(contract, /case-sensitively after trimming only outer ASCII spaces and tabs/i);
+  assert.match(contract, /internal\s+whitespace is significant/i);
+  assert.match(contract, /Every later non-heartbeat user message produces `MANUAL_FOLLOWUP`/i);
+  assert.match(contract, /byte-identical to the initial trigger/i);
 });
 
 test('classifier and mutation responsibilities stay separate', () => {
@@ -76,7 +87,7 @@ test('finalizer composes with dependency, idle, visibility, and Sol Medium contr
   }
 });
 
-test('shared operator surfaces retain finalizer and known-issues guidance', () => {
+test('shared operator surfaces retain finalizer, known-issues, and closeout guidance', () => {
   for (const path of [
     'README.md',
     'docs/automation-examples.md',
@@ -86,5 +97,6 @@ test('shared operator surfaces retain finalizer and known-issues guidance', () =
     const contents = read(path);
     assert.match(contents, /codex-task-finalization\.md/, `${path} must link task finalization`);
     assert.match(contents, /known-issues-and-recovery\.md/, `${path} must link known-issues recovery`);
+    assert.match(contents, /check-workboard-closeout\.mjs/, `${path} must link closeout validation`);
   }
 });

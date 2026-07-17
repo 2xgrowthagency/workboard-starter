@@ -92,11 +92,14 @@ local hygiene automation may classify exact Codex automation sessions:
 node scripts/classify-codex-task-finalizer.mjs \
   --session <EXPLICIT_LOCAL_ROLLOUT_JSONL> \
   --automation-id <EXACT_AUTOMATION_ID> \
+  --automation-name <EXACT_AUTOMATION_NAME> \
   --limit 25
 ```
 
 Follow [`codex-task-finalization.md`](codex-task-finalization.md). The script is
-read-only and emits candidates only. Rename/archive only exact emitted task IDs
+read-only and emits candidates only. Require the first user message's exact
+configured automation ID/name pair and preserve every later non-heartbeat user
+message, including an identical repeated trigger. Rename/archive only exact emitted task IDs
 through app-native tools, read back every step, stop on duplicate/conflicting
 results, and preserve all manual follow-ups, useful errors, blockers, review or
 delegation evidence, and canonical worker proof. Do not scan implicit session

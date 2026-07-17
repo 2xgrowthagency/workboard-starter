@@ -252,7 +252,7 @@ multiline, oversized, symlinked, or in-repo memory fails closed.
 After an outcome is known, Codex operators may run the optional read-only task
 finalizer described in [`docs/codex-task-finalization.md`](docs/codex-task-finalization.md).
 It accepts only explicitly named local rollout files and exact configured
-automation IDs, emits bounded state-first candidates, and leaves every mutation
+automation ID/name pairs, emits bounded state-first candidates, and leaves every mutation
 and readback to app-native task tools. It does not scan private session roots,
 read a Codex database, or hard-delete task rows.
 

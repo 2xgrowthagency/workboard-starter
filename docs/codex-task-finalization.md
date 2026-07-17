@@ -15,18 +15,28 @@ automation ID that may be classified:
 node scripts/classify-codex-task-finalizer.mjs \
   --session <EXPLICIT_LOCAL_ROLLOUT_JSONL> \
   --automation-id <EXACT_AUTOMATION_ID> \
+  --automation-name <EXACT_AUTOMATION_NAME> \
   --limit 25
 ```
 
-Repeat `--session` and `--automation-id` when needed. There are no built-in
-automation IDs, session roots, database paths, or home-directory assumptions.
+Repeat `--session` when needed. Configure each automation with one paired
+`--automation-id` and `--automation-name`; repeat both flags in matching order
+for additional automations. Pair counts must match, and duplicate IDs or names
+fail closed. There are no built-in automation identities, session roots,
+database paths, or home-directory assumptions.
 `--limit` defaults to 25 and cannot exceed 100. `--settle-seconds` defaults to
 120; a session without a final answer is skipped whether recent or stale.
 
-The initial user message must contain exactly one standalone `Automation ID:`
-line. The value must exactly equal a configured `--automation-id`; substring,
-title, path, and fuzzy matches are rejected. A later non-heartbeat user message
-produces `MANUAL_FOLLOWUP`, never a mutation candidate.
+The first user message must be the automation trigger and contain exactly one
+standalone `Automation:` name line plus exactly one standalone `Automation ID:`
+line. Both values must match the same configured pair. Names are compared
+case-sensitively after trimming only outer ASCII spaces and tabs; internal
+whitespace is significant, and no fuzzy or case-insensitive aliases are
+accepted. Every later non-heartbeat user message produces `MANUAL_FOLLOWUP`,
+even when it is byte-identical to the initial trigger, and never produces a
+mutation candidate. The heartbeat exemption requires the entire trimmed message
+to be one `<heartbeat>...</heartbeat>` envelope; prefixed or trailing manual
+text is follow-up evidence.
 
 The rollout remains local. Output contains only candidate control fields such
 as task ID, state-first title, action, status, and reason. It never emits source
@@ -66,6 +76,10 @@ proof uses the same `worker_creation_status: canonical`,
 `worker_visibility_status: verified`, and nonblank `worker_thread_id` contract
 as [live task visibility](live-task-visibility.md). The finalizer may improve a
 title around that evidence; it does not replace, weaken, or delete the proof.
+Noncanonical preservation uses only explicit machine-readable worker creation
+or visibility fields, nonblank worker identity fields, recognized QA state or
+result fields, and dependency-promotion review/candidate receipts. Ordinary
+prose containing words such as review or QA does not match that allowlist.
 
 For otherwise idle or claimed-only outcomes, useful error evidence always
 suppresses archival. This includes errored tool metadata; structured

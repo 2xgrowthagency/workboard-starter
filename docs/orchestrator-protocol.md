@@ -155,8 +155,12 @@ After the queue outcome is known and any required dependency promotion,
 callback reconciliation, or delegation transition is complete, Codex operators
 may run `scripts/classify-codex-task-finalizer.mjs`. Follow
 [`codex-task-finalization.md`](codex-task-finalization.md): pass only explicit
-local rollout files and exact configured automation IDs, honor the bounded
+local rollout files and exact configured automation ID/name pairs, honor the bounded
 candidate limit, and treat every output as a read-only proposal.
+
+The first user message must carry the exact configured automation name and ID.
+Every later non-heartbeat user message is manual follow-up evidence, even when
+it repeats the initial trigger byte-for-byte.
 
 Mutate only `FINALIZER_CANDIDATE` task IDs through app-native task tools. Read
 the exact task before mutation, verify the title after rename, and verify the
