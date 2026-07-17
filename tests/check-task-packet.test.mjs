@@ -599,4 +599,13 @@ test('canonical and ambiguous app-native creation require the exact live surface
       `canonical creation requires worker_creation_surface ${APP_NATIVE_SURFACE}`,
     ), `${surface}: ${errors.join('; ')}`);
   }
+
+  const extendedIdentity = canonicalCallbackPacket({
+    worker_thread_id: 'task-1" extra="x',
+    worker_task_link: '::created-thread{threadId="task-1" extra="x"}',
+    callback_source_task_id: 'task-1" extra="x',
+    completion_callback_worker_task_id: 'task-1" extra="x',
+  });
+  assert.ok(validateTaskPacket(extendedIdentity, { lane: 'claimed' })
+    .includes('worker_task_link must be the exact supported directive for worker_thread_id'));
 });

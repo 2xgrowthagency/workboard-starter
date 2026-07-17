@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSupportedTaskDirective } from './task-link.mjs';
 
 const SCHEMA_VERSION = '2';
 const LANES = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
@@ -353,10 +354,6 @@ function isPortableArtifactRoot(value) {
   if (!withoutPlaceholder || withoutPlaceholder.startsWith('/')) return false;
   const components = withoutPlaceholder.split('/');
   return components.every((part) => part && part !== '.' && part !== '..' && /^[A-Za-z0-9._-]+$/.test(part));
-}
-
-function isSupportedTaskDirective(value, taskId) {
-  return Boolean(taskId) && value === `::created-thread{threadId="${taskId}"}`;
 }
 
 function isCanonicalVisibilityProof(value) {
