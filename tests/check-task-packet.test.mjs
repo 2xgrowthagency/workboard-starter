@@ -480,6 +480,60 @@ test('accepts exact typed publication receipts and rejects malformed provenance'
     .some((error) => /exact matching public GitHub comment URL/.test(error)));
 });
 
+test('one canonical GitHub repository parser rejects dot segments on every surface', () => {
+  const kinds = [
+    { type: 'github_issue', field: 'github_issue', path: 'issues', number: '11' },
+    { type: 'github_pr', field: 'github_pr', path: 'pull', number: '34' },
+  ];
+  const makePublished = ({ type, field, path, number }, repo) => {
+    const receipt = `type=${type}|destination=${repo}#${number}|` +
+      `url=https://github.com/${repo}/${path}/${number}#issuecomment-5000759212`;
+    return packet({
+      repo, [field]: number, publication_status: 'published',
+      publication_receipts: `[${receipt}]`,
+    });
+  };
+
+  for (const kind of kinds) {
+    const valid = makePublished(kind, 'owner/near-boundary');
+    assert.deepEqual(validateTaskPacket(valid, { lane: 'ready' }), []);
+    for (const segment of ['.', '..']) {
+      const packetRepo = valid.replace('repo: owner/near-boundary', `repo: owner/${segment}`);
+      assert.ok(validateTaskPacket(packetRepo, { lane: 'ready' })
+        .includes('repo must use canonical lowercase owner/repo format'));
+
+      const destination = valid.replace(
+        'destination=owner/near-boundary', `destination=owner/${segment}`,
+      );
+      assert.ok(validateTaskPacket(destination, { lane: 'ready' })
+        .some((error) => /destination must use lowercase owner\/repo#<positive-id>/.test(error)));
+
+      const commentUrl = valid.replace(
+        'url=https://github.com/owner/near-boundary',
+        `url=https://github.com/owner/${segment}`,
+      );
+      assert.ok(validateTaskPacket(commentUrl, { lane: 'ready' })
+        .some((error) => /exact matching public GitHub comment URL/.test(error)));
+
+      const rawComment = `https://github.com/owner/${segment}/${kind.path}/${kind.number}` +
+        '#issuecomment-5000759212';
+      assert.ok(validateTaskPacket(packet({ qa_github_comment_urls: `[${rawComment}]` }), {
+        lane: 'ready',
+      }).some((error) => /exact GitHub issue or PR comment URL/.test(error)));
+    }
+  }
+
+  for (const repoName of ['.github', '..repo', 'repo.', 'repo..name', 'r']) {
+    for (const kind of kinds) {
+      assert.deepEqual(
+        validateTaskPacket(makePublished(kind, `owner/${repoName}`), { lane: 'ready' }),
+        [],
+        `${kind.type} should accept owner/${repoName}`,
+      );
+    }
+  }
+});
+
 test('callback immutable proof is structured and bound to the applicable pinned commit', () => {
   assert.deepEqual(validateTaskPacket(canonicalCallbackPacket(), { lane: 'claimed' }), []);
 

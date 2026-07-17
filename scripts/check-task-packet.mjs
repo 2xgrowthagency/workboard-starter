@@ -10,7 +10,8 @@ const LANES = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done',
 const LOG_FIELDS = ['STATE', 'FROM', 'SUMMARY', 'PROOF', 'BLOCKER', 'NEXT', 'UPDATED_AT'];
 const PACKET_ID_PATTERN = /^\d{8}-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
-const GITHUB_REPO_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?\/[a-z0-9._-]+$/;
+const GITHUB_OWNER_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
+const GITHUB_REPOSITORY_NAME_PATTERN = /^[a-z0-9._-]+$/;
 const POSITIVE_ID_PATTERN = /^[1-9]\d*$/;
 const LIVE_APP_NATIVE_CREATION_SURFACE = 'app-native task tools';
 const MODELS = ['gpt-5.6-sol', 'gpt-5.6-luna'];
@@ -265,13 +266,27 @@ function parseHttpsUrl(value, field, errors) {
   return parsed;
 }
 
+function parseCanonicalGithubRepository(value) {
+  const separator = value.indexOf('/');
+  if (separator <= 0 || separator !== value.lastIndexOf('/')) return null;
+  const owner = value.slice(0, separator);
+  const name = value.slice(separator + 1);
+  if (!GITHUB_OWNER_PATTERN.test(owner) ||
+      !GITHUB_REPOSITORY_NAME_PATTERN.test(name) ||
+      name === '.' || name === '..') {
+    return null;
+  }
+  return { owner, name, fullName: `${owner}/${name}` };
+}
+
 function parseGithubCommentUrl(value) {
   const match = value.match(
-    /^https:\/\/github\.com\/([a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?)\/([a-z0-9._-]+)\/(issues|pull)\/([1-9]\d*)#issuecomment-([1-9]\d*)$/,
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(issues|pull)\/([1-9]\d*)#issuecomment-([1-9]\d*)$/,
   );
   if (!match) return null;
   const [, owner, repo, kind, number] = match;
-  return { repo: `${owner}/${repo}`, kind, number };
+  const repository = parseCanonicalGithubRepository(`${owner}/${repo}`);
+  return repository ? { repo: repository.fullName, kind, number } : null;
 }
 
 function validateGithubCommentUrls(values, field, errors) {
@@ -296,12 +311,16 @@ function validatePublicationReceipts(values, field, fields, errors) {
     const parsed = parseHttpsUrl(url, `${field} entry URL`, errors);
     if (!parsed) continue;
     if (type === 'github_issue' || type === 'github_pr') {
-      const destinationMatch = destination.match(/^([a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?\/[a-z0-9._-]+)#([1-9]\d*)$/);
-      if (!destinationMatch) {
+      const destinationMatch = destination.match(/^([^#]+)#([1-9]\d*)$/);
+      const destinationRepository = destinationMatch
+        ? parseCanonicalGithubRepository(destinationMatch[1])
+        : null;
+      if (!destinationMatch || !destinationRepository) {
         errors.push(`${field} ${type} destination must use lowercase owner/repo#<positive-id>`);
         continue;
       }
-      const [, destinationRepo, destinationNumber] = destinationMatch;
+      const destinationRepo = destinationRepository.fullName;
+      const destinationNumber = destinationMatch[2];
       const comment = parseGithubCommentUrl(url);
       const expectedKind = type === 'github_issue' ? 'issues' : 'pull';
       if (!comment || comment.kind !== expectedKind) {
@@ -638,7 +657,7 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   validateDependencyIds(listValues.depends_on, 'depends_on', errors);
   validateDependencyIds(listValues.unblocks, 'unblocks', errors);
   validateGithubCommentUrls(listValues.qa_github_comment_urls, 'qa_github_comment_urls', errors);
-  if (fields.repo && !GITHUB_REPO_PATTERN.test(fields.repo)) {
+  if (fields.repo && !parseCanonicalGithubRepository(fields.repo)) {
     errors.push('repo must use canonical lowercase owner/repo format');
   }
   for (const field of ['github_issue', 'github_pr']) {
