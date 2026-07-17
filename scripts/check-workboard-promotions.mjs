@@ -120,6 +120,44 @@ function dependencySatisfied(actualState, requiredState) {
   return actualState === 'done';
 }
 
+function promotionPolicy(packet) {
+  const policy = stripQuotes(packet.fields.promotion_policy).toLowerCase() || 'manual';
+  if (!['auto', 'review', 'manual'].includes(policy)) {
+    fail('invalid_promotion_policy', `${packet.id}:${policy}`);
+  }
+  return policy;
+}
+
+function validateDependencyCycles(rootIds, packetsById) {
+  const visitState = new Map();
+  const stack = [];
+
+  function visit(id) {
+    visitState.set(id, 'visiting');
+    stack.push(id);
+    const packet = packetsById.get(id);
+    const dependencies = Object.hasOwn(packet.fields, 'depends_on')
+      ? parseList(packet.fields.depends_on, packet.file, 'depends_on')
+      : [];
+
+    for (const dependencyId of dependencies) {
+      if (!packetsById.has(dependencyId)) continue;
+      if (visitState.get(dependencyId) === 'visiting') {
+        const cycleStart = stack.indexOf(dependencyId);
+        fail('dependency_cycle', [...stack.slice(cycleStart), dependencyId].join('->'));
+      }
+      if (!visitState.has(dependencyId)) visit(dependencyId);
+    }
+
+    stack.pop();
+    visitState.set(id, 'visited');
+  }
+
+  for (const id of rootIds) {
+    if (!visitState.has(id)) visit(id);
+  }
+}
+
 let options;
 try {
   options = parseArgs(process.argv.slice(2));
@@ -146,11 +184,23 @@ for (const state of packetStates) {
   }
 }
 
+const promotionRoots = [];
+for (const packet of packets) {
+  if (!['backlog', 'blocked'].includes(packet.state)) continue;
+  const policy = promotionPolicy(packet);
+  if (policy === 'manual') continue;
+  const blockerType = stripQuotes(packet.fields.blocker_type).toLowerCase();
+  if (blockerType !== 'dependency') {
+    fail('invalid_promotion_blocker_type', `${packet.id}:${blockerType || 'missing'}`);
+  }
+  promotionRoots.push(packet.id);
+}
+validateDependencyCycles(promotionRoots, packetsById);
+
 const candidates = [];
 for (const packet of packets) {
   if (!['backlog', 'blocked'].includes(packet.state)) continue;
-  const policy = stripQuotes(packet.fields.promotion_policy).toLowerCase() || 'manual';
-  if (!['auto', 'review', 'manual'].includes(policy)) fail('invalid_promotion_policy', `${packet.id}:${policy}`);
+  const policy = promotionPolicy(packet);
   if (policy === 'manual') continue;
 
   for (const field of [
@@ -165,8 +215,9 @@ for (const packet of packets) {
   }
 
   const blockerType = stripQuotes(packet.fields.blocker_type).toLowerCase();
-  if (blockerType && blockerType !== 'dependency') continue;
-  if (packet.state === 'blocked' && blockerType !== 'dependency') continue;
+  if (blockerType !== 'dependency') {
+    fail('invalid_promotion_blocker_type', `${packet.id}:${blockerType || 'missing'}`);
+  }
 
   const dependencies = parseList(packet.fields.depends_on, packet.file, 'depends_on');
   if (dependencies.length === 0) fail('missing_dependencies', packet.id);

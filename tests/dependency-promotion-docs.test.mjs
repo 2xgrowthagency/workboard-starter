@@ -36,9 +36,10 @@ test('operator surfaces preserve root ownership and bounded policy semantics', (
 test('promotion guide defines the scanner privacy and eligibility boundary', () => {
   const guide = read('docs/dependency-promotion.md');
   assert.match(guide, /frontmatter only, never packet bodies/i);
-  assert.match(guide, /`tasks\/blocked\/` packets with\s+`blocker_type: dependency`/i);
+  assert.match(guide, /`tasks\/backlog\/` and `tasks\/blocked\/` auto\/review packets with exact\s+`blocker_type: dependency`/i);
   assert.match(guide, /Workers finish[\s\S]*do not move downstream packets/i);
   assert.match(guide, /percent-encoded fields/i);
   assert.match(guide, /`ready_when: dependencies_satisfied`/i);
   assert.match(guide, /reciprocal `depends_on`\/`unblocks` edges/i);
+  assert.match(guide, /`dependency_cycle`/);
 });

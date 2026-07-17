@@ -28,6 +28,20 @@ function add(root, state, name, fields, body) {
   writeFileSync(join(root, 'tasks', state, `${name}.md`), packet(fields, body));
 }
 
+function addAuto(root, id, dependsOn, unblocks, state = 'backlog') {
+  add(root, state, id, {
+    id,
+    promotion_policy: 'auto',
+    dependency_ready_state: 'done',
+    blocker_type: 'dependency',
+    depends_on: `[${dependsOn.join(', ')}]`,
+    unblocks: `[${unblocks.join(', ')}]`,
+    ready_when: 'dependencies_satisfied',
+    target_project_id: 'example',
+    target_path: `/workspace/${id}`,
+  });
+}
+
 function run(root) {
   return execFileSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' }).trim();
 }
@@ -94,29 +108,45 @@ test('done policy does not accept a dependency that is only in review', () => {
   });
 });
 
-test('manual, omitted, and non-dependency blockers never become candidates', () => {
+test('manual and omitted promotion policies never become candidates', () => {
   withBoard((root) => {
     add(root, 'done', 'dependency', { id: 'dependency' });
     for (const [name, fields] of [
       ['manual', { promotion_policy: 'manual', blocker_type: 'dependency' }],
       ['omitted', { blocker_type: 'dependency' }],
-      ['empty-auto', { promotion_policy: 'auto', blocker_type: '' }],
-      ['human', { promotion_policy: 'review', blocker_type: 'human' }],
-      ['external', { promotion_policy: 'auto', blocker_type: 'external' }],
-      ['artifact', { promotion_policy: 'review', blocker_type: 'artifact' }],
     ]) {
       add(root, 'blocked', name, {
         id: name, dependency_ready_state: 'done', depends_on: '[dependency]',
         unblocks: '[]', ready_when: 'dependency is done', ...fields,
       });
     }
-    add(root, 'backlog', 'external-backlog', {
-      id: 'external-backlog', promotion_policy: 'auto', dependency_ready_state: 'done',
-      blocker_type: 'external', depends_on: '[dependency]', unblocks: '[]',
-      ready_when: 'external approval is present',
-    });
     assert.equal(run(root), 'PROMOTION_STATUS=NONE COUNT=0');
   });
+});
+
+test('all auto and review backlog or blocked packets require exact dependency blocker type', () => {
+  for (const [state, id, policy, blockerType] of [
+    ['backlog', 'empty-backlog', 'auto', ''],
+    ['blocked', 'empty-blocked', 'review', ''],
+    ['backlog', 'human-backlog', 'review', 'human'],
+    ['blocked', 'external-blocked', 'auto', 'external'],
+    ['blocked', 'artifact-blocked', 'review', 'artifact'],
+  ]) {
+    withBoard((root) => {
+      add(root, state, id, {
+        id, promotion_policy: policy, dependency_ready_state: 'done',
+        blocker_type: blockerType, depends_on: '[dependency]', unblocks: '[]',
+        ready_when: policy === 'auto' ? 'dependencies_satisfied' : 'artifact exists',
+        target_project_id: 'example', target_path: `/workspace/${id}`,
+      });
+
+      const result = spawnSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' });
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /PROMOTION_STATUS=INVALID REASON=invalid_promotion_blocker_type/);
+      assert.match(result.stderr, new RegExp(`${id}%3A`));
+      assert.doesNotMatch(result.stdout, /PROMOTION_STATUS=CANDIDATES/);
+    });
+  }
 });
 
 test('auto rejects free-form human, external, approval, and artifact conditions', () => {
@@ -167,6 +197,52 @@ test('auto fails closed when depends_on and dependency unblocks are not reciproc
       assert.doesNotMatch(result.stdout, /PROMOTION_STATUS=CANDIDATES/);
     });
   }
+});
+
+test('dependency graph rejects self, reciprocal two-node, and longer cycles', () => {
+  for (const [setup, encodedCycle] of [
+    [
+      (root) => addAuto(root, 'self', ['self'], ['self']),
+      /self-%3Eself/,
+    ],
+    [
+      (root) => {
+        addAuto(root, 'alpha', ['beta'], ['beta']);
+        addAuto(root, 'beta', ['alpha'], ['alpha']);
+      },
+      /alpha-%3Ebeta-%3Ealpha|beta-%3Ealpha-%3Ebeta/,
+    ],
+    [
+      (root) => {
+        addAuto(root, 'alpha', ['beta'], ['charlie']);
+        addAuto(root, 'beta', ['charlie'], ['alpha']);
+        addAuto(root, 'charlie', ['alpha'], ['beta']);
+      },
+      /alpha-%3Ebeta-%3Echarlie-%3Ealpha|beta-%3Echarlie-%3Ealpha-%3Ebeta|charlie-%3Ealpha-%3Ebeta-%3Echarlie/,
+    ],
+  ]) {
+    withBoard((root) => {
+      setup(root);
+      const result = spawnSync(process.execPath, [scanner, '--repo', root], { encoding: 'utf8' });
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /PROMOTION_STATUS=INVALID REASON=dependency_cycle/);
+      assert.match(result.stderr, encodedCycle);
+      assert.doesNotMatch(result.stdout, /PROMOTION_STATUS=(?:NONE|CANDIDATES)/);
+    });
+  }
+});
+
+test('valid acyclic reciprocal graph emits only dependency-ready nodes', () => {
+  withBoard((root) => {
+    add(root, 'done', 'leaf', { id: 'leaf', unblocks: '[middle]' });
+    addAuto(root, 'middle', ['leaf'], ['downstream']);
+    addAuto(root, 'downstream', ['middle'], []);
+
+    const output = run(root);
+    assert.match(output, /^PROMOTION_STATUS=CANDIDATES COUNT=1 /);
+    assert.match(output, /CANDIDATES=middle\|backlog\|auto\|done\|leaf\|example\|%2Fworkspace%2Fmiddle/);
+    assert.doesNotMatch(output, /CANDIDATES=.*downstream/);
+  });
 });
 
 test('unknown dependencies fail closed without opening packet bodies', () => {

@@ -47,8 +47,9 @@ ready_when:
 - `manual` and omitted policies never become scanner candidates. New human or
   external proof is required before root changes the packet.
 
-Only `tasks/backlog/` packets and `tasks/blocked/` packets with
-`blocker_type: dependency` are eligible. A blocked packet with unresolved human
+Only `tasks/backlog/` and `tasks/blocked/` auto/review packets with exact
+`blocker_type: dependency` are scanner-eligible. Empty or other blocker types
+are invalid promotion metadata and fail closed. A packet with unresolved human
 or external conditions must be corrected to `promotion_policy: manual`; this
 prevents the same non-actionable check from reopening on every idle poll.
 
@@ -80,7 +81,10 @@ metadata.
 For auto candidates, `invalid_auto_ready_when` means the condition was not the
 exact dependency-only sentinel. `missing_reciprocal_unblock` and
 `inconsistent_reciprocal_unblock` identify dependency graph edges that are not
-represented consistently in both packets.
+represented consistently in both packets. `invalid_promotion_blocker_type`
+identifies auto/review packets that are not exact dependency blockers, while
+`dependency_cycle` reports a reachable cycle before it can strand the queue as
+a false `NONE` result.
 
 ## Root procedure
 

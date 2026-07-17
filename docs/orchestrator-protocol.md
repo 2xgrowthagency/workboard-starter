@@ -155,13 +155,16 @@ promotion. Packet authors declare `promotion_policy`, `dependency_ready_state`,
 semantics and scanner output contract are in
 [`docs/dependency-promotion.md`](dependency-promotion.md).
 
-The scanner reads frontmatter only and considers backlog plus dependency-blocked
-packets. `auto` requires the exact `ready_when: dependencies_satisfied` sentinel
-and reciprocal `depends_on`/`unblocks` edges, so all readiness is mechanically
-represented by dependency states. `review` allows root to open that candidate
-and check one named artifact or bounded condition. Manual, omitted, human, and
-external conditions are not poll candidates. Invalid scanner metadata is a hard
-stop, not permission to guess or promote.
+The scanner reads frontmatter only and considers backlog plus blocked packets
+whose auto/review metadata has exact `blocker_type: dependency`. Empty or other
+blocker types fail closed. `auto` requires the exact
+`ready_when: dependencies_satisfied` sentinel and reciprocal
+`depends_on`/`unblocks` edges, so all readiness is mechanically represented by
+dependency states. Reachable dependency cycles fail explicitly before state
+checks. `review` allows root to open that candidate and check one named artifact
+or bounded condition. Manual, omitted, human, and external conditions are not
+poll candidates. Invalid scanner metadata is a hard stop, not permission to
+guess or promote.
 
 ## Completion callback contract
 
