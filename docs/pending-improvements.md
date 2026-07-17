@@ -113,7 +113,11 @@ does not invoke Git or make Git-state judgments.
 
 ### [ST-008: add conservative thread finalization and hygiene](https://github.com/2xgrowthagency/workboard-starter/issues/8)
 
-Generalize the finalizer as an optional local Codex utility with tests and documented privacy boundaries.
+Status: implemented.
+
+The optional local Codex utility accepts only explicit rollout inputs and exact
+configured automation IDs, emits bounded state-first candidates without direct
+mutation, and documents app-native mutation/readback plus privacy boundaries.
 
 Required behavior:
 
