@@ -147,6 +147,7 @@ scripts/
   check-workboard-target-lock.mjs # exact decoded target-lock check
   check-workboard-callback.mjs # canonical callback status/identity/role/lane check
   check-task-creation-recovery.mjs # validate recovery state and proof
+  check-workboard-closeout.mjs # validate state-first title and task-link proof
   reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
 skills/
   workboard-orchestrator/    # optional portable skill instructions
@@ -168,6 +169,7 @@ tests/
   codex-task-finalizer.test.mjs
   live-task-visibility-docs.test.mjs
   task-creation-recovery.test.mjs
+  workboard-closeout.test.mjs
 ```
 
 ## Root Git preflight
@@ -354,6 +356,10 @@ portable packet metadata, policy semantics, output encoding, and bounded review.
 - A task-creation timeout is ambiguous; no replacement is allowed without live app-native absence or unusability proof.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
+- Root closeout titles are applied only after the final outcome is known, use `[idle|claimed|qa|review|blocked|done] <useful project or task label>`, and are app-native read back before success is claimed. Final `[poll]` titles are invalid. Token/phrase-aware validation rejects leading `WB`, `Workboard`, `poll`/`polling`, `queue check`, and `manual Workboard`, plus generic-only closeout/check/status labels, while permitting those character sequences inside larger real names. Unavailable or unverified title changes report the exact failed call, timeout/error, or requested-versus-observed mismatch.
+- Every verified builder, QA, and canonical task-creation recovery response reports both the raw canonical task ID and exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with that same ID; other directive/link forms are unsupported.
+- Standalone closeout obtains its current root task UUID only from `process.env.CODEX_THREAD_ID`, rejects missing/malformed/mismatched identity, and never uses task list/search or history discovery. Persistent-root heartbeats are exempt.
+- Only a heartbeat delivered to an intentionally persistent root task may retain an unchanged useful state-first title, with the exception and exact readback recorded; worker heartbeat polling remains forbidden.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.
 - Unknown project/path means block and ask, not guess.
 - Done requires proof.

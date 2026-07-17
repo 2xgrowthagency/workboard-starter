@@ -405,7 +405,7 @@ move it to blocked, or route another worker to the same target.
 3. Preserve the requested title, raw task ID (`unknown` is valid when none returned), selected model/reasoning, creation/recovery timestamps, every exact failed or stalled call, and all partial returned evidence.
 4. On the same live app-native surface, list tasks narrowly enough to find candidates, then read every plausible task by raw ID. Match title, target project/path, source handoff, and usability. A helper-process result or creation response without live readback is not sufficient.
 5. Do not create a replacement while the original outcome remains unknown. `replacement_authorized: true` is invalid while investigating. Authorize exactly one replacement call only after structured app-native list/read receipts conclusively prove the original absent or unusable, and record one explicit pre-call authorization. Before that call, mint a new unique `replacement_worker_creation_attempt_id`; preserve its returned ID as attempt evidence only.
-6. Read back the surviving original or authorized replacement and record exactly one `canonical_task_id`, its `canonical_worker_creation_attempt_id`, matching canonical read task ID, `CANONICAL_USABILITY: usable`, and `recovery_outcome: canonical_worker`. An authorized replacement becomes canonical only after complete readback. If conclusive app-native list/read instead proves no usable worker remains, set `recovery_outcome: no_usable_worker`, leave canonical fields empty, and complete the structured `No-canonical resolution` evidence with an exact next action.
+6. Read back the surviving original or authorized replacement and record exactly one raw `canonical_task_id`, exact same-ID `canonical_task_link: ::created-thread{threadId="<CANONICAL_TASK_ID>"}`, its `canonical_worker_creation_attempt_id`, matching canonical read task ID, `CANONICAL_USABILITY: usable`, and `recovery_outcome: canonical_worker`. Print the same raw ID and directive in the canonical recovery response. `::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and multiple directives are unsupported. An authorized replacement becomes canonical only after complete readback. If conclusive app-native list/read instead proves no usable worker remains, set `recovery_outcome: no_usable_worker`, leave canonical fields empty, and complete the structured `No-canonical resolution` evidence with an exact next action.
 7. Record either `DUPLICATE_STATE: none_found` with search receipt or one verified archive/stand-down JSON receipt per duplicate. Destructive disposal is forbidden and useful history remains preserved.
 8. Validate the recovery record with `node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>`. For `canonical_worker`, atomically write canonical task/attempt identity, canonical/verified statuses, visibility proof/timestamp, and `recovery_pending: false` back to the still-claimed source packet with `node scripts/reconcile-task-creation-recovery.mjs canonicalize --repo <WORKBOARD_PATH> --source-packet <WORKBOARD_PATH/tasks/claimed/PACKET> --recovery-packet <RECOVERY_PACKET>`. All three path arguments must be absolute and lexically canonical: no dot, dot-dot, redundant-component, or trailing-separator aliases. The canonicalizer rejects a repo root supplied through a symlink entry, symlinked `tasks` or `tasks/claimed`, duplicate frontmatter keys, non-regular or symlinked source packets, resolved escapes, and `no_usable_worker`. It compares source identity and exact content immediately before rename and rejects changes observed since its initial read. The fsynced same-directory temporary file plus atomic rename provides atomic replacement visibility and prevents partial packet contents. Ordinary POSIX/Node filesystems do not provide digest-conditioned compare-and-swap, so an uncooperative writer changing the source after that final comparison but before rename may be overwritten. Workboard's one-root/single-writer transition discipline is required to close that operational gap; a stronger multi-writer guarantee requires cooperative locking or transactional storage outside this protocol. After a completed `no_usable_worker` outcome validates, move the source to `tasks/blocked/` with its exact next action and release the lock.
 9. Rerun dependency promotion with the configured policy/scanner, then rerun `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH>`. Record successful structured receipts, set the completion timestamps/status, and validate the completed record again.
@@ -487,7 +487,52 @@ When the host genuinely has no app-native task APIs, use the documented
 without claiming live Desktop visibility.
 
 Root output for a verified app-native delegation must include canonical
-`worker_thread_id` and the host-supported clickable task link or directive.
+`worker_thread_id` as a raw ID and exactly the clickable
+`::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID. This applies to
+every builder, QA, and canonical task-creation recovery response. Reject
+`::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and
+multiple directives.
+
+## State-first root closeout
+
+Wait until the cycle's final outcome is known before changing the root task
+title. Choose `[idle|claimed|qa|review|blocked|done] <useful project or task
+label>`; `[poll]`, `WB`, a `Workboard` prefix, or a generic `Workboard` label is
+not a valid final title. Apply the exact title through the running host's
+app-native mutation tool, then read the task back and compare the title exactly.
+Label validation is token/phrase-aware: reject leading `WB`, `Workboard`,
+`poll`/`polling`, `queue check`, and `manual Workboard`, and labels made only of
+generic closeout/check/status words, while allowing those character sequences inside
+a larger real project/task name.
+
+Do not treat a mutation return, local/session metadata, or a best-effort call as
+verification. If the title tool is absent, returns an error, times out, or the
+readback differs, report the exact tool/call, status or elapsed timeout/error,
+requested title, and observed title when available. State explicitly that the
+title is unavailable or unverified; do not claim the rename happened.
+
+For standalone closeout, source the current root task ID only from
+`process.env.CODEX_THREAD_ID` and pass that exact UUID as `--title-task-id` to
+the closeout checker. Missing, malformed, or mismatched values fail closed.
+Do not use task list/search or history to discover the current root ID;
+only direct readback by the already-known environment ID is allowed for title
+verification. An intentionally persistent root heartbeat is exempt from the
+standalone environment-ID requirement.
+
+One exception exists for a heartbeat delivered to an intentionally persistent
+root task: when its state and useful label have not changed, retain the stable
+state-first title, record the exception, and verify that retained title with
+app-native readback. This does not permit ordinary worker monitoring or
+heartbeat polling, and it does not preserve generic titles.
+
+Validate assembled closeout evidence with
+`node scripts/check-workboard-closeout.mjs`. A successful delegation includes
+the separately printed raw task ID, the exact same-ID `::created-thread`
+directive, and verified app-native
+task readback. Unavailable or unverified
+title proof supplies structured `--title-call` and `--title-failure` values and
+a blocker record containing the requested title, call, failure, and mismatch
+readback when applicable.
 
 ## Worker handoff prompt
 

@@ -30,6 +30,7 @@ You should:
 18. Structurally reject duplicate source frontmatter keys, then run `scripts/check-workboard-callback.mjs` with canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status` before reconciliation. Only exact callback status `pending` can return `CALLBACK_STATUS=ROUTABLE`; replayed or otherwise non-pending callbacks and mismatched task/attempt callbacks are recovery evidence only.
 19. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md`: promote mechanically proven `auto` candidates, perform exactly one declared check for each `review` candidate, and never repeatedly reconsider manual or human/external blockers without new proof.
 20. Commit and push every state transition, then rerun the queue classifier after promotions.
+21. After the cycle's final outcome is known, choose a short state-first root title with a useful project or task label, mutate it through the app-native title tool, and read it back before claiming success. Never leave a completed run titled `[poll] ...`, `WB ...`, `Workboard ...`, or only `Workboard`. If mutation is unavailable, fails, times out, or reads back differently, report the exact call/status/error and observed title as the closeout blocker.
 
 The classifier returns one of these lanes:
 
@@ -163,8 +164,12 @@ an exact next action. When app-native task APIs are genuinely absent, record
 portable session proof without claiming Desktop visibility or canonical
 callback routing.
 
-Verified app-native root output includes canonical `worker_thread_id` and a
-supported clickable task link or directive. A callback routes only when its
+Verified app-native root output includes canonical `worker_thread_id` as the raw
+ID plus exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}`
+directive with that same ID. Every successful
+builder, QA, and canonical task-creation recovery response contains both forms
+with exact ID equality. `::codex-thread`, URLs, malformed/extended directives,
+extra text/IDs, and multiple directives are unsupported. A callback routes only when its
 `worker_task_id` and `worker_creation_attempt_id` equal the source packet's
 current canonical pair; otherwise it is recovery evidence only.
 
@@ -213,3 +218,37 @@ QA-passed, or explicitly QA-not-required, means `tasks/review/`.
 Verified complete means `tasks/done/`.
 
 Do not call work done until proof has been inspected directly.
+
+## Root task closeout
+
+Treat title mutation as the last state-reporting operation, after the queue,
+delegation, callback, pause, or blocker outcome is final. Use
+`[idle|claimed|qa|review|blocked|done] <useful project or task label>` and verify
+the exact title through the same running host's app-native read surface. A tool
+return without readback is unverified. Report unavailable tools, timeout/error
+text, or requested-versus-observed mismatch exactly; do not say the rename
+succeeded.
+
+Validate labels by whole tokens and leading phrases. Reject labels beginning
+with `WB`, `Workboard`, `poll`/`polling`, `queue check`, or `manual Workboard`,
+and labels made only of generic closeout/check/status words. Do not reject those
+character sequences when they occur inside a larger real project/task name.
+
+For a standalone closeout, obtain the current root task ID only from the
+`CODEX_THREAD_ID` environment variable. Pass that exact value as
+`--title-task-id`; `scripts/check-workboard-closeout.mjs` reads the environment
+itself and rejects a missing, malformed, or mismatched UUID. Never call task
+list/search tools or inspect task history to discover the current root ID. A
+direct app-native read of the known environment ID is allowed only for title
+readback verification. A heartbeat in an intentionally persistent root task is
+exempt from this standalone identity lookup.
+
+A true heartbeat delivered to an intentionally persistent root task may retain
+an already useful state-first title when no state or task label changed. This is
+the only retention exception: record that it was a persistent-root heartbeat
+and read back the retained title. It does not authorize heartbeat polling of
+workers, generic titles, or skipping a rename after a changed outcome.
+
+Use `node scripts/check-workboard-closeout.mjs ...` when assembling closeout
+proof. A verified delegation or canonical recovery supplies the raw task ID,
+the exact same-ID `::created-thread` directive, and verified task readback.
