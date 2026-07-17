@@ -34,7 +34,7 @@ normative routing gates in this skill.
 - Trust `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED`; at zero available capacity the classifier machine-enforces `WORK_IN_PROGRESS`. Below capacity, continue routing unrelated targets.
 - Decode every lock and reject a ready packet when both its canonical `target_project_id` and `target_path` exactly match a lock. Use `scripts/check-workboard-target-lock.mjs`; malformed lock input blocks routing.
 - Claim only independent ready packets with clear routing and acceptance criteria.
-- Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
+- Move claimed packets to `tasks/claimed/`, fill claimant, immutable target, exact lock ownership, and resolved root/worker route, append `STATE: active`, validate the v2 packet, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
 - Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.
 - Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
@@ -49,11 +49,27 @@ normative routing gates in this skill.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
 - Pass packet-linked PR/issue URLs, `builder_thread_id`, and publication policies to QA; verify publication receipts or perform a root fallback. Never expose absolute local paths or local-only artifacts in GitHub comments.
+- Preserve the durable QA artifact root/directory, copied immutable target, and paired prior QA head/result for bounded continuations. Record QA and generic publication receipts separately from the product verdict.
 - Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
 - Run dependency promotion as a root-owned transition: `auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges, `review` permits one bounded `ready_when` check, and manual or human/external blockers require new proof. Never make workers promote downstream packets.
 - Commit and push every transition.
+
+## Packet validation
+
+New packets use `packet_schema_version: 2`. Before each move, append the exact
+`backlog`, `ready`, `active`, `qa`, `blocked`, `review`, `done`, or `archive`
+transition and run `node scripts/check-task-packet.mjs <packet> --lane <lane>
+--previous-status <from-state>`. Folder, frontmatter, latest log, target lock,
+state-specific metadata, callback provenance, immutable targets, and publication
+receipts must agree. Duplicate keys, invalid transitions, private user paths
+outside normalized fields, and secret-shaped content are hard stops.
+
+`--allow-legacy` is an explicit read-only compatibility check, not permission to
+mutate an old packet. Migrate legacy `orchestrator_*` fields to canonical
+`root_*`, add evidence-backed v2 metadata and transition history, and validate
+without the flag before routing. See `docs/task-packet-schema.md`.
 
 ## Ambiguous creation hard stop
 

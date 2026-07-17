@@ -1,9 +1,11 @@
 ---
+packet_schema_version: 2
 id: YYYYMMDD-001-short-slug
 status: ready
 priority: P2
 created_by: <human-or-agent-name>
 created_at: YYYY-MM-DDTHH:MM:SSZ
+backlog_reason:
 promotion_policy: manual
 dependency_ready_state: done
 blocker_type:
@@ -34,6 +36,9 @@ worker_routing_blocker:
 recovery_id:
 recovery_status: not_required
 recovery_pending: false
+dispatch_mode: pending
+callback_source_task_id:
+callback_handoff_required: true
 completion_callback_status: pending
 completion_callback_result:
 completion_callback_worker_task_id:
@@ -64,34 +69,49 @@ qa_independent_verification: false
 qa_requires_browser: false
 qa_requires_computer_use: false
 qa_artifact_policy: local_paths_only
-qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
+qa_artifacts_root: ${WORKBOARD_ROOT}/qa-artifacts
 qa_artifacts_dir:
+qa_immutable_target_type: none
+qa_immutable_target:
+qa_prior_head:
+qa_prior_result:
 qa_thread_id:
 qa_result:
 qa_publish_to_github: auto
 qa_worker_notification_policy: on_failure_or_no_github
 qa_publication_status: not_required
 qa_github_comment_urls: []
+qa_publication_receipts: []
 qa_worker_notification_status: not_required
 target_commit:
+immutable_target_type: none
+immutable_target:
+target_lock_status: unlocked
+target_lock_project_id:
+target_lock_path:
+target_lock_acquired_at:
+target_lock_released_at:
 repo:
 github_issue:
 github_pr:
 target_project_id: workboard
 target_project_name: Workboard
-target_path: /Users/YOU/dev/workboard
-orchestrator_model:
-orchestrator_reasoning:
-orchestrator_model_routing_reason_category:
-orchestrator_model_routing_reason_note:
-orchestrator_luna_eligibility:
-orchestrator_independent_verification: false
+target_path: ${WORKBOARD_ROOT}
+root_model:
+root_reasoning:
+root_model_routing_reason_category:
+root_model_routing_reason_note:
+root_luna_eligibility:
+root_independent_verification: false
 worker_model:
 worker_reasoning:
 worker_model_routing_reason_category:
 worker_model_routing_reason_note:
 worker_luna_eligibility:
 worker_independent_verification: false
+publication_status: not_required
+publication_receipts: []
+archive_reason:
 branch_policy: create_branch
 allowed_actions: [inspect, edit, test]
 forbidden_actions: [merge, publish, deploy, destructive_data_change, secrets]
@@ -154,6 +174,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
+- Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.
+- `packet_schema_version: 2` is fail-closed. Legacy packets require an explicit, one-run `--allow-legacy` validation and should be migrated before mutation; do not mix legacy `orchestrator_*` aliases with v2 `root_*` fields.
 - Root owns dependency promotion. Workers report completion proof but do not move downstream packets.
 - `promotion_policy: auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges; `review` permits one bounded `ready_when` check; omitted or `manual` requires new human/external proof.
 - Only backlog or blocked auto/review packets with exact `blocker_type: dependency` are scanner-eligible. Empty/other blocker types fail closed; human/external blockers stay manual until new proof arrives.
@@ -173,6 +195,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Every verified builder, QA, and canonical recovery response reports the raw canonical task ID separately plus the exact same-ID `::created-thread` directive.
 - Before QA replaces the canonical `worker_thread_id`, preserve the original builder identity in `builder_thread_id`; `qa_thread_id` may mirror the canonical QA task for provenance.
 - Claimed and active-QA packets lock only an exact decoded `target_project_id` + `target_path` tuple. Unrelated targets may route up to capacity; `parallel_safe` does not override a target lock.
+- On claim, set `target_lock_status: held`, copy the exact target tuple into `target_lock_project_id` and `target_lock_path`, and record `target_lock_acquired_at`. Ready, blocked, review, done, and archive packets cannot retain a held lock.
+- Pin `target_commit` or another `immutable_target` before active work. QA additionally copies that value into `qa_immutable_target`, records the durable `qa_artifacts_root` and task-specific `qa_artifacts_dir`, and preserves `qa_prior_head` plus `qa_prior_result` together for a bounded continuation.
 - During ambiguous creation this packet stays in `tasks/claimed`, keeps its capacity/target lock, sets `worker_creation_status: ambiguous`, `worker_visibility_status: ambiguous`, and `recovery_pending: true`, and records its stable `recovery_id`.
 - Canonical reconciliation atomically writes `worker_thread_id`, the canonical `worker_creation_attempt_id`, `worker_creation_status: canonical`, `worker_visibility_status: verified`, visibility proof/timestamp, `worker_creation_proof`, and `recovery_pending: false` without moving the packet.
 - A callback can request routing only while `completion_callback_status: pending`, `worker_creation_status: canonical`, visibility is verified, recovery is not pending, and its packet/task/attempt identity plus role/QA/result/lane matrix all match. Duplicate source frontmatter keys fail closed before routing. Replayed, noncanonical, delayed, ambiguous, and mismatched callbacks are recovery evidence only.
@@ -187,6 +211,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Noncanonical or delayed callbacks are `RECOVERY_EVIDENCE`: append them to the status log, but do not read the superseded task or move the packet.
 - Callback unavailability/failure emits `ROOT_RECONCILIATION_REQUIRED` with the identical envelope, including `worker_creation_attempt_id`, and records `completion_callback_error`; root must not replace it with monitoring.
 - Root appends every reconciled callback envelope and receipt/error to the status log before resetting `completion_callback_*` for a later builder or QA handoff.
+- Set `callback_source_task_id` to the canonical builder or QA task that emitted the callback. When a callback is no longer pending, it must match `completion_callback_worker_task_id`; `callback_handoff_required: true` keeps the persistent root handoff mandatory.
+- Store public write evidence in `publication_receipts` and QA-specific comment or notification evidence in `qa_publication_receipts`. A `published` status without at least one receipt is invalid.
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Resolve each role's routing packet override first, then project override, then the portable `gpt-5.6-sol` medium default.
@@ -194,17 +220,21 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Use `gpt-5.6-luna` only at medium reasoning when the role's `*_luna_eligibility` is exactly `bounded_high_volume` and `*_independent_verification: true`; the independent verifier must inspect the result before completion.
 - Keep all context task-local. No private memory dumps and no secrets.
 
-## Status log
+## State transition log
 
-Use this format for every update:
+Append one complete block for every lane transition. Use canonical log states
+`backlog`, `ready`, `active`, `qa`, `blocked`, `review`, `done`, and `archive`;
+frontmatter and folders use `claimed` for the `active` state. Do not rewrite or
+delete prior blocks.
 
 ```text
-STATUS: active|blocked|ready_for_review|done
-SUMMARY:
-PROOF:
-BLOCKER:
-NEXT:
-UPDATED_AT:
+STATE: ready
+FROM: created
+SUMMARY: Packet accepted for routing.
+PROOF: Intake validation receipt or issue URL.
+BLOCKER: none
+NEXT: Root may claim after queue and lock checks.
+UPDATED_AT: YYYY-MM-DDTHH:MM:SSZ
 ```
 
 ## Verification notes

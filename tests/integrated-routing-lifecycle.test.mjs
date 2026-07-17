@@ -281,13 +281,21 @@ test('shared task packet preserves dependency promotion and model routing contra
     'depends_on', 'unblocks', 'ready_when',
   ]) assert.match(frontmatter, new RegExp(`^${field}:`, 'm'), `missing ${field}`);
 
-  for (const role of ['orchestrator', 'worker', 'qa']) {
+  for (const role of ['root', 'worker', 'qa']) {
     for (const suffix of [
       'model', 'reasoning', 'model_routing_reason_category',
       'model_routing_reason_note', 'luna_eligibility',
     ]) assert.match(frontmatter, new RegExp(`^${role}_${suffix}:`, 'm'), `missing ${role}_${suffix}`);
     assert.match(frontmatter, new RegExp(`^${role}_independent_verification: false$`, 'm'));
   }
+
+  for (const field of [
+    'packet_schema_version', 'backlog_reason', 'target_commit', 'immutable_target',
+    'target_lock_status', 'dispatch_mode', 'callback_source_task_id',
+    'callback_handoff_required', 'qa_artifacts_root', 'qa_artifacts_dir',
+    'qa_immutable_target', 'qa_prior_head', 'qa_prior_result',
+    'qa_publication_receipts', 'publication_receipts', 'archive_reason',
+  ]) assert.match(frontmatter, new RegExp(`^${field}:`, 'm'), `missing ${field}`);
 
   assert.match(packet, /`promotion_policy: auto` requires `ready_when: dependencies_satisfied`/);
   assert.match(packet, /portable `gpt-5\.6-sol` medium default/);

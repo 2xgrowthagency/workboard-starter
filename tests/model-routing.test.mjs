@@ -41,7 +41,7 @@ test('portable defaults are Sol Medium for every routine role', () => {
   });
 
   const packet = read('templates/task-packet.md');
-  for (const role of ['orchestrator', 'worker', 'qa']) {
+  for (const role of ['root', 'worker', 'qa']) {
     assert.match(packet, new RegExp(`^${role}_model:$`, 'm'));
     assert.match(packet, new RegExp(`^${role}_reasoning:$`, 'm'));
     assert.match(packet, new RegExp(`^${role}_model_routing_reason_category:$`, 'm'));
@@ -68,7 +68,7 @@ test('operator surfaces contain no stale legacy model or default high reasoning'
     'templates/task-packet.md',
   ];
   const legacyModel = new RegExp(`gpt-5\\.6-${'ter' + 'ra'}`, 'i');
-  const staleDefault = /(?:default_reasoning|orchestrator_reasoning|worker_reasoning|qa_reasoning):\s*high\b/i;
+  const staleDefault = /(?:default_reasoning|orchestrator_reasoning|root_reasoning|worker_reasoning|qa_reasoning):\s*high\b/i;
 
   for (const path of surfaces) {
     const contents = read(path);

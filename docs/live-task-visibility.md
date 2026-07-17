@@ -9,6 +9,7 @@ Desktop UI refreshed.
 
 Use the source packet's existing names throughout the visibility flow:
 
+- `packet_schema_version`: normalized packet contract version;
 - `id`: packet identity;
 - `root_task_id`: persistent root callback destination;
 - `target_project_id`: saved project/target identity;
@@ -27,6 +28,15 @@ Use the source packet's existing names throughout the visibility flow:
   recovery lifecycle, and routing gate;
 - `worker_visibility_verified_at`, `worker_visibility_proof`, and
   `worker_routing_blocker`: exact evidence.
+- `dispatch_mode`: chosen `app_native` or `portable_only` route;
+- `target_lock_status`, `target_lock_project_id`, `target_lock_path`, and lock
+  timestamps: durable exact lock ownership;
+- `callback_handoff_required` and `callback_source_task_id`: persistent root
+  handoff requirement and canonical callback provenance.
+
+The full field/state contract is in `docs/task-packet-schema.md`. Run its packet
+validator before a visibility writeback or lane move; live readback does not
+waive schema, duplicate-key, transition, secret, or private-path checks.
 
 Recovery records preserve the canonical routing vocabulary. Only the source
 packet relation and candidate/canonical evidence need recovery-specific names:
@@ -59,6 +69,9 @@ Choose one mode before delegation:
 Do not switch to `portable_only` because an app-native call stalled. That is an
 ambiguous app-native result requiring recovery, not proof that a second worker
 is needed.
+
+Write the selected mode to `dispatch_mode` before creation. Claimed and QA
+packets cannot retain `pending` dispatch metadata.
 
 ## App-native proof gate
 

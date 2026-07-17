@@ -17,20 +17,21 @@ You should:
 5. Treat classifier-emitted claimed and active-QA records as capacity usage and exact per-target locks. Do not read their packet or task history during ordinary polls.
 6. When ready work exists and capacity remains, inspect ready packets and continue routing unrelated targets.
 7. Decode locks and reject a ready packet when both canonical `target_project_id` and `target_path` exactly match; use `scripts/check-workboard-target-lock.mjs` and fail closed on malformed input.
-8. Move claimed packets to `tasks/claimed/`, fill claim metadata, commit, and push.
+8. Move claimed packets to `tasks/claimed/`, fill claim metadata, immutable target and exact lock fields, append the `active` transition, validate with `scripts/check-task-packet.mjs`, commit, and push.
 9. Persist a new `worker_creation_attempt_id` before every actual creation call, then delegate at most one correctly scoped worker through `docs/live-task-visibility.md`; write canonical identity only after complete app-native list/read proof. On ambiguity, keep one stable recovery incident ID and use `templates/task-creation-recovery.md`; an authorized replacement gets a new attempt ID.
 10. Keep workers inside the packet `target_path`.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
 13. Give every builder and QA create handoff the persistent source `root_task_id`, packet ID, current `worker_creation_attempt_id`, `target_project_id`, `target_path`, associated PR/issue URLs, and publication policy. Do not include a future worker task ID; app-native readback writes canonical `worker_thread_id` afterward.
 14. Resolve model and reasoning packet override first, project override second, and portable default last. Validate overrides/escalations with `scripts/check-model-routing.mjs` and include the resolved route, reason category/note, Luna eligibility, and verification setting in the handoff.
-15. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`.
+15. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/`, and `BLOCKED` to `tasks/blocked/`; preserve prior QA head/result, durable artifact roots, publication receipts, and append/validate the exact transition.
 16. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 17. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
 18. Structurally reject duplicate source frontmatter keys, then run `scripts/check-workboard-callback.mjs` with canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status` before reconciliation. Only exact callback status `pending` can return `CALLBACK_STATUS=ROUTABLE`; replayed or otherwise non-pending callbacks and mismatched task/attempt callbacks are recovery evidence only.
 19. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md`: promote mechanically proven `auto` candidates, perform exactly one declared check for each `review` candidate, and never repeatedly reconsider manual or human/external blockers without new proof.
-20. Commit and push every state transition, then rerun the queue classifier after promotions.
-21. After the cycle's final outcome is known, choose a short state-first root title with a useful project or task label, mutate it through the app-native title tool, and read it back before claiming success. Never leave a completed run titled `[poll] ...`, `WB ...`, `Workboard ...`, or only `Workboard`. If mutation is unavailable, fails, times out, or reads back differently, report the exact call/status/error and observed title as the closeout blocker.
+20. For v2 packets, require folder/frontmatter/latest-log agreement and fail-closed validation before every move. Legacy packets require explicit read-only `--allow-legacy` validation and migration before mutation.
+21. Commit and push every state transition, then rerun the queue classifier after promotions.
+22. After the cycle's final outcome is known, choose a short state-first root title with a useful project or task label, mutate it through the app-native title tool, and read it back before claiming success. Never leave a completed run titled `[poll] ...`, `WB ...`, `Workboard ...`, or only `Workboard`. If mutation is unavailable, fails, times out, or reads back differently, report the exact call/status/error and observed title as the closeout blocker.
 
 The classifier returns one of these lanes:
 
