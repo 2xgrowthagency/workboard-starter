@@ -237,7 +237,7 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
   if (automationNameMatches.length !== 1 || !automationName) {
     return { valid: false, reason: 'missing_or_duplicate_automation_name' };
   }
-  const automationMatches = [...automation.text.matchAll(/^Automation ID:\s*([A-Za-z0-9._-]+)\s*$/gm)];
+  const automationMatches = [...automation.text.matchAll(/^Automation ID:[ \t]*([A-Za-z0-9._-]+)[ \t]*\r?$/gm)];
   if (automationMatches.length !== 1) {
     return { valid: false, reason: 'missing_or_duplicate_automation_id' };
   }
@@ -287,7 +287,7 @@ export function parseCodexSession(raw, { nowMs = Date.now(), settleSeconds = DEF
       const outputText = extractOutputText(payload.output);
       evidence.push(outputText);
       const receipt = outputText.trim();
-      const failed = toolOutputFailed(payload);
+      const failed = !receipt || toolOutputFailed(payload);
       hasErroredToolOutput ||= failed;
       if (!failed && receipt.startsWith('QUEUE_STATUS=')) {
         queueReceiptAttempts += 1;

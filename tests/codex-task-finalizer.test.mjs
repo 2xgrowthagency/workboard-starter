@@ -269,6 +269,10 @@ test('session automation name and ID metadata must each appear exactly once', ()
   const duplicateId = parsed({ automationId: 'example-poll\nAutomation ID: example-poll' });
   assert.equal(duplicateId.valid, false);
   assert.equal(duplicateId.reason, 'missing_or_duplicate_automation_id');
+
+  const splitLineId = parsed({ automationId: '\nexample-poll' });
+  assert.equal(splitLineId.valid, false);
+  assert.equal(splitLineId.reason, 'missing_or_duplicate_automation_id');
 });
 
 test('quoted queue text and conflicting outcome evidence never produce candidates', () => {
@@ -405,6 +409,15 @@ test('useful error, blocker, exception, and tool-stall evidence suppresses archi
     { code: 200, body: 'ok' },
   ] }));
   assert.equal(successfulExit.action, 'rename_archive');
+
+  for (const receipt of [
+    'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    'QUEUE_STATUS=WORK_IN_PROGRESS CLAIMED=1 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+  ]) {
+    const emptyOutput = classifyCodexSession(parsed({ output: [receipt, ''] }));
+    assert.equal(emptyOutput.action, 'rename');
+    assert.equal(emptyOutput.reason, 'useful_error_evidence');
+  }
 });
 
 test('only exact pause bookkeeping is ignored by archival evidence scanning', () => {
@@ -437,7 +450,7 @@ test('only exact pause bookkeeping is ignored by archival evidence scanning', ()
 });
 
 test('response-item final answers are recognized without treating commentary as final', () => {
-  const responseFinal = parsed({ finalShape: 'response_item', final: '[idle] no work to claim', output: '' });
+  const responseFinal = parsed({ finalShape: 'response_item', final: '[idle] no work to claim' });
   assert.equal(responseFinal.hasFinal, true);
   assert.equal(classifyCodexSession(responseFinal).action, 'rename_archive');
 
