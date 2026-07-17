@@ -149,6 +149,7 @@ docs/
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   new-workboard-initialization.md # repo, controller, automation, and smoke setup
+  github-codex-review-gate.md # exact-head hosted review and rework gate
   live-task-visibility.md   # app-native proof and portable fallback
   codex-task-finalization.md # optional local Codex task hygiene
   known-issues-and-recovery.md # operator symptoms, stops, evidence, recovery

@@ -162,6 +162,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] For a production-derived starter upgrade: synchronized protocol, portable skill, packet template, automation examples, focused tests, compatibility/migration record, and public starter issue/release adoption backlink validated with `scripts/check-upstream-sync.mjs`
 - [ ] For a starter capability change: `workboard-capabilities.json` status/version/evidence reconciled, evidence digests refreshed and reviewed, and `scripts/check-workboard-capabilities.mjs` passed
 - [ ] Independent QA result and artifact paths when `qa_required: true`
+- [ ] For a linked PR with required GitHub-hosted Codex review: exact reviewed head, terminal run/check status, finding classifications, resolution evidence, and no valid unresolved findings
 - [ ] Caveats documented
 - [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
 - [ ] Exactly one completion callback receipt, or a `ROOT_RECONCILIATION_REQUIRED` marker with identical proof
@@ -206,6 +207,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
 - Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
 - QA runs in a separate product-read-only task against `target_commit` or another immutable artifact and returns `PASS`, `FAIL`, or `BLOCKED`.
+- For a linked PR with GitHub-hosted Codex review, apply `docs/github-codex-review-gate.md` before merge readiness. Independent QA and hosted review must bind to the same current head. Route valid findings to the builder, record evidence for invalid findings, and rerun both gates after every fixing commit.
 - With `qa_publish_to_github: auto|required`, QA posts one idempotent concise verdict comment to every verified packet-linked PR/issue and records its URL; local-only artifacts and absolute local paths stay off GitHub.
 - QA notifies `builder_thread_id` according to `qa_worker_notification_policy`. Notifications are informational and must forbid fixes until root requeues the packet.
 - Publication status is separate from `qa_result`; a write/tool failure must not rewrite the product verdict.

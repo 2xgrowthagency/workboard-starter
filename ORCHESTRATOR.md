@@ -192,6 +192,13 @@ Require exactly one verdict: `PASS`, `FAIL`, or `BLOCKED`. QA must inspect raw e
 
 When `qa_publish_to_github` is `auto` or `required`, QA verifies packet-linked PR/issue targets and adds or updates one concise marker-bearing verdict comment without uploading local-only evidence or exposing absolute local paths. It records comment URLs and notifies the original worker according to policy with an informational no-fix-until-requeued message. Publication failure is tracked separately and does not change the verdict.
 
+When the linked repository runs GitHub-hosted Codex review, apply
+`docs/github-codex-review-gate.md` before declaring merge readiness. Wait for the
+run on the exact PR head, validate every finding, and route valid findings back
+to the builder. Any fixing commit invalidates prior independent QA and hosted
+review clearance; rerun both against the new head. QA remains read-only and
+must not fix review findings itself.
+
 ## Callback reconciliation
 
 Builders and QA companions send exactly one final `WORKBOARD_COMPLETION_CALLBACK`
@@ -220,7 +227,9 @@ or QA handoff, so earlier callback proof remains durable.
 
 Worker-complete with required QA still missing means `tasks/qa/`.
 
-QA-passed, or explicitly QA-not-required, means `tasks/review/`.
+QA-passed, or explicitly QA-not-required, means `tasks/review/`. It does not
+mean merge-ready while a required GitHub-hosted Codex review is pending,
+blocked, tied to another head, or has valid unresolved findings.
 
 Verified complete means `tasks/done/`.
 
