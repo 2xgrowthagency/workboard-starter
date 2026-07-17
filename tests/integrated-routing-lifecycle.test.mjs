@@ -68,6 +68,8 @@ function recoveryPacket({ replacement = false, surface = 'app-native task tools'
     worker_creation_attempt_id: 'attempt-1', requested_title: '[claimed] Example',
     target_project_id: 'project-1', target_path: '/workspace/project-1',
     worker_creation_surface: surface, requested_model: 'gpt', requested_reasoning: 'medium',
+    requested_reason_category: 'none', requested_reason_note: 'none',
+    requested_luna_eligibility: 'none', requested_independent_verification: 'false',
     creation_started_at: times.started, creation_outcome_at: times.outcome,
     raw_task_id: replacement ? 'unknown' : 'task-raw', recovery_started_at: times.recovery,
     canonical_task_id: canonicalTask,

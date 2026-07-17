@@ -30,6 +30,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Claim only independent ready packets with clear routing and acceptance criteria.
 - Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
+- Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.
 - Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
 - Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
 - On a stalled, timed-out, or partially returned create, keep the source claim and target lock, assign one stable recovery incident ID, open `templates/task-creation-recovery.md`, and do not authorize replacement until live app-native list/read conclusively proves the original absent or unusable.
@@ -94,8 +95,10 @@ supported clickable task link or directive.
 ## Defaults
 
 - Max active claimed or active-QA tasks: 3.
-- Worker reasoning: medium.
-- Orchestrator reasoning: high.
+- Root orchestration, implementation, documentation, tests, and routine QA: `gpt-5.6-sol` with medium reasoning.
+- Packet model/reasoning overrides take precedence over project overrides; portable defaults apply only when neither is set.
+- Any high-reasoning escalation requires a task-local reason category of exactly `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`; optional prose is a separate note.
+- `gpt-5.6-luna` is limited to medium reasoning with exact `bounded_high_volume` eligibility and `independent_verification: true`.
 - Workers do not spawn subworkers unless explicitly authorized by the packet.
 - QA runs as a separate task, keeps the product target read-only, and does not quietly fix the implementation.
 - Claimed and active-QA packets lock only their exact target tuple; `parallel_safe` does not override a lock.

@@ -6,8 +6,17 @@ version: 0.1
 updated_at: YYYY-MM-DDTHH:MM:SSZ
 rules:
   default_project_for_projectless_workboard_tasks: workboard
+  portable_default_model: gpt-5.6-sol
   worker_default_reasoning: medium
-  orchestrator_default_reasoning: high
+  worker_default_model: gpt-5.6-sol
+  orchestrator_default_model: gpt-5.6-sol
+  orchestrator_default_reasoning: medium
+  qa_default_model: gpt-5.6-sol
+  qa_default_reasoning: medium
+  high_reasoning_allowed_categories: [high_stakes, security_sensitive, repeatedly_blocked, unusually_complex]
+  high_reasoning_requires_packet_category: true
+  luna_required_eligibility: bounded_high_volume
+  luna_requires_independent_verification: true
   no_thread_reparenting: true
   no_subworkers_by_default: true
   max_active_tasks: 3
@@ -24,8 +33,10 @@ projects:
     repo: git@github.com:YOUR-ORG/YOUR-WORKBOARD.git
     codex_project_name: Workboard
     orchestrator_surface: "Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another local agent"
-    default_reasoning: high
-    qa_default_reasoning: high
+    default_model: gpt-5.6-sol
+    default_reasoning: medium
+    qa_default_model: gpt-5.6-sol
+    qa_default_reasoning: medium
     qa_requires_browser: true
     qa_requires_computer_use: false
     qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs/workboard
@@ -40,9 +51,12 @@ projects:
     repo: git@github.com:YOUR-ORG/example-app.git
     codex_project_name: Example App
     claude_project_name: Example App
+    default_model: gpt-5.6-sol
     default_reasoning: medium
     escalation_reasoning: high
-    qa_default_reasoning: high
+    escalation_requires_packet_category: true
+    qa_default_model: gpt-5.6-sol
+    qa_default_reasoning: medium
     qa_requires_browser: false
     qa_requires_computer_use: false
     qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs/example-app

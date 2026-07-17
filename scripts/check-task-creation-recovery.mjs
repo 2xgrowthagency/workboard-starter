@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { HIGH_REASON_CATEGORIES, LUNA_ELIGIBILITY, LUNA_MODEL } from './check-model-routing.mjs';
 
 const allowedStatuses = new Set(['investigating', 'reconciled', 'completed']);
 const allowedOutcomes = new Set(['investigating', 'canonical_worker', 'no_usable_worker']);
@@ -17,6 +18,8 @@ const requiredMetadata = [
   'recovery_id', 'recovery_status', 'recovery_outcome', 'source_packet_id', 'root_task_id',
   'worker_creation_attempt_id', 'requested_title', 'target_project_id',
   'target_path', 'worker_creation_surface', 'requested_model', 'requested_reasoning',
+  'requested_reason_category', 'requested_reason_note', 'requested_luna_eligibility',
+  'requested_independent_verification',
   'creation_started_at', 'creation_outcome_at', 'raw_task_id',
   'recovery_started_at', 'replacement_authorized', 'replacement_basis',
 ];
@@ -260,6 +263,33 @@ export function validateRecoveryPacket(source) {
   }
   if (!['true', 'false'].includes(metadata.replacement_authorized)) {
     errors.push('replacement_authorized must be true or false');
+  }
+  if (metadata.requested_reason_category !== 'none' &&
+      !HIGH_REASON_CATEGORIES.has(metadata.requested_reason_category)) {
+    errors.push('requested_reason_category must be an allowed category or none');
+  }
+  if (metadata.requested_reasoning === 'high' &&
+      !HIGH_REASON_CATEGORIES.has(metadata.requested_reason_category)) {
+    errors.push('high requested_reasoning requires an allowed requested_reason_category');
+  }
+  if (!['none', LUNA_ELIGIBILITY].includes(metadata.requested_luna_eligibility)) {
+    errors.push('requested_luna_eligibility must be bounded_high_volume or none');
+  }
+  if (!['true', 'false'].includes(metadata.requested_independent_verification)) {
+    errors.push('requested_independent_verification must be true or false');
+  }
+  if (metadata.requested_model === LUNA_MODEL) {
+    if (metadata.requested_reasoning !== 'medium') {
+      errors.push('Luna recovery metadata requires medium requested_reasoning');
+    }
+    if (metadata.requested_luna_eligibility !== LUNA_ELIGIBILITY) {
+      errors.push('Luna recovery metadata requires bounded_high_volume eligibility');
+    }
+    if (metadata.requested_independent_verification !== 'true') {
+      errors.push('Luna recovery metadata requires independent verification');
+    }
+  } else if (metadata.requested_luna_eligibility !== 'none') {
+    errors.push('requested_luna_eligibility is only valid for gpt-5.6-luna');
   }
 
   const creationStarted = timestampValue(errors, metadata.creation_started_at, 'creation_started_at');

@@ -18,6 +18,14 @@ Workboard is a shared filesystem/Git protocol:
 
 It does not require OpenClaw. It works with Codex Desktop, Claude Desktop, Claude Code, Codex CLI, OpenClaw, or any local agent that can read files, run commands, and use Git.
 
+Portable routing defaults root orchestration, implementation, documentation,
+tests, and routine QA to `gpt-5.6-sol` with medium reasoning. Packet overrides
+take precedence over project overrides, which take precedence over the portable
+default. High reasoning requires one of four machine-recognized task categories:
+`high_stakes`, `security_sensitive`, `repeatedly_blocked`, or
+`unusually_complex`. `gpt-5.6-luna` requires exact `bounded_high_volume`
+eligibility and independent verification.
+
 ## How the roles fit together
 
 ```mermaid
@@ -264,6 +272,8 @@ Supported fields in `templates/task-packet.md` include:
 - `qa_publish_to_github`, `qa_worker_notification_policy`, and publication receipt fields
 - `qa_codex_project`
 - `qa_model`
+- per-role model, reasoning, `*_model_routing_reason_category`, and optional `*_model_routing_reason_note`
+- per-role `*_luna_eligibility` and `*_independent_verification` fields
 - `qa_artifacts_dir`
 - `qa_thread_id`
 - `qa_result`
@@ -271,6 +281,12 @@ Supported fields in `templates/task-packet.md` include:
 - completion callback task/attempt identity, receipt, and error fields
 
 The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
+
+Validate packet/project routing overrides with
+`scripts/check-model-routing.mjs`. It resolves packet, project, and portable
+sources in order, rejects unreasoned high escalation, and rejects Luna routes
+without exact `bounded_high_volume` eligibility and independent verification.
+Unknown, duplicate, missing-value, and misspelled CLI options fail closed.
 
 ## Ambiguous task creation
 
