@@ -23,6 +23,10 @@ content.
 The JSON Schema at `schemas/workboard-capabilities.schema.json` supports generic
 tooling. The dependency-free repository validator is normative for path,
 regular-file, evidence, digest, and starter synchronization rules.
+It rejects duplicate JSON keys at every object depth and validates every path
+component from the canonical repository root. Empty, dot, dot-dot, symlinked,
+non-directory intermediate, nonregular final, escaped, and noncanonical alias
+components fail before evidence is read.
 
 ## Evidence And Drift
 

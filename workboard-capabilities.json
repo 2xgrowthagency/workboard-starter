@@ -8,8 +8,8 @@
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": "ST-014",
-    "commit": null,
+    "release": null,
+    "commit": "11b54b41611a429eea406400e5a62f9487fdc360",
     "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/14",
     "adoption_record": "docs/releases/st-014-capability-manifest.md"
   },
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "3b6591ba5840a6f6cb6be6459553e7bc4ef8ff0959afd65ef3614d63124df84e"
+      "evidence_sha256": "81c51b6cf35a9472eef06c695fa543146d886e771e8820d3189af76cf5ff8d6e"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "784d203634b1924adc813eb04f8555343ac3c8d5b77bb139d859f1c4efb40440"
+      "evidence_sha256": "3abd529ba1873fb70b71627c43f03502d87f855b313bd9454dc3d61b384d6396"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "9042a30cc1f0561a361b86cc6a4c8e2e2b6c6fc8cabe7cfd08afa5c192b41cbf"
+      "evidence_sha256": "d87715febb69896008293fcc7a4b026dc598b75b10d6bcedca845376b05c14c5"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "49d37fc71f7980ba85b3ce39e15b7593f4d4cefedbfedf4f7d7edac5330eb557"
+      "evidence_sha256": "9609f5108fea94008d6f97c96bce49d4961e0bbaf8c350292889de3db46d9ab0"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -111,16 +111,20 @@
       "evidence_sha256": "283502b9c52929d8bc46a1fd858669d95ec58f3a55d2382ecf693250ae687998"
     },
     "task_finalization_hygiene": {
-      "status": "not_implemented",
-      "version": null,
-      "summary": "Conservative app-native task finalization and hygiene remains tracked as ST-008.",
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Conservative Codex task finalization classifies bounded candidates for verified app-native hygiene.",
       "evidence": {
         "files": [
-          "docs/pending-improvements.md"
+          "scripts/classify-codex-task-finalizer.mjs",
+          "docs/codex-task-finalization.md"
         ],
-        "tests": []
+        "tests": [
+          "tests/codex-task-finalizer.test.mjs",
+          "tests/codex-task-finalization-docs.test.mjs"
+        ]
       },
-      "evidence_sha256": "7038891ac33af53d40fe9fc432b01733707614b2862fd112215a6c8f415e1a56"
+      "evidence_sha256": "e4737e7676b654baf77b294f9f4977cde785b3ca14276a703a8de830981f58d5"
     },
     "app_native_codex_routing": {
       "status": "supported",
@@ -136,7 +140,7 @@
           "tests/task-creation-recovery.test.mjs"
         ]
       },
-      "evidence_sha256": "6a7e96478c04a114ddab24ac4ebac40d1b29691f9b3564f422c744187323340b"
+      "evidence_sha256": "bbf9c34e32bb88afbed0da574bce67df8a2854f697e3b8f0246cac4a70f967cc"
     },
     "model_routing": {
       "status": "supported",
@@ -151,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "d415716ab7fc2d0df736cf660373853b94d9e9ff523d9b56b48ae05609de5b6f"
+      "evidence_sha256": "8f16c2d4e3c0296e68a25e573b915d97eab0e71f49a583b979025b1f647bf99c"
     },
     "git_preflight": {
       "status": "supported",
@@ -167,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "70c90382a914b93172e4fce1938375a26d7d1758d1a151ceb6304fca95de1ca4"
+      "evidence_sha256": "999e3757bbf945cb33277d595f4ed9532843b63af2fbf2e74e93c6e4fdb6b3bc"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -198,7 +202,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "128812d50d8f07d877ba3754b3be40b5769fa8931c59d723bab5570d9f895445"
+      "evidence_sha256": "9ea14e672c7cf356259848307b93c20476b8dff68cb53bd74395e2051758a89d"
     }
   }
 }

@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const CORE_CAPABILITIES = [
@@ -77,14 +77,139 @@ function repositoryFile(repo, path, label) {
   if (typeof path !== 'string' || !path || isAbsolute(path) || path.includes('\\')) {
     throw new Error(`${label} must be a nonempty repository-relative POSIX path`);
   }
-  const absolute = resolve(repo, path);
-  if (!isInside(repo, absolute)) throw new Error(`${label} must stay inside the repository: ${path}`);
-  const metadata = lstatSync(absolute);
-  const canonical = realpathSync(absolute);
-  if (!isInside(repo, canonical)) throw new Error(`${label} resolves outside the repository: ${path}`);
-  if (metadata.isSymbolicLink()) throw new Error(`${label} must not be a symbolic link: ${path}`);
-  if (!metadata.isFile()) throw new Error(`${label} must be a regular file: ${path}`);
-  return canonical;
+  const components = path.split('/');
+  if (components.some((component) => !component || component === '.' || component === '..')) {
+    throw new Error(`${label} must not contain empty, dot, or dot-dot path components: ${path}`);
+  }
+
+  let current = repo;
+  for (let index = 0; index < components.length; index += 1) {
+    current = join(current, components[index]);
+    if (!isInside(repo, current)) throw new Error(`${label} must stay inside the repository: ${path}`);
+    const metadata = lstatSync(current);
+    const componentPath = components.slice(0, index + 1).join('/');
+    if (metadata.isSymbolicLink()) {
+      throw new Error(`${label} path component must not be a symbolic link: ${componentPath}`);
+    }
+    const final = index === components.length - 1;
+    if (!final && !metadata.isDirectory()) {
+      throw new Error(`${label} path component must be a directory: ${componentPath}`);
+    }
+    if (final && !metadata.isFile()) throw new Error(`${label} must be a regular file: ${path}`);
+    const canonical = realpathSync(current);
+    if (!isInside(repo, canonical)) throw new Error(`${label} resolves outside the repository: ${path}`);
+    if (canonical !== current) {
+      throw new Error(`${label} path component is a noncanonical alias: ${componentPath}`);
+    }
+  }
+  return current;
+}
+
+export function parseJsonWithoutDuplicateKeys(source) {
+  if (typeof source !== 'string') throw new TypeError('JSON source must be a string');
+  let cursor = 0;
+
+  const fail = (message) => {
+    throw new SyntaxError(`${message} at offset ${cursor}`);
+  };
+  const whitespace = () => {
+    while (/[ \t\r\n]/.test(source[cursor] || '')) cursor += 1;
+  };
+  const parseString = () => {
+    if (source[cursor] !== '"') fail('expected JSON string');
+    const start = cursor;
+    cursor += 1;
+    while (cursor < source.length) {
+      if (source[cursor] === '\\') {
+        cursor += 2;
+        continue;
+      }
+      if (source[cursor] === '"') {
+        cursor += 1;
+        return JSON.parse(source.slice(start, cursor));
+      }
+      cursor += 1;
+    }
+    fail('unterminated JSON string');
+  };
+  const childPath = (path, key) => `${path}[${JSON.stringify(key)}]`;
+
+  const parseValue = (path) => {
+    whitespace();
+    const token = source[cursor];
+    if (token === '"') return parseString();
+    if (token === '{') {
+      cursor += 1;
+      whitespace();
+      const object = {};
+      const keys = new Set();
+      if (source[cursor] === '}') {
+        cursor += 1;
+        return object;
+      }
+      while (cursor < source.length) {
+        whitespace();
+        const key = parseString();
+        if (keys.has(key)) throw new SyntaxError(`duplicate JSON key ${childPath(path, key)}`);
+        keys.add(key);
+        whitespace();
+        if (source[cursor] !== ':') fail('expected colon after JSON object key');
+        cursor += 1;
+        const value = parseValue(childPath(path, key));
+        Object.defineProperty(object, key, {
+          value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+        whitespace();
+        if (source[cursor] === '}') {
+          cursor += 1;
+          return object;
+        }
+        if (source[cursor] !== ',') fail('expected comma between JSON object entries');
+        cursor += 1;
+      }
+      fail('unterminated JSON object');
+    }
+    if (token === '[') {
+      cursor += 1;
+      whitespace();
+      const array = [];
+      if (source[cursor] === ']') {
+        cursor += 1;
+        return array;
+      }
+      while (cursor < source.length) {
+        array.push(parseValue(`${path}[${array.length}]`));
+        whitespace();
+        if (source[cursor] === ']') {
+          cursor += 1;
+          return array;
+        }
+        if (source[cursor] !== ',') fail('expected comma between JSON array entries');
+        cursor += 1;
+      }
+      fail('unterminated JSON array');
+    }
+    for (const [literal, value] of [['true', true], ['false', false], ['null', null]]) {
+      if (source.startsWith(literal, cursor)) {
+        cursor += literal.length;
+        return value;
+      }
+    }
+    const number = source.slice(cursor).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+    if (number) {
+      cursor += number[0].length;
+      return Number(number[0]);
+    }
+    fail('invalid JSON value');
+  };
+
+  const value = parseValue('$');
+  whitespace();
+  if (cursor !== source.length) fail('unexpected trailing JSON content');
+  return value;
 }
 
 function canonicalRepo(repo) {
@@ -237,7 +362,7 @@ export function readCapabilityManifest({ repo, manifestPath = MANIFEST_NAME }) {
   const path = manifestLocation(root, manifestPath);
   let manifest;
   try {
-    manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest = parseJsonWithoutDuplicateKeys(readFileSync(path, 'utf8'));
   } catch (error) {
     throw new Error(`manifest is not valid JSON: ${error.message}`);
   }

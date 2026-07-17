@@ -13,16 +13,17 @@ downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-start
 
 This additive release assigns protocol version `1.0.0` to the existing
 contracts. It does not change queue, routing, callback, QA, promotion, recovery,
-model-routing, Git-preflight, or closeout behavior. Task finalization and hygiene
-is explicitly recorded as not implemented instead of being claimed from
-operational-only evidence.
+model-routing, Git-preflight, finalization, or closeout behavior. The manifest
+records the merged ST-008 finalizer as supported only from its portable
+classifier, contract, and focused tests.
 
 ## Migration Impact
 
 No runtime migration is required. A customized clone adopting ST-014 must
 reconcile capability status and evidence against its local files, set the last
 synchronized starter release or commit, refresh evidence digests, and run the
-validator plus full tests.
+validator plus full tests. Clones without ST-008 must retain
+`task_finalization_hygiene` as `not_implemented` until they adopt its evidence.
 
 ## Downstream Adoption
 
