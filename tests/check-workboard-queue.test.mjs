@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +22,9 @@ import { fileURLToPath } from 'node:url';
 
 const classifier = fileURLToPath(
   new URL('../scripts/check-workboard-queue.mjs', import.meta.url),
+);
+const promotionScanner = fileURLToPath(
+  new URL('../scripts/check-workboard-promotions.mjs', import.meta.url),
 );
 const states = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
 
@@ -1080,6 +1084,45 @@ test('promotion scanner candidates become a queue outcome without policy logic i
     assert.match(output, /PROMOTION_COUNT=1/);
     assert.match(output, /PROMOTION_CANDIDATES=downstream\|backlog\|review/);
   });
+});
+
+test('bundled promotion scanner resets idle controls on the default classifier path', () => {
+  withRepo((root) => withRunMemory(root, (memory) => {
+    mkdirSync(join(root, 'scripts'));
+    copyFileSync(promotionScanner, join(root, 'scripts', 'check-workboard-promotions.mjs'));
+    commit(root, 'add bundled promotion scanner');
+    syncOriginRef(root);
+
+    const args = [
+      '--run-memory', memory,
+      '--idle-pause-threshold', '1',
+      '--idle-pause-action', 'pause',
+    ];
+    const idle = classify(root, args);
+    assert.match(idle, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
+    assert.match(idle, /NO_ACTION_STREAK=1 IDLE_PAUSE_RECOMMENDED=1/);
+    assert.match(idle, /IDLE_PAUSE_REQUESTED=1 IDLE_PAUSE_ACTION=pause/);
+
+    writeFileSync(
+      join(root, 'tasks', 'done', 'dependency.md'),
+      packet({ id: 'dependency', unblocks: '[downstream]' }),
+    );
+    writeFileSync(join(root, 'tasks', 'backlog', 'downstream.md'), packet({
+      id: 'downstream', promotion_policy: 'auto', dependency_ready_state: 'done',
+      blocker_type: 'dependency', depends_on: '[dependency]', unblocks: '[]',
+      ready_when: 'dependencies_satisfied', target_project_id: 'example',
+      target_path: '/workspace/example',
+    }));
+    commit(root, 'add bundled promotion fixture');
+    syncOriginRef(root);
+
+    const output = classify(root, args);
+    assert.match(output, /^QUEUE_STATUS=PROMOTION_REVIEW_NEEDED /);
+    assert.match(output, /PROMOTION_COUNT=1/);
+    assert.match(output, /PROMOTION_CANDIDATES=downstream\|backlog\|auto\|done\|dependency/);
+    assert.match(output, /NO_ACTION_STREAK=0 IDLE_PAUSE_RECOMMENDED=0/);
+    assert.match(output, /IDLE_PAUSE_REQUESTED=0 IDLE_PAUSE_ACTION=none/);
+  }));
 });
 
 test('active work remains the current lane instead of being hidden by promotion', () => {

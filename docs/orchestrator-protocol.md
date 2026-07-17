@@ -131,7 +131,7 @@ Use the result to open the smallest required lane:
 - `READY_WORK_AVAILABLE`: read the registry and only the ready packets needed for routing.
 - `QA_WORK_AVAILABLE`: read the registry and only the pending QA packets needed for routing. Pending QA takes precedence when ready implementation work also exists; rerun the classifier after routing QA to expose the remaining ready lane.
 - `QA_RESULT_AVAILABLE`: read only the emitted completed-QA packets, verify the recorded evidence, and route `PASS` to review, `FAIL` to ready, or `BLOCKED` to blocked. Do not launch another QA task.
-- `PROMOTION_REVIEW_NEEDED`: use the separate promotion policy/scanner workflow.
+- `PROMOTION_REVIEW_NEEDED`: follow `docs/dependency-promotion.md`; open only emitted review candidates, never the whole backlog or blocked lane.
 - `WORKBOARD_REQUIRES_JUDGMENT`: stop for malformed packet metadata or unrecognized QA state/result.
 - `CHECK_FAILED`: report the exact classifier failure and stop.
 
@@ -252,7 +252,27 @@ not infer model policy from private memory or unrelated task history.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
 20. If `IDLE_PAUSE_REQUESTED=1`, call and verify the host-native pause operation. If only `IDLE_PAUSE_RECOMMENDED=1`, report the recommendation without claiming a pause.
-21. Commit/push every queue state transition.
+21. On `PROMOTION_REVIEW_NEEDED`, run the metadata-only scanner workflow. Root may move `auto` candidates after dependency-state verification; `review` candidates permit one bounded `ready_when` check. Omitted/manual and non-dependency blockers require new human/external proof.
+22. Commit/push every queue state transition and rerun classification after promotion.
+
+## Dependency promotion
+
+Workers stop after returning proof for their own packet. Root owns all downstream
+promotion. Packet authors declare `promotion_policy`, `dependency_ready_state`,
+`blocker_type`, `depends_on`, `unblocks`, and `ready_when`; the exact field
+semantics and scanner output contract are in
+[`docs/dependency-promotion.md`](dependency-promotion.md).
+
+The scanner reads frontmatter only and considers backlog plus blocked packets
+whose auto/review metadata has exact `blocker_type: dependency`. Empty or other
+blocker types fail closed. `auto` requires the exact
+`ready_when: dependencies_satisfied` sentinel and reciprocal
+`depends_on`/`unblocks` edges, so all readiness is mechanically represented by
+dependency states. Reachable dependency cycles fail explicitly before state
+checks. `review` allows root to open that candidate and check one named artifact
+or bounded condition. Manual, omitted, human, and external conditions are not
+poll candidates. Invalid scanner metadata is a hard stop, not permission to
+guess or promote.
 
 ## Completion callback contract
 

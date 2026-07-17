@@ -4,6 +4,12 @@ status: ready
 priority: P2
 created_by: <human-or-agent-name>
 created_at: YYYY-MM-DDTHH:MM:SSZ
+promotion_policy: manual
+dependency_ready_state: done
+blocker_type:
+depends_on: []
+unblocks: []
+ready_when:
 claimed_by:
 claimed_at:
 root_task_id:
@@ -142,6 +148,9 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
+- Root owns dependency promotion. Workers report completion proof but do not move downstream packets.
+- `promotion_policy: auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges; `review` permits one bounded `ready_when` check; omitted or `manual` requires new human/external proof.
+- Only backlog or blocked auto/review packets with exact `blocker_type: dependency` are scanner-eligible. Empty/other blocker types fail closed; human/external blockers stay manual until new proof arrives.
 - Root/orchestrator claims and reconciles one-shot completion callbacks; workers execute without periodic monitoring or heartbeats.
 - Root assigns one stable `recovery_id` per ambiguous incident and persists a new immutable `worker_creation_attempt_id` before every actual create call, including an authorized replacement.
 - When app-native task APIs are exposed, root verifies one candidate's exact title, `target_project_id`, `target_path` cwd, `worker_host_identity`, and handoff through live list/read tools. Only then does it write the candidate ID to canonical `worker_thread_id` and mark visibility `verified`.

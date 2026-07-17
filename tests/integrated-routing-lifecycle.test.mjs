@@ -265,3 +265,27 @@ test('operator instructions contain no positive worker-monitoring directive', ()
     assert.doesNotMatch(contents, /heartbeat_after_minutes|monitor worker (?:output|results)/i, relativePath);
   }
 });
+
+test('shared task packet preserves dependency promotion and model routing contracts', () => {
+  const packet = readFileSync(
+    fileURLToPath(new URL('../templates/task-packet.md', import.meta.url)),
+    'utf8',
+  );
+  const frontmatter = packet.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] || '';
+
+  for (const field of [
+    'promotion_policy', 'dependency_ready_state', 'blocker_type',
+    'depends_on', 'unblocks', 'ready_when',
+  ]) assert.match(frontmatter, new RegExp(`^${field}:`, 'm'), `missing ${field}`);
+
+  for (const role of ['orchestrator', 'worker', 'qa']) {
+    for (const suffix of [
+      'model', 'reasoning', 'model_routing_reason_category',
+      'model_routing_reason_note', 'luna_eligibility',
+    ]) assert.match(frontmatter, new RegExp(`^${role}_${suffix}:`, 'm'), `missing ${role}_${suffix}`);
+    assert.match(frontmatter, new RegExp(`^${role}_independent_verification: false$`, 'm'));
+  }
+
+  assert.match(packet, /`promotion_policy: auto` requires `ready_when: dependencies_satisfied`/);
+  assert.match(packet, /portable `gpt-5\.6-sol` medium default/);
+});

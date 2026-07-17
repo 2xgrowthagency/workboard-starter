@@ -181,6 +181,16 @@ test('Luna Medium is limited to bounded independently verified exploration', () 
       lunaEligibility: LUNA_ELIGIBILITY,
       independentVerification: true,
     },
+    {
+      packetModel: LUNA_MODEL,
+      lunaEligibility: LUNA_ELIGIBILITY,
+      independentVerification: 'false',
+    },
+    {
+      packetModel: LUNA_MODEL,
+      lunaEligibility: LUNA_ELIGIBILITY,
+      independentVerification: 'true',
+    },
   ]) {
     assert.equal(resolveModelRouting(invalid).valid, false);
   }
@@ -198,6 +208,13 @@ test('Luna Medium is limited to bounded independently verified exploration', () 
     independentVerification: true,
   });
   assert.equal(eligibilityOnSol.valid, false);
+
+  const malformedVerification = resolveModelRouting({
+    independentVerification: 'false',
+  });
+  assert.equal(malformedVerification.valid, false);
+  assert.equal(malformedVerification.independentVerification, false);
+  assert.match(malformedVerification.errors.join(' '), /must be a boolean/);
 });
 
 test('CLI reports the resolved source and fails closed on invalid escalation', () => {

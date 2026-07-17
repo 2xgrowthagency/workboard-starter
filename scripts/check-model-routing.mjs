@@ -55,7 +55,13 @@ export function resolveModelRouting({
   const reasonCategory = firstValue(packetReasonCategory);
   const reasonNote = firstValue(packetReasonNote);
   const eligibility = firstValue(lunaEligibility);
+  const verificationIsBoolean = typeof independentVerification === 'boolean';
+  const verificationEnabled = independentVerification === true;
   const errors = [];
+
+  if (!verificationIsBoolean) {
+    errors.push('independent_verification must be a boolean');
+  }
 
   if (!PORTABLE_REASONING_LEVELS.has(reasoning.value)) {
     errors.push('reasoning must be one of low, medium, or high');
@@ -79,7 +85,7 @@ export function resolveModelRouting({
     if (eligibility !== LUNA_ELIGIBILITY) {
       errors.push('Luna requires bounded_high_volume eligibility');
     }
-    if (!independentVerification) {
+    if (!verificationEnabled) {
       errors.push('Luna requires independent_verification=true');
     }
   } else if (eligibility) {
@@ -94,7 +100,7 @@ export function resolveModelRouting({
     reasonCategory,
     reasonNote,
     lunaEligibility: eligibility,
-    independentVerification,
+    independentVerification: verificationEnabled,
     valid: errors.length === 0,
     errors,
   };

@@ -28,7 +28,8 @@ You should:
 16. Move QA-not-required worker completions directly to `tasks/review/` with proof.
 17. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
 18. Structurally reject duplicate source frontmatter keys, then run `scripts/check-workboard-callback.mjs` with canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status` before reconciliation. Only exact callback status `pending` can return `CALLBACK_STATUS=ROUTABLE`; replayed or otherwise non-pending callbacks and mismatched task/attempt callbacks are recovery evidence only.
-19. Commit and push every state transition.
+19. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md`: promote mechanically proven `auto` candidates, perform exactly one declared check for each `review` candidate, and never repeatedly reconsider manual or human/external blockers without new proof.
+20. Commit and push every state transition, then rerun the queue classifier after promotions.
 
 The classifier returns one of these lanes:
 
@@ -61,6 +62,10 @@ exit nonzero; never continue to queue classification after interruption.
 locks, and capacity without opening active packet bodies or worker/QA history.
 At capacity it remains the machine-enforced result even when ready work exists;
 below capacity, ready work returns a routable lane for unlocked targets.
+
+Promotion is root-owned. The bundled metadata-only scanner is
+`scripts/check-workboard-promotions.mjs`; its policy, candidate encoding, and
+bounded transition procedure are defined in `docs/dependency-promotion.md`.
 
 When idle controls are configured, trust the classifier's `NO_ACTION_STREAK` and
 pause fields instead of reading old automation narratives. Stable idle or
