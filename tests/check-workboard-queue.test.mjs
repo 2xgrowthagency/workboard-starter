@@ -706,16 +706,15 @@ test('a packet without frontmatter requires judgment instead of creating a phant
   });
 });
 
-test('dirty checkout requires judgment before queue classification', () => {
+test('queue classification does not judge dirty Git state', () => {
   withRepo((root) => {
     writeFileSync(join(root, 'dirty.txt'), 'dirty\n');
-    const output = classify(root, [], 1);
-    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
-    assert.match(output, /REASON=dirty_worktree/);
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
   });
 });
 
-test('checkout behind origin main requests synchronization', () => {
+test('queue classification does not judge whether the checkout is behind', () => {
   withRepo((root) => {
     writeFileSync(join(root, 'upstream.txt'), 'upstream\n');
     commit(root, 'upstream commit');
@@ -723,26 +722,24 @@ test('checkout behind origin main requests synchronization', () => {
     run('git', ['reset', '--hard', 'HEAD^'], root);
     run('git', ['update-ref', 'refs/remotes/origin/main', upstream], root);
 
-    const output = classify(root, [], 1);
-    assert.match(output, /^QUEUE_STATUS=WORKBOARD_SYNC_NEEDED /);
-    assert.match(output, /REASON=behind_origin_main/);
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
   });
 });
 
-test('checkout ahead of origin main requires judgment', () => {
+test('queue classification does not judge whether the checkout is ahead', () => {
   withRepo((root) => {
     const base = run('git', ['rev-parse', 'HEAD'], root);
     writeFileSync(join(root, 'ahead.txt'), 'ahead\n');
     commit(root, 'ahead commit');
     run('git', ['update-ref', 'refs/remotes/origin/main', base], root);
 
-    const output = classify(root, [], 1);
-    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
-    assert.match(output, /REASON=ahead_of_origin_main/);
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
   });
 });
 
-test('diverged checkout requires judgment', () => {
+test('queue classification does not judge whether the checkout diverged', () => {
   withRepo((root) => {
     const base = run('git', ['rev-parse', 'HEAD'], root);
     writeFileSync(join(root, 'upstream.txt'), 'upstream\n');
@@ -753,9 +750,8 @@ test('diverged checkout requires judgment', () => {
     commit(root, 'local commit');
     run('git', ['update-ref', 'refs/remotes/origin/main', upstream], root);
 
-    const output = classify(root, [], 1);
-    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
-    assert.match(output, /REASON=diverged_from_origin_main/);
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=NOTHING_TO_CLAIM /);
   });
 });
 
@@ -805,5 +801,5 @@ test('missing repository fails explicitly', () => {
   const missing = join(tmpdir(), `missing-workboard-${Date.now()}`);
   const output = classify(missing, [], 1);
   assert.match(output, /^QUEUE_STATUS=CHECK_FAILED /);
-  assert.match(output, /REASON=missing_workboard_git_repo/);
+  assert.match(output, /REASON=missing_workboard_repo/);
 });

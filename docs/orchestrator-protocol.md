@@ -24,6 +24,28 @@ One person/agent can play multiple roles, but keep the responsibilities separate
 
 State changes are file moves plus packet status-log updates. Commit/push each meaningful transition so everyone sees the same board.
 
+## Root Git synchronization preflight
+
+Before queue classification or broad reads, run:
+
+```bash
+node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>
+```
+
+The preflight is root-owned and ordered deliberately:
+
+1. Verify the checkout is on `main`, has no unresolved conflict, and is clean.
+2. Fetch `main` from the intended remote with terminal prompting disabled.
+3. Compare `HEAD` with the fetched commit.
+4. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
+5. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+
+Stop on `GIT_PREFLIGHT_STATUS=STOP`. Its `REASON` distinguishes dirty,
+conflicted, non-main, ahead, diverged, fetch/auth/network failure, and failed
+fast-forward states. Do not run the classifier after a stop. The preflight
+defaults to remote `origin`; pass `--remote <name>` when the intended remote has
+a different name. The synchronized branch is always `main`.
+
 ## Queue-first classifier
 
 Run the read-only classifier before reading `projects.yaml`, packet bodies,
@@ -37,9 +59,10 @@ node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_A
 limit, pass that configured value directly; do not read packet bodies or worker
 history to compute it.
 
-The classifier inspects only Git state and the queue metadata needed for counts,
-QA state, and target locks. It never fetches, merges, rebases, pushes, moves
-packets, creates task directories, or writes automation state.
+The classifier inspects only local queue metadata needed for counts, QA state,
+and target locks. It never invokes Git, moves packets, creates task directories,
+or writes automation state. Git synchronization and judgment belong exclusively
+to the root preflight.
 
 Use the result to open the smallest required lane:
 
@@ -49,8 +72,7 @@ Use the result to open the smallest required lane:
 - `QA_WORK_AVAILABLE`: read the registry and only the pending QA packets needed for routing. Pending QA takes precedence when ready implementation work also exists; rerun the classifier after routing QA to expose the remaining ready lane.
 - `QA_RESULT_AVAILABLE`: read only the emitted completed-QA packets, verify the recorded evidence, and route `PASS` to review, `FAIL` to ready, or `BLOCKED` to blocked. Do not launch another QA task.
 - `PROMOTION_REVIEW_NEEDED`: use the separate promotion policy/scanner workflow.
-- `WORKBOARD_SYNC_NEEDED`: stop until a clean checkout is safely fast-forwarded.
-- `WORKBOARD_REQUIRES_JUDGMENT`: stop for dirty, ahead, diverged, non-main, malformed packet metadata, or unrecognized QA state/result.
+- `WORKBOARD_REQUIRES_JUDGMENT`: stop for malformed packet metadata or unrecognized QA state/result.
 - `CHECK_FAILED`: report the exact classifier failure and stop.
 
 Claimed and active-QA lock values are metadata summaries in the form
@@ -98,9 +120,9 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 ## Polling loop
 
 1. `cd` into the Workboard repo.
-2. Inspect and synchronize Git using the environment's explicit safe preflight.
+2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` and stop unless it returns `READY` or `UPDATED`.
 3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; omit `--capacity` only when using the default of 3.
-4. Stop immediately on synchronization, judgment, or classifier failure statuses.
+4. Stop immediately on preflight, judgment, or classifier failure statuses.
 5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context.
 6. Treat claimed and active-QA packets only as capacity usage and per-target locks. Never inspect, monitor, heartbeat, or babysit their task history during an ordinary poll.
 7. Trust the classifier's `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED` fields. `WORK_IN_PROGRESS` machine-enforces a stop when available capacity is zero.

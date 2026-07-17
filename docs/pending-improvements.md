@@ -104,7 +104,8 @@ Replace generic `git pull` guidance with:
 3. fast-forward only when clean main is strictly behind;
 4. stop on dirty, ahead, diverged, non-main, conflict, or auth failure.
 
-The queue classifier must not resolve Git state or make judgment-heavy changes.
+Implemented by `scripts/check-workboard-git-preflight.mjs`; the queue classifier
+does not invoke Git or make Git-state judgments.
 
 ### [ST-008: add conservative thread finalization and hygiene](https://github.com/2xgrowthagency/workboard-starter/issues/8)
 

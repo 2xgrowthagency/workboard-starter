@@ -127,34 +127,6 @@ function emit(status, fields = {}, exitCode = 0) {
   process.exit(exitCode);
 }
 
-function runGit(repo, args) {
-  const result = spawnSync('git', args, {
-    cwd: repo,
-    encoding: 'utf8',
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
-  });
-  return {
-    status: result.status,
-    stdout: String(result.stdout ?? '').trim(),
-    stderr: String(result.stderr ?? result.error?.message ?? '').trim(),
-  };
-}
-
-function gitValue(repo, args, reason) {
-  const result = runGit(repo, args);
-  if (result.status !== 0) {
-    emit(
-      'CHECK_FAILED',
-      {
-        REASON: reason,
-        DETAIL: sanitize(result.stderr || result.stdout || `git_${args[0]}_failed`),
-      },
-      1,
-    );
-  }
-  return result.stdout;
-}
-
 function packetFiles(repo, state) {
   const directory = join(repo, 'tasks', state);
   if (!existsSync(directory) || !statSync(directory).isDirectory()) return [];
@@ -404,73 +376,10 @@ try {
 }
 
 const { repo } = options;
-if (!existsSync(repo) || !existsSync(join(repo, '.git'))) {
+if (!existsSync(repo)) {
   emit(
     'CHECK_FAILED',
-    { REASON: 'missing_workboard_git_repo', DETAIL: sanitize(repo) },
-    1,
-  );
-}
-
-const branch = gitValue(repo, ['branch', '--show-current'], 'cannot_read_branch');
-if (branch !== 'main') {
-  emit(
-    'WORKBOARD_REQUIRES_JUDGMENT',
-    { REASON: 'not_on_main', DETAIL: `branch=${sanitize(branch || 'detached')}` },
-    1,
-  );
-}
-
-const status = gitValue(repo, ['status', '--porcelain'], 'cannot_read_worktree');
-if (status) {
-  emit(
-    'WORKBOARD_REQUIRES_JUDGMENT',
-    { REASON: 'dirty_worktree', DETAIL: sanitize(status) },
-    1,
-  );
-}
-
-const headFull = gitValue(repo, ['rev-parse', 'HEAD'], 'cannot_resolve_head');
-const originFull = gitValue(
-  repo,
-  ['rev-parse', 'refs/remotes/origin/main'],
-  'cannot_resolve_origin_main',
-);
-
-if (headFull !== originFull) {
-  const mergeBase = gitValue(
-    repo,
-    ['merge-base', 'HEAD', 'refs/remotes/origin/main'],
-    'cannot_resolve_merge_base',
-  );
-  if (mergeBase === headFull) {
-    emit(
-      'WORKBOARD_SYNC_NEEDED',
-      {
-        REASON: 'behind_origin_main',
-        DETAIL: `HEAD=${sanitize(headFull)}_origin/main=${sanitize(originFull)}`,
-      },
-      1,
-    );
-  }
-  if (mergeBase === originFull) {
-    emit(
-      'WORKBOARD_REQUIRES_JUDGMENT',
-      {
-        REASON: 'ahead_of_origin_main',
-        DETAIL: `HEAD=${sanitize(headFull)}_origin/main=${sanitize(originFull)}`,
-      },
-      1,
-    );
-  }
-  emit(
-    'WORKBOARD_REQUIRES_JUDGMENT',
-    {
-      REASON: 'diverged_from_origin_main',
-      DETAIL:
-        `HEAD=${sanitize(headFull)}_origin/main=${sanitize(originFull)}` +
-        `_merge_base=${sanitize(mergeBase)}`,
-    },
+    { REASON: 'missing_workboard_repo', DETAIL: sanitize(repo) },
     1,
   );
 }
@@ -515,7 +424,6 @@ if (qa.invalidStatuses.length > 0) {
   );
 }
 
-const head = headFull.slice(0, 7);
 const claimedLocks = claimedPackets.length
   ? claimedPackets.map(lockFor).join(';')
   : 'none';
@@ -523,8 +431,6 @@ const qaActiveLocks = qa.active.length ? qa.active.map(lockFor).join(';') : 'non
 const activeCount = claimedPackets.length + qa.active.length;
 
 const common = {
-  HEAD: head,
-  BRANCH: sanitize(branch),
   CLAIMED: claimedPackets.length,
   QA_ACTIVE: qa.active.length,
   QA_PENDING: qa.pending.length,

@@ -130,7 +130,8 @@ docs/
   pending-improvements.md   # production hardening backlog for the starter
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
-  check-workboard-queue.mjs # read-only queue and checkout classifier
+  check-workboard-git-preflight.mjs # root-owned Git status/fetch/ff-only gate
+  check-workboard-queue.mjs # read-only local queue classifier
   check-workboard-target-lock.mjs # exact decoded target-lock check
   check-workboard-callback.mjs # canonical callback status/identity/role/lane check
   check-task-creation-recovery.mjs # validate recovery state and proof
@@ -156,6 +157,22 @@ tests/
   task-creation-recovery.test.mjs
 ```
 
+## Root Git preflight
+
+Before queue classification, run the dependency-free root synchronization gate:
+
+```bash
+node scripts/check-workboard-git-preflight.mjs --repo "$PWD"
+```
+
+It inspects branch and status, fetches `origin/main`, and fast-forwards only when
+the checkout is clean `main` and strictly behind. Continue only for
+`GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`. Dirty,
+conflicted, non-main, ahead, diverged, fetch/auth/network, and failed
+fast-forward states return `GIT_PREFLIGHT_STATUS=STOP` without queue reads.
+Use `--remote <name>` when the intended remote is not `origin`; the intended
+branch remains `main`.
+
 ## Queue-first check
 
 Before loading project registries, packet bodies, or task history, run the
@@ -165,10 +182,10 @@ dependency-free classifier:
 node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 ```
 
-It does not fetch, merge, rebase, push, move packets, create directories, or
-write automation memory. It reports checkout safety, queue counts, claimed and
-active-QA target locks, completed QA results, configured/available capacity,
-and one routing status. Capacity defaults to 3; at capacity it reports
+It does not invoke Git, move packets, create directories, or write automation
+memory. It reports local queue counts, claimed and active-QA target locks,
+completed QA results, configured/available capacity, and one routing status.
+Capacity defaults to 3; at capacity it reports
 `WORK_IN_PROGRESS` even when ready work is waiting. Run its tests with:
 
 ```bash

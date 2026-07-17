@@ -10,9 +10,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 ## Start here
 
 1. Read `ORCHESTRATOR.md`.
-2. Inspect and safely synchronize the Workboard checkout.
+2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` and continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
 3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>` before broad reads; omit capacity only for the default of 3.
-4. Stop on `NOTHING_TO_CLAIM`, `WORKBOARD_SYNC_NEEDED`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
+4. Stop on Git preflight `STOP`, `NOTHING_TO_CLAIM`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
 5. On `QA_RESULT_AVAILABLE`, read only the emitted QA packets, verify their evidence, and route each verdict to its exact next lane without launching duplicate QA.
 6. On `WORK_IN_PROGRESS`, report counts and locks, then stop without reading active packets or task history.
 7. Read `docs/orchestrator-protocol.md` and only the queue lane required by the classifier.
@@ -20,7 +20,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 
 ## Core loop
 
-- Pull latest main.
+- Run the explicit root Git preflight; never replace it with generic pull guidance.
 - Treat classifier-emitted claimed and active-QA records as capacity usage and per-target locks; do not inspect their packet/task history on ordinary polls.
 - Trust `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED`; at zero available capacity the classifier machine-enforces `WORK_IN_PROGRESS`. Below capacity, continue routing unrelated targets.
 - Decode every lock and reject a ready packet when both its canonical `target_project_id` and `target_path` exactly match a lock. Use `scripts/check-workboard-target-lock.mjs`; malformed lock input blocks routing.
