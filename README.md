@@ -112,6 +112,7 @@ docs/
   orchestrator-protocol.md  # standing instructions for the root loop
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
+  live-task-visibility.md   # app-native proof and portable fallback
   pending-improvements.md   # production hardening backlog for the starter
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
@@ -130,6 +131,7 @@ tasks/
 projects.example.yaml       # copy to projects.yaml and customize
 tests/
   check-workboard-queue.test.mjs
+  live-task-visibility-docs.test.mjs
 ```
 
 ## Queue-first check
@@ -144,10 +146,10 @@ node scripts/check-workboard-queue.mjs --repo "$PWD"
 It does not fetch, merge, rebase, push, move packets, create directories, or
 write automation memory. It reports checkout safety, queue counts, claimed and
 active-QA target locks, completed QA results needing reconciliation, and one
-routing status. Run its tests with:
+routing status. Run the focused tests with:
 
 ```bash
-node --test tests/check-workboard-queue.test.mjs
+node --test tests/*.test.mjs
 ```
 
 
@@ -165,7 +167,8 @@ Supported fields in `templates/task-packet.md` include:
 - `required_skills`
 - `qa_required`
 - `qa_status`
-- `github_pr`, `github_issue`, and `worker_thread_id`
+- `github_pr`, `github_issue`, `root_task_id`, and canonical `worker_thread_id`
+- worker task title, creation surface/attempt ID, portable session ID, link, host identity, visibility status/proof, recovery status/pending, callback envelope, and routing blocker fields
 - `qa_publish_to_github`, `qa_worker_notification_policy`, and publication receipt fields
 - `qa_codex_project`
 - `qa_model`
@@ -187,6 +190,10 @@ The orchestrator must preflight these before delegation and require proof before
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.
 - Unknown project/path means block and ask, not guess.
 - Done requires proof.
+- Desktop delegation requires live app-native list/read proof; persisted helper or session metadata alone is not visibility proof.
+- An ambiguous app-native result keeps the source packet claimed, its exact target lock/capacity active, and duplicate routing forbidden until recovery resolves it.
+- A packet moves to blocked and releases its lock only after recovery proves no usable/canonical worker remains and records the exact next action.
+- Callbacks route only for the source packet's current canonical worker task ID and creation attempt ID. Hosts without app-native task APIs use the honest `portable_only` fallback, keep `worker_thread_id` empty, and return root reconciliation evidence instead of claiming canonical callback routing.
 
 ## First training exercise
 
@@ -208,5 +215,6 @@ Start here:
 - `docs/orchestrator-protocol.md`
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
+- `docs/live-task-visibility.md`
 - `docs/pending-improvements.md`
 - `templates/task-packet.md`
