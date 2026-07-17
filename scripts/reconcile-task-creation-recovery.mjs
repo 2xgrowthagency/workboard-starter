@@ -83,11 +83,13 @@ export function canonicalizeSourcePacket(source, recovery) {
   const proof = [
     recoveryFields.recovery_id,
     recoveryFields.canonical_task_id,
+    recoveryFields.canonical_task_link,
     recoveryFields.canonical_worker_creation_attempt_id,
     recoveryFields.canonical_selected_at,
   ].join('|');
   const updated = serializePacketFrontmatter(source, {
     worker_thread_id: recoveryFields.canonical_task_id,
+    worker_task_link: recoveryFields.canonical_task_link,
     worker_creation_attempt_id: recoveryFields.canonical_worker_creation_attempt_id,
     worker_creation_status: 'canonical',
     worker_creation_proof: proof,
@@ -96,7 +98,7 @@ export function canonicalizeSourcePacket(source, recovery) {
     worker_visibility_proof: proof,
     recovery_status: 'reconciled',
     recovery_pending: 'false',
-  });
+  }, { insertMissingFields: ['worker_task_link'] });
   const updatedFields = sourceMetadata(updated);
   if (updatedFields.worker_creation_status !== 'canonical' ||
       updatedFields.worker_visibility_status !== 'verified' ||
@@ -366,8 +368,10 @@ function main(argv) {
         {},
         sourceSnapshot,
       );
-      const workerId = sourceMetadata(updated).worker_thread_id;
+      const updatedFields = sourceMetadata(updated);
+      const workerId = updatedFields.worker_thread_id;
       console.log(`RECOVERY_RECONCILIATION_STATUS=CANONICALIZED WORKER_THREAD_ID=${encodeURIComponent(workerId)}`);
+      console.log(updatedFields.worker_task_link);
       return 0;
     }
 

@@ -36,7 +36,7 @@ function frontmatter(fields, body = '# Task\n') {
 function sourcePacket(overrides = {}) {
   return frontmatter({
     id: 'packet-1', status: 'claimed', root_task_id: 'root-1',
-    worker_thread_id: '', worker_creation_surface: 'app-native task tools',
+    worker_thread_id: '', worker_task_link: '', worker_creation_surface: 'app-native task tools',
     worker_creation_attempt_id: 'attempt-1', worker_creation_status: 'ambiguous',
     worker_creation_proof: 'raw_task_id=task-raw;attempt_evidence_only',
     worker_visibility_status: 'ambiguous', worker_visibility_verified_at: '',
@@ -73,6 +73,7 @@ function recoveryPacket({ replacement = false, surface = 'app-native task tools'
     creation_started_at: times.started, creation_outcome_at: times.outcome,
     raw_task_id: replacement ? 'unknown' : 'task-raw', recovery_started_at: times.recovery,
     canonical_task_id: canonicalTask,
+    canonical_task_link: `::created-thread{threadId="${canonicalTask}"}`,
     canonical_worker_creation_attempt_id: canonicalAttempt,
     canonical_selected_at: times.selected, ...replacementMetadata,
     recovery_completed_at: '', promotion_rerun_at: '', queue_classification_rerun_at: '',
@@ -108,6 +109,7 @@ function recoveryPacket({ replacement = false, surface = 'app-native task tools'
     'LIST_RESULT: exact candidate search completed successfully',
     '## Replacement authorization evidence', authorization,
     '## Canonical selection', `CANONICAL_TASK_ID: ${canonicalTask}`,
+    `CANONICAL_TASK_LINK: ::created-thread{threadId="${canonicalTask}"}`,
     'CANONICAL_ROOT_TASK_ID: root-1',
     `CANONICAL_WORKER_CREATION_ATTEMPT_ID: ${canonicalAttempt}`,
     'CANONICAL_TARGET_PROJECT_ID: project-1',
@@ -193,6 +195,7 @@ test('canonical reconciliation atomically clears ambiguity and permits a matchin
   const updated = canonicalizeSourcePacket(sourcePacket(), recoveryPacket());
   for (const expected of [
     /^worker_thread_id: task-raw$/m, /^worker_creation_attempt_id: attempt-1$/m,
+    /^worker_task_link: .*created-thread.*task-raw/m,
     /^worker_creation_status: canonical$/m, /^worker_visibility_status: verified$/m,
     /^worker_visibility_verified_at: 2026-07-16T10:09:00Z$/m,
     /^recovery_pending: false$/m,

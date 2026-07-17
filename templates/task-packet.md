@@ -13,6 +13,10 @@ ready_when:
 claimed_by:
 claimed_at:
 root_task_id:
+root_closeout_title:
+root_closeout_title_status: pending
+root_closeout_title_proof:
+root_closeout_title_blocker:
 worker_thread_id:
 builder_thread_id:
 worker_task_title:
@@ -139,6 +143,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Caveats documented
 - [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
 - [ ] Exactly one completion callback receipt, or a `ROOT_RECONCILIATION_REQUIRED` marker with identical proof
+- [ ] Final root title applied only after outcome and verified by app-native readback, or exact title blocker recorded
+- [ ] Every builder, QA, and canonical recovery response records raw task ID plus exact same-ID `::created-thread` directive
 
 ## Stop and ask if
 
@@ -159,7 +165,12 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Move this source packet to `tasks/blocked/` and release its lock only after recovery proves ambiguity resolved and no usable/canonical worker remains; record the exact next action.
 - The initial create handoff supplies `worker_creation_attempt_id` but cannot supply the future task ID. At callback time, the worker reports its host-current ID as `worker_task_id`; routing occurs only when it equals current canonical `worker_thread_id` and its attempt equals current `worker_creation_attempt_id`. Noncanonical or delayed callbacks are recovery evidence only.
 - If app-native task APIs are not exposed, set `worker_visibility_status: portable_only`, record the session identity in `worker_portable_session_id`, leave canonical `worker_thread_id` empty, and do not claim live Desktop visibility or canonical callback routing.
-- Verified app-native root output includes canonical `worker_thread_id` and `worker_task_link` or supported clickable directive.
+- Verified app-native root output includes canonical `worker_thread_id` as the raw ID and `worker_task_link` as exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID. Reject `::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and multiple directives. The same contract applies to canonical task-creation recovery responses.
+- After the cycle outcome is final, root writes `[idle|claimed|qa|review|blocked|done] <useful project or task label>` to `root_closeout_title`, applies it app-natively, and records exact readback in `root_closeout_title_proof`. Final `[poll]` titles are invalid. Token/phrase-aware validation rejects leading `WB`, `Workboard`, `poll`/`polling`, `queue check`, and `manual Workboard`, plus generic-only closeout/check/status labels, while allowing those character sequences inside larger real names.
+- Set `root_closeout_title_status: verified` only after exact app-native readback. On unavailable/failed/timeout/mismatch, keep the truthful status and put the exact tool/call, error or elapsed timeout, requested title, and observed title in `root_closeout_title_blocker`; never claim success.
+- Standalone root closeout reads the current task UUID only from `process.env.CODEX_THREAD_ID`, passes the exact value as `--title-task-id`, and fails closed when it is missing, malformed, or mismatched. Never use task list/search or task history to discover the current root ID. Persistent-root heartbeats are exempt.
+- A heartbeat delivered to an intentionally persistent root task may retain an unchanged useful state-first title only when the exception and exact app-native readback are recorded. It does not permit worker heartbeat polling or generic-title retention.
+- Every verified builder, QA, and canonical recovery response reports the raw canonical task ID separately plus the exact same-ID `::created-thread` directive.
 - Before QA replaces the canonical `worker_thread_id`, preserve the original builder identity in `builder_thread_id`; `qa_thread_id` may mirror the canonical QA task for provenance.
 - Claimed and active-QA packets lock only an exact decoded `target_project_id` + `target_path` tuple. Unrelated targets may route up to capacity; `parallel_safe` does not override a target lock.
 - During ambiguous creation this packet stays in `tasks/claimed`, keeps its capacity/target lock, sets `worker_creation_status: ambiguous`, `worker_visibility_status: ambiguous`, and `recovery_pending: true`, and records its stable `recovery_id`.

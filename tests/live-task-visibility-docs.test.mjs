@@ -147,6 +147,10 @@ test('packet captures routing identity, proof, and blockers', () => {
   const fields = frontmatterFields(packet);
   for (const field of [
     'root_task_id',
+    'root_closeout_title',
+    'root_closeout_title_status',
+    'root_closeout_title_proof',
+    'root_closeout_title_blocker',
     'worker_thread_id',
     'worker_task_title',
     'worker_creation_surface',
@@ -189,4 +193,69 @@ test('packet captures routing identity, proof, and blockers', () => {
 
   assert.match(packet, /leave canonical `worker_thread_id` empty/);
   assert.match(packet, /keep this source packet in `tasks\/claimed\/`[\s\S]*exact target lock and capacity slot remain active/);
+});
+
+test('operator surfaces enforce state-first closeout ordering and verification', () => {
+  for (const [path, contents] of surfaces) {
+    assert.match(contents, /after (?:the cycle(?:'s)? |the )?(?:final )?outcome is (?:known|final)|until (?:the cycle's |the )?final outcome is known before/i,
+      `${path} must defer title mutation until the final outcome`);
+    assert.match(contents, /\[idle\|claimed\|qa\|review\|blocked\|done\]/,
+      `${path} must enumerate supported closeout states`);
+    assert.match(contents, /useful project(?:\s+or\s+|\/)task\s+label/i,
+      `${path} must require a useful label`);
+    assert.match(contents, /\[poll\][\s\S]{0,100}(?:WB|Workboard)|(?:WB|Workboard)[\s\S]{0,100}\[poll\]/i,
+      `${path} must reject generic legacy titles`);
+    assert.match(contents, /queue check[\s\S]{0,100}manual Workboard/i,
+      `${path} must enumerate token-aware generic label prefixes`);
+    assert.match(contents, /(?:inside|within)[\s\S]{0,80}larger real[\s\S]{0,40}name/i,
+      `${path} must permit generic substrings inside real names`);
+    assert.match(contents, /app-native[\s\S]{0,180}read\s*back|read(?: it| the task)?\s+back[\s\S]{0,120}app-native/i,
+      `${path} must require app-native title readback`);
+    assert.match(contents, /unavailable[\s\S]{0,180}(?:timeout|error|mismatch)|(?:timeout|error|mismatch)[\s\S]{0,180}unavailable/i,
+      `${path} must preserve exact title blockers`);
+  }
+});
+
+test('delegation and persistent-root exception stay structurally bounded', () => {
+  for (const [path, contents] of surfaces) {
+    assert.match(contents, /raw (?:canonical )?task ID/i, `${path} must retain raw task identity`);
+    assert.match(contents, /clickable[\s\S]{0,160}(?:same|exact) ID|(?:same|exact) ID[\s\S]{0,160}clickable/i,
+      `${path} must bind clickable and raw task identities`);
+    assert.match(contents, /heartbeat[\s\S]{0,120}persistent root|persistent root[\s\S]{0,120}heartbeat/i,
+      `${path} must name the persistent-root heartbeat exception`);
+    assert.match(contents, /heartbeat[\s\S]{0,220}(?:readback|read back)|(?:readback|read back)[\s\S]{0,220}heartbeat/i,
+      `${path} must verify a retained title`);
+    assert.match(contents, /worker\s+heartbeat|heartbeat\s+polling\s+of\s+workers|worker\s+monitoring/i,
+      `${path} must not broaden the exception to workers`);
+  }
+});
+
+test('standalone closeout identity is environment-only and never discovered from history', () => {
+  for (const [path, contents] of surfaces) {
+    assert.match(contents, /CODEX_THREAD_ID/, `${path} must name the environment identity source`);
+    assert.match(contents, /missing[\s\S]{0,100}malformed[\s\S]{0,100}mismatch/i,
+      `${path} must reject unusable environment identity`);
+    assert.match(contents, /(?:never|do not)[\s\S]{0,100}(?:list|search)[\s\S]{0,100}history[\s\S]{0,100}discover|(?:never|do not)[\s\S]{0,100}history[\s\S]{0,100}(?:list|search)[\s\S]{0,100}discover/i,
+      `${path} must forbid list/history current-task discovery`);
+    assert.match(contents, /persistent-root heartbeat|persistent root task/i,
+      `${path} must retain the persistent-root exception`);
+  }
+  const closeout = section(contract, 'State-first root closeout');
+  assert.match(closeout, /node -e 'const id=process\.env\.CODEX_THREAD_ID/);
+  assert.doesNotMatch(
+    closeout,
+    /list_threads\s*\(|(?:^|\n)(?:use|call|inspect|search|list)\b[^\n]{0,100}\b(?:history|discover)/im,
+  );
+});
+
+test('only the exact created-thread directive is supported for delegation and recovery', () => {
+  assert.match(contract, /::created-thread\{threadId="<RAW_TASK_ID>"\}/);
+  assert.match(contract, /::codex-thread[\s\S]{0,120}unsupported/i);
+  assert.match(contract, /builder, QA, and canonical[\s\S]{0,80}recovery responses/i);
+
+  const recovery = read('templates/task-creation-recovery.md');
+  assert.match(recovery, /^canonical_task_link:$/m);
+  assert.match(recovery, /^CANONICAL_TASK_LINK: ::created-thread\{threadId="<CANONICAL_TASK_ID>"\}$/m);
+  assert.match(recovery, /raw task ID[\s\S]{0,100}exact same-ID/i);
+  assert.match(recovery, /::codex-thread[\s\S]{0,120}unsupported/i);
 });

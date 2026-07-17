@@ -134,9 +134,12 @@ Packet/project overrides take precedence. Escalate Sol to high only with a machi
 
 ### [ST-010: finish state-first task closeout and links](https://github.com/2xgrowthagency/workboard-starter/issues/10)
 
+Status: implemented by the state-first closeout/readback contract and
+`scripts/check-workboard-closeout.mjs`.
+
 Update automation examples and protocol so titles are applied after the outcome is known, include a useful task/project label, and never retain generic `[poll]` or raw Workboard prefixes after closeout.
 
-Every delegation response should include the raw task ID and a supported clickable task link/directive when the host provides one.
+Every builder, QA, and canonical recovery response includes the raw task ID and exact same-ID host-supported `::created-thread` directive.
 
 ### [ST-011: bring the packet template to production metadata parity](https://github.com/2xgrowthagency/workboard-starter/issues/11)
 

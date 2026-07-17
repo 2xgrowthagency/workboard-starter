@@ -35,6 +35,8 @@ Instructions:
 19. On PROMOTION_REVIEW_NEEDED, follow docs/dependency-promotion.md. Promote auto candidates from dependency metadata only; open each review candidate for exactly one ready_when check; do not reconsider manual or human/external blockers without new proof.
 20. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
 21. Commit/push every promotion transition before rerunning queue classification. After recovery, rerun dependency promotion and queue classification, preserve its validated rerun receipts, then commit/push the recovery transition.
+22. Only after the cycle's final outcome is known, set the root title to `[idle|claimed|qa|review|blocked|done] <useful project or task label>`. Final `[poll]` titles are invalid. Token/phrase-aware validation rejects labels beginning with WB, Workboard, poll/polling, queue check, or manual Workboard, and labels made only of generic closeout/check/status words; it permits those character sequences inside larger real names. For standalone closeout, obtain the current task UUID only from process.env.CODEX_THREAD_ID and pass it as --title-task-id; reject missing/malformed/mismatched identity and never use task list/search or history discovery. Persistent-root heartbeats are exempt. Read the exact title back through the app-native task surface before reporting success; otherwise report the exact unavailable tool, failed call, timeout/error, or requested-versus-observed mismatch.
+23. For every verified builder, QA, or canonical task-creation recovery response, report the raw canonical task ID plus exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID after app-native readback. Reject all other directive/link forms.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -93,8 +95,10 @@ target, persist `worker_creation_attempt_id`, create at most one task for that
 attempt, then use the live list/read tools to verify one candidate's exact title,
 saved project/target, cwd, host/local identity, and complete handoff. Only then
 write the candidate ID to canonical `worker_thread_id`, mark visibility
-`verified`, and report that ID plus the creation tool's clickable task link or
-supported directive, such as `::created-thread{threadId="<RAW_TASK_ID>"}`.
+`verified`, and report that raw ID plus exactly
+`::created-thread{threadId="<RAW_TASK_ID>"}` with the same ID. Reject
+`::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and
+multiple directives.
 
 Do not treat a helper, separate app server, session index, or database row as
 proof that Desktop refreshed. On a stall, timeout, ambiguous result, or mismatch,
@@ -111,6 +115,33 @@ unless both worker task ID and creation attempt ID match the source packet.
 When an app-native create call has an ambiguous outcome, use app-native task list
 and read calls on that same surface before any retry. Returned IDs and partial
 responses belong in the recovery packet even when the create call itself errors.
+
+At root closeout, choose the final state and useful project/task label before
+calling the title tool. Read the task back and compare the exact title. A
+missing tool, failed/timeout call, or mismatch is an exact blocker, not a
+successful rename. A heartbeat in an intentionally persistent root task may
+retain an unchanged useful state-first title only with recorded exception proof
+and exact app-native readback; this does not authorize worker heartbeats.
+
+Use `node scripts/check-workboard-closeout.mjs` to reject early/generic titles,
+unverified title claims, vague title blockers, and mismatched delegation links.
+For example, a verified delegation closeout can be checked with:
+
+```bash
+node -e 'const id=process.env.CODEX_THREAD_ID||"";if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)){console.error("invalid CODEX_THREAD_ID");process.exit(1)};console.log(id)'
+node scripts/check-workboard-closeout.mjs \
+  --state claimed \
+  --label "<USEFUL_PROJECT_OR_TASK_LABEL>" \
+  --outcome-known true \
+  --title-status verified \
+  --title "[claimed] <USEFUL_PROJECT_OR_TASK_LABEL>" \
+  --title-readback "[claimed] <USEFUL_PROJECT_OR_TASK_LABEL>" \
+  --title-task-id "$CODEX_THREAD_ID" \
+  --delegated true \
+  --task-id "<RAW_TASK_ID>" \
+  --task-link '::created-thread{threadId="<RAW_TASK_ID>"}' \
+  --task-readback verified
+```
 
 ## Claude Desktop pattern
 
