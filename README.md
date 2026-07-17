@@ -187,6 +187,11 @@ This is cooperative exclusion, not compare-and-swap over the Git checkout. It
 cannot stop an uncooperative external process from changing refs or files after
 the final observation. Keep one root writer per Workboard checkout.
 
+Git commands run as interruptible child process groups. `SIGHUP`, `SIGINT`, or
+`SIGTERM` latches an interruption, terminates the active Git group, suppresses
+`READY`/`UPDATED`, emits `STOP REASON=INTERRUPTED` with the signal, cleans the
+owned lock, and exits nonzero.
+
 ## Queue-first check
 
 Before loading project registries, packet bodies, or task history, run the

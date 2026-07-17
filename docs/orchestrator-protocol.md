@@ -41,8 +41,9 @@ The preflight is root-owned and ordered deliberately:
 5. Compare `HEAD` with the fetched commit.
 6. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
 7. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
-8. Emit `READY`, `UPDATED`, or `STOP` synchronously while still owning the lock, then remove the owned lock on normal and failure paths.
-9. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+8. Run every Git operation as an interruptible child process group and process pending interruption state after every child exit.
+9. Emit `READY`, `UPDATED`, or `STOP` synchronously while still owning the lock, then remove the owned lock on normal and failure paths.
+10. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
 
 Stop on `GIT_PREFLIGHT_STATUS=STOP`. Its `REASON` distinguishes dirty,
 conflicted, non-main, ahead, diverged, fetch/auth/network failure, and failed
@@ -72,6 +73,16 @@ compare-and-swap for the checkout and cannot stop an uncooperative external
 process from changing a ref or file after the final observation but before output.
 Single-root/single-writer discipline remains required. Final revalidation is
 retained to detect changes that occur before that last observation.
+
+### Interruption semantics
+
+The first `SIGHUP`, `SIGINT`, or `SIGTERM` is latched. If Git is active, the
+preflight terminates its process group, escalates to `SIGKILL` after a short
+grace period when needed, drains pending signal delivery after child exit, and
+checks the latched state again before any success emission. An interrupted run
+must emit `GIT_PREFLIGHT_STATUS=STOP REASON=INTERRUPTED SIGNAL=<signal>`, remove
+only its owned cooperative lock, and exit nonzero. It must never emit `READY` or
+`UPDATED`, even when the interrupted Git command later exits successfully.
 
 ## Queue-first classifier
 

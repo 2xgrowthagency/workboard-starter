@@ -70,3 +70,13 @@ test('docs define cooperative locking without claiming impossible checkout CAS',
   assert.match(protocol, /does not provide\s+compare-and-swap for the checkout/);
   assert.doesNotMatch(protocol, /guarantees? exclusion of (?:all|arbitrary) writers/i);
 });
+
+test('docs make handled signal interruption a hard non-success outcome', () => {
+  const protocol = read('docs/orchestrator-protocol.md');
+  assert.match(protocol, /first `SIGHUP`, `SIGINT`, or `SIGTERM` is latched/);
+  assert.match(protocol, /terminates its process group/);
+  assert.match(protocol, /drains pending signal delivery after child exit/);
+  assert.match(protocol, /STOP REASON=INTERRUPTED SIGNAL=<signal>/);
+  assert.match(protocol, /must never emit `READY` or\s+`UPDATED`/);
+  assert.match(protocol, /remove\s+only its owned cooperative lock, and exit nonzero/);
+});

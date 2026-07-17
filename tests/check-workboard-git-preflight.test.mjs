@@ -11,7 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -141,6 +141,89 @@ process.exit(result.status ?? 1);
   };
 }
 
+function installBlockingGitShim(fixture, command) {
+  const lookup = spawnSync('which', ['git'], { encoding: 'utf8' });
+  assert.equal(lookup.status, 0, lookup.stderr);
+  const bin = join(fixture.parent, `block-${command}-bin`);
+  const shim = join(bin, 'git');
+  const marker = join(fixture.parent, `${command}-blocked`);
+  mkdirSync(bin);
+  writeFileSync(
+    shim,
+    `#!/usr/bin/env node
+const { writeFileSync } = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+if (args[0] === process.env.PREFLIGHT_BLOCK_COMMAND) {
+  writeFileSync(process.env.PREFLIGHT_BLOCK_MARKER, args.join(' '));
+  setInterval(() => {}, 1000);
+} else {
+  const result = spawnSync(process.env.PREFLIGHT_REAL_GIT, args, {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: process.env,
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.exit(result.status ?? 1);
+}
+`,
+  );
+  chmodSync(shim, 0o755);
+  return {
+    environment: {
+      PATH: `${bin}:${process.env.PATH}`,
+      PREFLIGHT_BLOCK_COMMAND: command,
+      PREFLIGHT_BLOCK_MARKER: marker,
+      PREFLIGHT_REAL_GIT: lookup.stdout.trim(),
+    },
+    marker,
+  };
+}
+
+function waitForFile(file, timeoutMs = 5000) {
+  return new Promise((resolveWait, reject) => {
+    const started = Date.now();
+    const poll = () => {
+      if (existsSync(file)) return resolveWait();
+      if (Date.now() - started >= timeoutMs) {
+        return reject(new Error(`Timed out waiting for ${file}`));
+      }
+      setTimeout(poll, 20);
+    };
+    poll();
+  });
+}
+
+function runPreflight(root, environment) {
+  const child = spawn(process.execPath, [preflight, '--repo', root], {
+    cwd: dirname(preflight),
+    env: { ...process.env, ...environment },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk;
+  });
+  const completion = new Promise((resolveRun) => {
+    child.on('close', (status, signal) => resolveRun({ status, signal, stdout, stderr }));
+  });
+  return { child, completion };
+}
+
+async function withAsyncFixture(callback) {
+  const fixture = createFixture();
+  try {
+    await callback(fixture);
+  } finally {
+    rmSync(fixture.parent, { recursive: true, force: true });
+  }
+}
+
 function withFixture(callback) {
   const fixture = createFixture();
   try {
@@ -208,6 +291,41 @@ test('malformed lock state fails closed and is preserved for explicit recovery',
     assert.equal(existsSync(directory), true);
   });
 });
+
+for (const [command, signal] of [
+  ['status', 'SIGHUP'],
+  ['fetch', 'SIGINT'],
+  ['merge', 'SIGTERM'],
+]) {
+  test(
+    `${signal} during blocked ${command} exits interrupted and cleans the lock`,
+    { skip: process.platform === 'win32' },
+    async () =>
+      withAsyncFixture(async (fixture) => {
+        if (command === 'merge') advanceRemote(fixture);
+        const { environment, marker } = installBlockingGitShim(fixture, command);
+        const running = runPreflight(fixture.root, environment);
+        await waitForFile(marker);
+        running.child.kill(signal);
+        let timeout;
+        const result = await Promise.race([
+          running.completion,
+          new Promise((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error('Interrupted preflight did not exit')),
+              5000,
+            );
+          }),
+        ]).finally(() => clearTimeout(timeout));
+
+        assert.equal(result.status, 1, result.stderr || result.stdout);
+        assert.match(result.stdout, /^GIT_PREFLIGHT_STATUS=STOP /);
+        assert.match(result.stdout, new RegExp(`REASON=INTERRUPTED SIGNAL=${signal}`));
+        assert.doesNotMatch(result.stdout, /GIT_PREFLIGHT_STATUS=(?:READY|UPDATED)/);
+        assert.equal(existsSync(preflightLock(fixture.root)), false);
+      }),
+  );
+}
 
 for (const [action, reason] of [
   ['dirty_tracked', 'checkout_changed_before_success'],

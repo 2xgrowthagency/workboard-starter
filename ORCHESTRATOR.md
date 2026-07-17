@@ -50,6 +50,10 @@ invalid lock metadata. Never auto-expire a lock; use the conservative recovery
 procedure in `docs/orchestrator-protocol.md`. This lock coordinates compliant
 roots only, so preserve one-root/single-writer checkout discipline.
 
+Treat `STOP REASON=INTERRUPTED` as a hard stop. HUP, INT, and TERM terminate the
+active Git process group, suppress success output, clean the owned lock, and
+exit nonzero; never continue to queue classification after interruption.
+
 `WORK_IN_PROGRESS` is also a stop for an ordinary poll: report emitted counts,
 locks, and capacity without opening active packet bodies or worker/QA history.
 At capacity it remains the machine-enforced result even when ready work exists;

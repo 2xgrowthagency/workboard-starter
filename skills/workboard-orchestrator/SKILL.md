@@ -22,6 +22,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 
 - Run the explicit root Git preflight; never replace it with generic pull guidance.
 - Treat its Git-common-directory lock as cooperative exclusion: stop on contention or invalid metadata, never auto-expire it, and use the protocol's explicit stale-lock recovery only after proving no owner remains. The lock cannot stop uncooperative external writers, so retain one-root/single-writer discipline.
+- Treat `STOP REASON=INTERRUPTED` as final: handled HUP/INT/TERM signals terminate active Git, forbid `READY`/`UPDATED`, clean only the owned lock, and require a fresh preflight run.
 - Trust classifier-emitted streak/pause fields; do not reconstruct them from old automation narratives. Verify any requested host-native pause before claiming it succeeded.
 - Treat classifier-emitted claimed and active-QA records as capacity usage and per-target locks; do not inspect their packet/task history on ordinary polls.
 - Trust `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED`; at zero available capacity the classifier machine-enforces `WORK_IN_PROGRESS`. Below capacity, continue routing unrelated targets.
