@@ -13,6 +13,21 @@ copy its host-local configuration into the starter. Generalize the behavior and
 update the protocol, portable skill, task template, automation examples, focused
 tests, and compatibility/migration record together.
 
+Reconcile and validate the machine-readable protocol inventory before running
+the synchronization gate:
+
+```bash
+node scripts/check-workboard-capabilities.mjs \
+  --repo <WORKBOARD_STARTER_ROOT> \
+  --refresh-evidence
+git diff -- workboard-capabilities.json
+node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_STARTER_ROOT>
+```
+
+Refresh only after reviewing the capability status, version, and evidence list.
+The digest command records deliberate synchronization; it does not prove the
+claim by itself.
+
 Run the offline gate with caller-supplied clone inputs:
 
 ```bash
@@ -26,6 +41,11 @@ The release record's downstream adoption reference must point to the originating
 public starter issue or release. This works in independently customized clones;
 the check does not fetch, inspect remotes, or require fork ancestry. See
 `docs/upstream-synchronization.md` for the portability boundary.
+
+For read-only clone inventory, run only the capability validator without
+`--refresh-evidence`. `CAPABILITY_MANIFEST_STATUS=VALID` reports schema,
+protocol, supported, and total capability counts. `REJECTED` or `CHECK_FAILED`
+must stop any automation that depends on a declared optional capability.
 
 ## Generic root-orchestrator prompt
 

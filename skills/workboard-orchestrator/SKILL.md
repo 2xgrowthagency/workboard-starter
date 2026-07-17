@@ -7,6 +7,12 @@ description: Run a Workboard root orchestrator loop: classify queue state, enfor
 
 Use this skill when asked to run, configure, or explain a Workboard local orchestrator.
 
+This skill implements Workboard protocol `1.0.0`. Read
+`workboard-capabilities.json` for machine-readable capability status and run
+`node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>` before
+relying on that metadata in a customized clone. A rejected manifest means the
+clone's capability state is unknown until its evidence is reconciled.
+
 Use `docs/known-issues-and-recovery.md` to classify host, tool, callback,
 saved-project/path, and Git failures. Its bounded responses preserve the
 normative routing gates in this skill.
@@ -16,7 +22,8 @@ When generalizing a production-derived change to this skill, follow
 task template, automation examples, focused tests, and one compatibility and
 migration record together. Validate the diff with `scripts/check-upstream-sync.mjs`;
 customized clones use the originating public starter issue/release as their
-adoption backlink and do not need fork ancestry.
+adoption backlink and do not need fork ancestry. The ST-013 gate also requires
+a refreshed, valid capability manifest whenever synchronized evidence changes.
 
 ## Start here
 

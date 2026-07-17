@@ -16,6 +16,8 @@ and update these surfaces in one change:
 - `docs/automation-examples.md`;
 - focused tests under `tests/`;
 - one compatibility and migration record under `docs/releases/`.
+- `workboard-capabilities.json`, with status/version/evidence reconciled and
+  evidence digests explicitly refreshed after review.
 
 The release record must link the originating public starter issue or release.
 A customized clone uses that same public reference as its downstream adoption
@@ -35,6 +37,13 @@ Then run the complete test suite:
 
 ```bash
 node --test tests/*.test.mjs
+```
+
+The upstream synchronization validator invokes the capability validator. Run
+the latter directly first when diagnosing a stale claim:
+
+```bash
+node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_STARTER_ROOT>
 ```
 
 The validator fails closed when a required surface is missing, release metadata

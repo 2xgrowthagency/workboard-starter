@@ -195,6 +195,31 @@ test('packet captures routing identity, proof, and blockers', () => {
   assert.match(packet, /keep this source packet in `tasks\/claimed\/`[\s\S]*exact target lock and capacity slot remain active/);
 });
 
+test('independent QA publication remains policy-controlled and separate from verdict', () => {
+  const packet = read('templates/task-packet.md');
+  const fields = frontmatterFields(packet);
+  for (const field of [
+    'builder_thread_id',
+    'qa_publish_to_github',
+    'qa_worker_notification_policy',
+    'qa_publication_status',
+    'qa_github_comment_urls',
+    'qa_worker_notification_status',
+    'qa_result',
+  ]) assert.ok(fields.has(field), `missing ${field}`);
+
+  for (const path of ['ORCHESTRATOR.md', 'docs/orchestrator-protocol.md', 'templates/task-packet.md']) {
+    const contents = read(path);
+    assert.match(contents, /qa_publish_to_github/i, `${path} must declare publication policy`);
+    assert.match(contents, /publication[^.]+separate[^.]+(?:verdict|qa_result)|(?:verdict|qa_result)[^.]+separate[^.]+publication/is,
+      `${path} must keep publication state separate from verdict`);
+    assert.match(contents, /local-only[^.]+(?:off GitHub|without uploading)|(?:off GitHub|without uploading)[^.]+local-only/is,
+      `${path} must keep local-only evidence private`);
+    assert.match(contents, /informational[^.]+(?:forbid|no-fix|must not fix)|(?:forbid|no-fix|must not fix)[^.]+informational/is,
+      `${path} must keep worker notifications informational`);
+  }
+});
+
 test('operator surfaces enforce state-first closeout ordering and verification', () => {
   for (const [path, contents] of surfaces) {
     assert.match(contents, /after (?:the cycle(?:'s)? |the )?(?:final )?outcome is (?:known|final)|until (?:the cycle's |the )?final outcome is known before/i,

@@ -167,6 +167,10 @@ Every production-derived upgrade should update the starter protocol, portable sk
 
 ### [ST-014: add capability/version metadata](https://github.com/2xgrowthagency/workboard-starter/issues/14)
 
+Status: implemented by `workboard-capabilities.json`, its JSON Schema, and
+`scripts/check-workboard-capabilities.mjs`. The manifest records ST-008 task
+finalization/hygiene as not implemented until that separate capability ships.
+
 Record a starter protocol version and feature flags or compatibility notes for queue classifier, QA publication, completion callbacks, dependency promotion, task hygiene, and Codex Desktop app-native routing.
 
 This allows clones to identify which operational improvements they have inherited without diffing an organization's private Workboard.

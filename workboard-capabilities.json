@@ -1,0 +1,204 @@
+{
+  "$schema": "schemas/workboard-capabilities.schema.json",
+  "manifest_schema_version": 1,
+  "protocol_version": "1.0.0",
+  "compatibility": {
+    "classification": "backward-compatible",
+    "minimum_reader_schema_version": 1,
+    "unknown_capability_policy": "ignore"
+  },
+  "starter_sync": {
+    "release": "ST-014",
+    "commit": null,
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/14",
+    "adoption_record": "docs/releases/st-014-capability-manifest.md"
+  },
+  "capabilities": {
+    "queue_classifier": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Queue-first local classification with bounded lane output and idle controls.",
+      "evidence": {
+        "files": [
+          "scripts/check-workboard-queue.mjs",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/check-workboard-queue.test.mjs"
+        ]
+      },
+      "evidence_sha256": "3b6591ba5840a6f6cb6be6459553e7bc4ef8ff0959afd65ef3614d63124df84e"
+    },
+    "target_locks": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Exact project and path tuple locks across claimed builder and active QA work.",
+      "evidence": {
+        "files": [
+          "scripts/check-workboard-target-lock.mjs",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/check-workboard-target-lock.test.mjs",
+          "tests/integrated-routing-lifecycle.test.mjs"
+        ]
+      },
+      "evidence_sha256": "784d203634b1924adc813eb04f8555343ac3c8d5b77bb139d859f1c4efb40440"
+    },
+    "completion_callbacks": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "One-shot canonical worker callbacks validated against packet, task, attempt, and lane.",
+      "evidence": {
+        "files": [
+          "scripts/check-workboard-callback.mjs",
+          "templates/task-packet.md"
+        ],
+        "tests": [
+          "tests/check-workboard-callback.test.mjs",
+          "tests/integrated-routing-lifecycle.test.mjs"
+        ]
+      },
+      "evidence_sha256": "f9c3cfa1ac7178326d93a9a1f47b37eb885d5674ec7b02e7f9709e6324d4ffb6"
+    },
+    "independent_qa": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Separate read-only QA tasks return PASS, FAIL, or BLOCKED against immutable evidence.",
+      "evidence": {
+        "files": [
+          "ORCHESTRATOR.md",
+          "templates/task-packet.md",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/live-task-visibility-docs.test.mjs",
+          "tests/integrated-routing-lifecycle.test.mjs"
+        ]
+      },
+      "evidence_sha256": "9042a30cc1f0561a361b86cc6a4c8e2e2b6c6fc8cabe7cfd08afa5c192b41cbf"
+    },
+    "qa_publication": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Policy-controlled GitHub QA verdict publication and informational worker notification.",
+      "evidence": {
+        "files": [
+          "ORCHESTRATOR.md",
+          "templates/task-packet.md",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/live-task-visibility-docs.test.mjs"
+        ]
+      },
+      "evidence_sha256": "49d37fc71f7980ba85b3ce39e15b7593f4d4cefedbfedf4f7d7edac5330eb557"
+    },
+    "dependency_promotion": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Root-owned dependency scanning with auto, review, manual, and blocked promotion policies.",
+      "evidence": {
+        "files": [
+          "scripts/check-workboard-promotions.mjs",
+          "docs/dependency-promotion.md"
+        ],
+        "tests": [
+          "tests/check-workboard-promotions.test.mjs",
+          "tests/dependency-promotion-docs.test.mjs"
+        ]
+      },
+      "evidence_sha256": "283502b9c52929d8bc46a1fd858669d95ec58f3a55d2382ecf693250ae687998"
+    },
+    "task_finalization_hygiene": {
+      "status": "not_implemented",
+      "version": null,
+      "summary": "Conservative app-native task finalization and hygiene remains tracked as ST-008.",
+      "evidence": {
+        "files": [
+          "docs/pending-improvements.md"
+        ],
+        "tests": []
+      },
+      "evidence_sha256": "7038891ac33af53d40fe9fc432b01733707614b2862fd112215a6c8f415e1a56"
+    },
+    "app_native_codex_routing": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Codex Desktop routing requires app-native create, list, and readback visibility proof.",
+      "evidence": {
+        "files": [
+          "docs/live-task-visibility.md",
+          "scripts/check-task-creation-recovery.mjs"
+        ],
+        "tests": [
+          "tests/live-task-visibility-docs.test.mjs",
+          "tests/task-creation-recovery.test.mjs"
+        ]
+      },
+      "evidence_sha256": "6a7e96478c04a114ddab24ac4ebac40d1b29691f9b3564f422c744187323340b"
+    },
+    "model_routing": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Packet, project, and portable model routes enforce escalation and verification policy.",
+      "evidence": {
+        "files": [
+          "scripts/check-model-routing.mjs",
+          "ORCHESTRATOR.md"
+        ],
+        "tests": [
+          "tests/model-routing.test.mjs"
+        ]
+      },
+      "evidence_sha256": "d415716ab7fc2d0df736cf660373853b94d9e9ff523d9b56b48ae05609de5b6f"
+    },
+    "git_preflight": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Root Git synchronization preflight fails closed on unsafe state, identity, and lock conditions.",
+      "evidence": {
+        "files": [
+          "scripts/check-workboard-git-preflight.mjs",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/check-workboard-git-preflight.test.mjs",
+          "tests/git-preflight-docs.test.mjs"
+        ]
+      },
+      "evidence_sha256": "70c90382a914b93172e4fce1938375a26d7d1758d1a151ceb6304fca95de1ca4"
+    },
+    "known_issues_recovery": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Portable symptom, impact, stop, evidence, and recovery records cover known failures.",
+      "evidence": {
+        "files": [
+          "docs/known-issues-and-recovery.md"
+        ],
+        "tests": [
+          "tests/known-issues-recovery-docs.test.mjs"
+        ]
+      },
+      "evidence_sha256": "fb9d3842f0b5f9957b3512027037a358762a17f1760e6bab5027780116db1739"
+    },
+    "closeout_links": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "State-first root closeout verifies titles and exact same-ID created task links.",
+      "evidence": {
+        "files": [
+          "scripts/check-workboard-closeout.mjs",
+          "scripts/task-link.mjs",
+          "docs/live-task-visibility.md"
+        ],
+        "tests": [
+          "tests/workboard-closeout.test.mjs",
+          "tests/live-task-visibility-docs.test.mjs"
+        ]
+      },
+      "evidence_sha256": "128812d50d8f07d877ba3754b3be40b5769fa8931c59d723bab5570d9f895445"
+    }
+  }
+}

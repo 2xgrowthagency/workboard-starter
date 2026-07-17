@@ -140,6 +140,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Screenshot/browser proof, if UI-facing
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
 - [ ] For a production-derived starter upgrade: synchronized protocol, portable skill, packet template, automation examples, focused tests, compatibility/migration record, and public starter issue/release adoption backlink validated with `scripts/check-upstream-sync.mjs`
+- [ ] For a starter capability change: `workboard-capabilities.json` status/version/evidence reconciled, evidence digests refreshed and reviewed, and `scripts/check-workboard-capabilities.mjs` passed
 - [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
 - [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
@@ -155,6 +156,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
+- This template is compatible with Workboard protocol `1.0.0`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
 - Root owns dependency promotion. Workers report completion proof but do not move downstream packets.
 - `promotion_policy: auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges; `review` permits one bounded `ready_when` check; omitted or `manual` requires new human/external proof.
 - Only backlog or blocked auto/review packets with exact `blocker_type: dependency` are scanner-eligible. Empty/other blocker types fail closed; human/external blockers stay manual until new proof arrives.

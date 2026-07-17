@@ -22,6 +22,11 @@ Workboard upgrade.
    the full test suite and review the complete diff.
 8. Publish release notes that summarize compatibility, migration impact, and
    the originating public reference. Do not publish local-only evidence.
+9. Reconcile `workboard-capabilities.json`: update protocol/capability versions
+   and status, set exactly one last synchronized starter release or full commit,
+   verify every evidence list, refresh evidence digests, and inspect the diff.
+   `scripts/check-workboard-capabilities.mjs` and the upstream synchronization
+   gate must both pass.
 
 The release/adoption record and every changed path read by the validator must be
 a regular file whose canonical path remains inside the canonical repository

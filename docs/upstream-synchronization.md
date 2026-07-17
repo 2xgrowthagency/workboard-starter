@@ -18,10 +18,17 @@ change:
 5. At least one `tests/*.test.mjs` file for machine-checkable coverage.
 6. One changed `docs/releases/*.md` record containing compatibility, migration
    impact, and downstream adoption metadata.
+7. A changed `workboard-capabilities.json` whose versions, status, starter
+   coordinate, evidence lists, and refreshed digests describe the resulting
+   clone truthfully.
 
 The template and automation updates may be a short compatibility note when no
 new field or command is needed, but they must be deliberate and reviewable. Do
 not make no-op or whitespace-only edits to satisfy the gate.
+
+Before the upstream gate, follow `docs/capability-manifest.md` and run the
+capability validator. The upstream validator repeats this check so stale or
+unsupported manifest claims cannot pass the synchronized release checklist.
 
 ## Portability Boundary
 
@@ -75,7 +82,10 @@ It rejects mixed or partially staged state so the reviewed content cannot differ
 from the content that would be committed. It requires substantive additions on
 every synchronized surface, validates the release record, and scans newly added
 portable documentation/template/skill lines for prohibited local assumptions.
-It performs no fetch, push, remote lookup, release mutation, or fork check.
+It also requires a changed capability manifest and validates its schema,
+portable starter coordinate, regular-file evidence, focused test evidence, and
+content digests against the working tree. It performs no fetch, push, remote
+lookup, release mutation, or fork check.
 
 Every changed path consumed by the validator, including the release/adoption
 record, synchronized surfaces, and focused tests, must be a regular file. The
