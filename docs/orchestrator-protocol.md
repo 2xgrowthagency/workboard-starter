@@ -13,6 +13,11 @@ Use this document as the standing instruction for your local orchestrator, wheth
 
 One person/agent can play multiple roles, but keep the responsibilities separate. The root orchestrator should not become a free-roaming implementation agent unless the packet explicitly says the work is a Workboard/control-plane task.
 
+When a host, tool, callback, saved project, or Git failure interrupts this
+protocol, classify it with `docs/known-issues-and-recovery.md` and apply only the
+recorded bounded response. The guide supplements rather than overrides the
+normative gates below.
+
 ## Folder states
 
 - `tasks/ready/` — execution-ready packets waiting to be claimed.
