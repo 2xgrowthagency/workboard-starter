@@ -18,6 +18,13 @@ protocol, classify it with `docs/known-issues-and-recovery.md` and apply only th
 recorded bounded response. The guide supplements rather than overrides the
 normative gates below.
 
+When a production-derived improvement changes this protocol, follow
+`docs/upstream-synchronization.md`. The same change must update the portable
+skill, task template, automation examples, focused tests, and a compatibility
+and migration record with a public starter issue/release adoption backlink.
+Run `scripts/check-upstream-sync.mjs` against an explicit local base ref before
+release. This contribution gate does not alter the runtime queue contracts.
+
 ## Folder states
 
 - `tasks/backlog/` — valid packets not yet eligible for execution.
