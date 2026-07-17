@@ -20,7 +20,7 @@ const GENERIC_LABEL_PREFIXES = [
   ['queue', 'check'],
   ['manual', 'workboard'],
 ];
-const GENERIC_CLOSEOUT_WORDS = new Set([
+const GENERIC_LABEL_WORDS = new Set([
   'check', 'closeout', 'complete', 'completed', 'cycle', 'done', 'final',
   'generic', 'manual', 'poll', 'polling', 'project', 'queue', 'root', 'run',
   'starter', 'status', 'task', 'title', 'wb', 'workboard',
@@ -55,9 +55,7 @@ function usefulLabel(label) {
   if (GENERIC_LABEL_PREFIXES.some((prefix) =>
     prefix.every((token, index) => tokens[index] === token))) return false;
 
-  const containsCloseoutOrCheck = tokens.some((token) =>
-    token === 'closeout' || token === 'check');
-  return !containsCloseoutOrCheck || !tokens.every((token) => GENERIC_CLOSEOUT_WORDS.has(token));
+  return !tokens.every((token) => GENERIC_LABEL_WORDS.has(token));
 }
 
 export function validateCloseout(values, environment = process.env) {
@@ -85,7 +83,7 @@ export function validateCloseout(values, environment = process.env) {
 
   if (!STATES.has(state)) errors.push(`state must be one of ${[...STATES].join(', ')}`);
   if (!usefulLabel(label)) {
-    errors.push('label must identify a useful task or project; generic WB, Workboard, poll/polling, queue check, manual Workboard, and closeout/check labels are invalid');
+    errors.push('label must identify a useful task or project; generic WB, Workboard, poll/polling, queue check, manual Workboard, and generic-only labels are invalid');
   }
   if (!TITLE_STATUSES.has(titleStatus)) errors.push(`title status must be one of ${[...TITLE_STATUSES].join(', ')}`);
   if (!outcomeKnown) errors.push('title closeout is invalid before the final outcome is known');

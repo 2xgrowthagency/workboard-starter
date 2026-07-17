@@ -223,7 +223,7 @@ succeeded.
 
 Validate labels by whole tokens and leading phrases. Reject labels beginning
 with `WB`, `Workboard`, `poll`/`polling`, `queue check`, or `manual Workboard`,
-and labels made only of generic closeout/check words. Do not reject those
+and labels made only of generic closeout/check/status words. Do not reject those
 character sequences when they occur inside a larger real project/task name.
 
 For a standalone closeout, obtain the current root task ID only from the

@@ -476,7 +476,7 @@ not a valid final title. Apply the exact title through the running host's
 app-native mutation tool, then read the task back and compare the title exactly.
 Label validation is token/phrase-aware: reject leading `WB`, `Workboard`,
 `poll`/`polling`, `queue check`, and `manual Workboard`, and labels made only of
-generic closeout/check words, while allowing those character sequences inside
+generic closeout/check/status words, while allowing those character sequences inside
 a larger real project/task name.
 
 Do not treat a mutation return, local/session metadata, or a best-effort call as

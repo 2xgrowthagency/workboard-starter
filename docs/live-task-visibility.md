@@ -116,7 +116,7 @@ Close out the root task only after the cycle's final outcome is known:
 2. Derive a short useful label from the affected project or task. Match whole
    tokens and leading phrases: reject labels beginning with `WB`, `Workboard`,
    `poll`/`polling`, `queue check`, or `manual Workboard`, plus labels made only
-   of generic closeout/check words. Permit those character sequences inside a
+   of generic closeout/check/status words. Permit those character sequences inside a
    larger real project/task name.
 3. Request the exact title `[state] <label>` through the running host's
    app-native title mutation tool. Do not use `[poll]`, `WB`, or `Workboard` as

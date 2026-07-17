@@ -54,6 +54,12 @@ test('rejects generic and legacy final titles adversarially', () => {
     'status CHECK',
     'root task closeout',
     'Starter closeout',
+    'Final status',
+    'Root task',
+    'Starter',
+    'Task complete',
+    'Project done',
+    'Queue status',
   ]) {
     const title = `[review] ${label}`;
     assert.match(run([
