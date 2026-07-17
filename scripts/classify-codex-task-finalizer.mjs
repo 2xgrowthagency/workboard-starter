@@ -151,7 +151,8 @@ function initialAutomationMessage(items) {
     const item = items[index];
     if (extractMessageText(item, 'assistant')) break;
     const text = extractMessageText(item, 'user').trimStart();
-    if (text.startsWith('Automation:')) return { index, text };
+    if (!text) continue;
+    return text.startsWith('Automation:') ? { index, text } : null;
   }
   return null;
 }

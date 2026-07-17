@@ -170,6 +170,32 @@ test('incomplete, malformed, and ambiguous sessions fail closed', () => {
   assert.equal(classifyCodexSession(parsed({ output: 'something happened' })).type, 'FINALIZER_SKIP');
 });
 
+test('automation identity must be in the first user message', () => {
+  const automation = 'Automation: Example Workboard poll\nAutomation ID: example-poll';
+  const raw = [
+    item('session_meta', { id: 'manual-before-automation' }),
+    item('response_item', {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: 'Please preserve this manual context.' }],
+    }),
+    item('response_item', {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: automation }],
+    }),
+    item('response_item', {
+      type: 'function_call_output',
+      output: 'QUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
+    }),
+    item('event_msg', { type: 'agent_message', phase: 'final_answer', message: '[idle] no work to claim' }),
+  ].join('\n');
+
+  const session = parseCodexSession(`${raw}\n`, { nowMs: Date.parse(now), settleSeconds: 120 });
+  assert.equal(session.valid, false);
+  assert.equal(session.reason, 'missing_initial_automation_message');
+});
+
 test('quoted queue text and conflicting outcome evidence never produce candidates', () => {
   const quoted = classifyCodexSession(parsed({
     output: 'Documentation example:\nQUEUE_STATUS=NOTHING_TO_CLAIM CLAIMED=0 QA_ACTIVE=0 QA_PENDING=0 READY=0',
