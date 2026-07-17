@@ -5,11 +5,17 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import {
+  readCapabilityManifest,
+  validateCapabilityManifest,
+} from './check-workboard-capabilities.mjs';
+
 const REQUIRED_FILES = [
   'docs/orchestrator-protocol.md',
   'skills/workboard-orchestrator/SKILL.md',
   'templates/task-packet.md',
   'docs/automation-examples.md',
+  'workboard-capabilities.json',
 ];
 
 const CLI_FLAGS = new Set(['repo', 'base', 'record']);
@@ -249,6 +255,19 @@ export function validateUpstreamSync({ repo, base, recordPath }) {
       record = validateRecord(readFileSync(resolve(canonicalRoot, normalizedRecord), 'utf8'));
     } catch (error) {
       errors.push(error.message);
+    }
+  }
+
+  if (ensureFile('workboard-capabilities.json', 'capability manifest')) {
+    try {
+      const capabilityInput = readCapabilityManifest({ repo: canonicalRoot });
+      const capabilityResult = validateCapabilityManifest({
+        repo: canonicalRoot,
+        manifest: capabilityInput.manifest,
+      });
+      for (const error of capabilityResult.errors) errors.push(`capability manifest: ${error}`);
+    } catch (error) {
+      errors.push(`capability manifest: ${error.message}`);
     }
   }
 

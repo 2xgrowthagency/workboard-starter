@@ -135,6 +135,32 @@ test('accepts a normalized ready packet', () => {
   assert.deepEqual(validateTaskPacket(packet(), { lane: 'ready' }), []);
 });
 
+test('portable-only creation requires the persisted creation attempt ID', () => {
+  const portable = packet({
+    dispatch_mode: 'portable_only', worker_creation_surface: 'portable_only',
+    worker_creation_attempt_id: 'portable-attempt-1', worker_creation_status: 'portable_only',
+    worker_portable_session_id: 'portable-session-1', worker_visibility_status: 'portable_only',
+  });
+  assert.deepEqual(validateTaskPacket(portable, { lane: 'ready' }), []);
+  assert.ok(validateTaskPacket(
+    portable.replace('worker_creation_attempt_id: portable-attempt-1', 'worker_creation_attempt_id:'),
+    { lane: 'ready' },
+  ).includes('worker_creation_attempt_id is required for this state'));
+});
+
+test('failed completion callbacks require explicit error evidence', () => {
+  const failed = canonicalCallbackPacket({
+    completion_callback_status: 'failed',
+    completion_callback_error: 'root callback delivery timed out',
+  });
+  assert.deepEqual(validateTaskPacket(failed, { lane: 'claimed' }), []);
+  assert.ok(validateTaskPacket(
+    failed.replace('completion_callback_error: root callback delivery timed out',
+      'completion_callback_error:'),
+    { lane: 'claimed' },
+  ).includes('completion_callback_error is required for this state'));
+});
+
 test('template exposes the complete normalized metadata and pending intake route', () => {
   const template = readFileSync(fileURLToPath(new URL('../templates/task-packet.md', import.meta.url)), 'utf8');
   for (const field of [
@@ -280,6 +306,37 @@ test('QA exits preserve completed target, result, artifacts, and released lock',
   const droppedPrior = rework.replace(/^qa_prior_result: fail$/m, 'qa_prior_result:');
   assert.ok(validateTaskPacket(droppedPrior, { lane: 'ready' })
     .includes('qa_prior_result is required for this state'));
+});
+
+test('done packets retain exact completed QA target and result proof', () => {
+  const done = packet({
+    status: 'done', claimed_by: 'root', claimed_at: '2026-07-17T10:01:00Z',
+    root_task_id: 'root-task', target_commit: TARGET_SHA,
+    immutable_target_type: 'commit', immutable_target: TARGET_SHA,
+    target_lock_status: 'released', target_lock_project_id: 'example',
+    target_lock_path: '/workspace/example', target_lock_acquired_at: '2026-07-17T10:01:00Z',
+    target_lock_released_at: '2026-07-17T10:04:00Z', builder_thread_id: 'builder-task',
+    qa_required: 'true', qa_status: 'pass', qa_thread_id: 'qa-task',
+    qa_model: 'gpt-5.6-sol', qa_reasoning: 'medium',
+    qa_artifacts_dir: '${WORKBOARD_ROOT}/qa-artifacts/20260717-001-example',
+    qa_immutable_target_type: 'commit', qa_immutable_target: TARGET_SHA,
+    qa_prior_head: TARGET_SHA, qa_prior_result: 'pass', qa_result: 'pass',
+  }, [
+    { state: 'ready', from: 'created' },
+    { state: 'active', from: 'ready' },
+    { state: 'qa', from: 'active' },
+    { state: 'review', from: 'qa' },
+    { state: 'done', from: 'review' },
+  ]);
+  assert.deepEqual(validateTaskPacket(done, { lane: 'done' }), []);
+  assert.ok(validateTaskPacket(
+    done.replace(`qa_prior_head: ${TARGET_SHA}`, `qa_prior_head: ${PRIOR_SHA}`),
+    { lane: 'done' },
+  ).includes('qa_prior_head must equal the completed qa_immutable_target'));
+  assert.ok(validateTaskPacket(
+    done.replace('qa_prior_result: pass', 'qa_prior_result: fail'),
+    { lane: 'done' },
+  ).includes('qa_prior_result must equal the completed qa_result'));
 });
 
 test('rejects invalid transitions, lane mismatches, secrets, and private paths', () => {

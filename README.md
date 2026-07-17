@@ -26,6 +26,12 @@ default. High reasoning requires one of four machine-recognized task categories:
 `unusually_complex`. `gpt-5.6-luna` requires exact `bounded_high_volume`
 eligibility and independent verification.
 
+This release declares Workboard protocol `1.0.0`. The portable capability
+inventory is `workboard-capabilities.json`; validate it with
+`node scripts/check-workboard-capabilities.mjs --repo "$PWD"`. It records the
+last synchronized starter release or commit and distinguishes supported
+features from tracked but unimplemented work.
+
 ## How the roles fit together
 
 ```mermaid
@@ -301,6 +307,11 @@ identifiers, private identity values, credentials, or local persistence
 assumptions. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`RELEASE.md`](RELEASE.md) for the contributor and release checklists.
 
+The ST-013 gate also requires a changed, valid capability manifest. Follow
+[`docs/capability-manifest.md`](docs/capability-manifest.md) to reconcile clone
+status, set the portable starter release or commit coordinate, refresh evidence
+digests, and inspect the manifest diff before running the upstream gate.
+
 When ready work and active locks coexist, check each candidate with:
 
 ```bash
@@ -461,6 +472,7 @@ Start here:
 - `docs/live-task-visibility.md`
 - `docs/codex-task-finalization.md`
 - `docs/known-issues-and-recovery.md`
+- `docs/capability-manifest.md`
 - `docs/upstream-synchronization.md`
 - `docs/pending-improvements.md`
 - `CONTRIBUTING.md`

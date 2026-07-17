@@ -714,6 +714,9 @@ function validateV2(fields, body, lane, previousStatus, errors) {
       'completion_callback_immutable_proof', 'completion_callback_next_lane',
       'completion_callback_sent_at',
     ]) requireValue(fields, field, errors);
+    if (fields.completion_callback_status === 'failed') {
+      requireValue(fields, 'completion_callback_error', errors);
+    }
     if (fields.callback_source_task_id && fields.completion_callback_worker_task_id &&
         fields.callback_source_task_id !== fields.completion_callback_worker_task_id) {
       errors.push('callback_source_task_id must equal completion_callback_worker_task_id');
@@ -850,7 +853,9 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     }
     if (fields.worker_thread_id) errors.push('portable_only dispatch cannot set worker_thread_id');
     if (fields.worker_creation_status === 'portable_only') {
-      for (const field of ['worker_creation_surface', 'worker_portable_session_id']) {
+      for (const field of [
+        'worker_creation_surface', 'worker_creation_attempt_id', 'worker_portable_session_id',
+      ]) {
         requireValue(fields, field, errors);
       }
     }
@@ -998,6 +1003,12 @@ function validateV2(fields, body, lane, previousStatus, errors) {
         fields.qa_immutable_target_type !== expectedQaType) {
       errors.push('completed QA must retain the exact pinned immutable target and type');
     }
+    if (fields.qa_prior_head && fields.qa_prior_head !== fields.qa_immutable_target) {
+      errors.push('qa_prior_head must equal the completed qa_immutable_target');
+    }
+    if (fields.qa_prior_result && fields.qa_prior_result !== fields.qa_result) {
+      errors.push('qa_prior_result must equal the completed qa_result');
+    }
   }
   if (['review', 'done'].includes(fields.status) && fields.qa_required === 'true') {
     if (fields.qa_result !== 'pass') errors.push(`${fields.status} requires qa_result pass when QA is required`);
@@ -1031,12 +1042,6 @@ function validateV2(fields, body, lane, previousStatus, errors) {
       'qa_immutable_target', 'qa_prior_head', 'qa_prior_result', 'qa_thread_id',
       'qa_model', 'qa_reasoning',
     ]) requireValue(fields, field, errors);
-    if (fields.qa_prior_head && fields.qa_prior_head !== fields.qa_immutable_target) {
-      errors.push('qa_prior_head must equal the completed qa_immutable_target');
-    }
-    if (fields.qa_prior_result && fields.qa_prior_result !== fields.qa_result) {
-      errors.push('qa_prior_result must equal the completed qa_result');
-    }
   }
   if (!lockHeld && ['active', 'qa'].includes(events.at(-1)?.from) && fields.target_lock_status !== 'released') {
     errors.push(`transition from ${events.at(-1).from} requires released target lock metadata`);

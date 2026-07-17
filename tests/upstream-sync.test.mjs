@@ -18,6 +18,10 @@ import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { validateUpstreamSync } from '../scripts/check-upstream-sync.mjs';
+import {
+  CORE_CAPABILITIES,
+  computeEvidenceDigest,
+} from '../scripts/check-workboard-capabilities.mjs';
 
 const REQUIRED = [
   'docs/orchestrator-protocol.md',
@@ -26,6 +30,41 @@ const REQUIRED = [
   'docs/automation-examples.md',
   'tests/example.test.mjs',
 ];
+
+function capabilityManifest(root) {
+  const capabilities = {};
+  for (const id of CORE_CAPABILITIES) {
+    const pending = id === 'task_finalization_hygiene';
+    const evidence = {
+      files: ['docs/orchestrator-protocol.md'],
+      tests: pending ? [] : ['tests/example.test.mjs'],
+    };
+    capabilities[id] = {
+      status: pending ? 'not_implemented' : 'supported',
+      version: pending ? null : '1.0.0',
+      summary: pending ? 'This fixture capability remains intentionally unavailable.' : 'This fixture capability is supported by portable evidence.',
+      evidence,
+      evidence_sha256: computeEvidenceDigest(root, evidence),
+    };
+  }
+  return `${JSON.stringify({
+    $schema: 'schemas/workboard-capabilities.schema.json',
+    manifest_schema_version: 1,
+    protocol_version: '1.0.0',
+    compatibility: {
+      classification: 'backward-compatible',
+      minimum_reader_schema_version: 1,
+      unknown_capability_policy: 'ignore',
+    },
+    starter_sync: {
+      release: 'ST-TEST',
+      commit: null,
+      source_reference: 'https://github.com/example/workboard-starter/issues/42',
+      adoption_record: 'docs/releases/st-test.md',
+    },
+    capabilities,
+  }, null, 2)}\n`;
+}
 
 function run(command, args, cwd, expected = 0) {
   const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
@@ -57,6 +96,8 @@ function fixture({ recordInBase = false, parent = tmpdir() } = {}) {
   run('git', ['config', 'user.email', 'test@example.com'], root);
   run('git', ['config', 'user.name', 'Test User'], root);
   for (const path of REQUIRED) write(root, path, 'baseline\n');
+  write(root, 'schemas/workboard-capabilities.schema.json', '{}\n');
+  write(root, 'workboard-capabilities.json', '{}\n');
   write(root, 'README.md', 'baseline\n');
   if (recordInBase) write(root, 'docs/releases/st-test.md', record());
   run('git', ['add', '.'], root);
@@ -64,6 +105,7 @@ function fixture({ recordInBase = false, parent = tmpdir() } = {}) {
   const base = run('git', ['rev-parse', 'HEAD'], root);
   for (const path of REQUIRED) write(root, path, `${readFileSync(join(root, path), 'utf8')}portable update\n`);
   if (!recordInBase) write(root, 'docs/releases/st-test.md', record());
+  write(root, 'workboard-capabilities.json', capabilityManifest(root));
   return { root, base, recordPath: 'docs/releases/st-test.md' };
 }
 

@@ -1,5 +1,13 @@
 # Workboard Orchestrator Protocol
 
+Protocol version: `1.0.0`. Before routing, a clone or automation may validate
+its machine-readable capability inventory with
+`node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>`. Treat a
+missing, rejected, or stale manifest as unknown capability state, not permission
+to assume a feature exists. The schema, compatibility, starter synchronization,
+clone adoption, and evidence-digest rules are defined in
+`docs/capability-manifest.md`.
+
 Use this document as the standing instruction for your local orchestrator, whether it runs in Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another agent.
 
 ## Roles
@@ -650,6 +658,9 @@ Rules:
 - Treat the builder's summary as a claim, not evidence.
 - Verify the pinned commit or immutable artifact named by the packet.
 - Keep the product target read-only. Do not fix code, merge, deploy, publish product/release changes, or mutate production data. Packet-authorized QA result comments and informational task notices are the only closeout-write exception.
+- When `qa_publish_to_github` is `auto` or `required`, add or update one idempotent marker-bearing verdict comment on verified packet-linked PR/issue targets without uploading local-only evidence or exposing absolute local paths.
+- Apply `qa_worker_notification_policy` to `builder_thread_id`. The notice is informational and must forbid fixes until root requeues the packet.
+- Keep publication status separate from `qa_result`; publication failure records an exact fallback reason without changing the product verdict.
 - Use the packet's required tools, interactions, viewports, and artifact directory.
 - Record unsupported checks explicitly rather than weakening the acceptance criteria.
 - Keep screenshots and reports local unless the packet explicitly allows sharing.

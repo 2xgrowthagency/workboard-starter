@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/2xgrowthagency/workboard-starter/blob/main/schemas/workboard-capabilities.schema.json",
+  "title": "Workboard capability manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "manifest_schema_version",
+    "protocol_version",
+    "compatibility",
+    "starter_sync",
+    "capabilities"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "schemas/workboard-capabilities.schema.json"
+    },
+    "manifest_schema_version": {
+      "const": 1
+    },
+    "protocol_version": {
+      "$ref": "#/$defs/semver"
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "minimum_reader_schema_version",
+        "unknown_capability_policy"
+      ],
+      "properties": {
+        "classification": {
+          "const": "backward-compatible"
+        },
+        "minimum_reader_schema_version": {
+          "const": 1
+        },
+        "unknown_capability_policy": {
+          "const": "ignore"
+        }
+      }
+    },
+    "starter_sync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release", "commit", "source_reference", "adoption_record"],
+      "properties": {
+        "release": {
+          "type": ["string", "null"]
+        },
+        "commit": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "source_reference": {
+          "type": "string",
+          "format": "uri"
+        },
+        "adoption_record": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "release": { "type": "string", "minLength": 1 },
+            "commit": { "const": null }
+          }
+        },
+        {
+          "properties": {
+            "release": { "const": null },
+            "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+          }
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "required": [
+        "queue_classifier",
+        "target_locks",
+        "completion_callbacks",
+        "independent_qa",
+        "qa_publication",
+        "dependency_promotion",
+        "task_finalization_hygiene",
+        "app_native_codex_routing",
+        "model_routing",
+        "git_preflight",
+        "known_issues_recovery",
+        "closeout_links",
+        "task_packet_schema",
+        "upstream_synchronization"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/capability"
+      }
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "tests"],
+      "properties": {
+        "files": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "tests": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^tests/[^/]+\\.test\\.mjs$" }
+        }
+      }
+    },
+    "capability": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "version", "summary", "evidence", "evidence_sha256"],
+          "properties": {
+            "status": { "const": "supported" },
+            "version": { "$ref": "#/$defs/semver" },
+            "summary": { "type": "string", "minLength": 12 },
+            "evidence": {
+              "allOf": [
+                { "$ref": "#/$defs/evidence" },
+                {
+                  "properties": {
+                    "files": { "minItems": 1 },
+                    "tests": { "minItems": 1 }
+                  }
+                }
+              ]
+            },
+            "evidence_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "version", "summary", "evidence", "evidence_sha256"],
+          "properties": {
+            "status": { "const": "not_implemented" },
+            "version": { "const": null },
+            "summary": { "type": "string", "minLength": 12 },
+            "evidence": {
+              "allOf": [
+                { "$ref": "#/$defs/evidence" },
+                {
+                  "properties": {
+                    "files": { "minItems": 1 },
+                    "tests": { "maxItems": 0 }
+                  }
+                }
+              ]
+            },
+            "evidence_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -160,6 +160,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Screenshot/browser proof, if UI-facing
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
 - [ ] For a production-derived starter upgrade: synchronized protocol, portable skill, packet template, automation examples, focused tests, compatibility/migration record, and public starter issue/release adoption backlink validated with `scripts/check-upstream-sync.mjs`
+- [ ] For a starter capability change: `workboard-capabilities.json` status/version/evidence reconciled, evidence digests refreshed and reviewed, and `scripts/check-workboard-capabilities.mjs` passed
 - [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
 - [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
@@ -175,6 +176,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
+- This template is compatible with Workboard protocol `1.0.0`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
 - Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.
 - `packet_schema_version: 2` is fail-closed. Every frontmatter key must belong to the v2 schema, packet/dependency IDs use `YYYYMMDD-NNN-lowercase-slug`, commit values use the full lowercase 40-character SHA, and every state-log line must belong to one complete seven-field block. Legacy packets require an explicit, one-run `--allow-legacy` validation and should be migrated before mutation; do not mix legacy `orchestrator_*` aliases with v2 `root_*` fields.
 - Root owns dependency promotion. Workers report completion proof but do not move downstream packets.
