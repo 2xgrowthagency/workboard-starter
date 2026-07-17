@@ -92,6 +92,18 @@ test('template exposes the complete normalized metadata and pending intake route
   assert.match(template, /^worker_model:$/m);
 });
 
+test('ST-011 release record declares explicit v2 migration and adoption backlink', () => {
+  const record = readFileSync(
+    fileURLToPath(new URL('../docs/releases/st-011-task-packet-metadata.md', import.meta.url)),
+    'utf8',
+  );
+  assert.match(record, /^upgrade_id: ST-011$/m);
+  assert.match(record, /^compatibility: behavior-change$/m);
+  assert.match(record, /^migration_impact: .*packet_schema_version 2.*--allow-legacy.*read-only/m);
+  assert.match(record, /^source_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-starter\/issues\/11)$/m);
+  assert.match(record, /^downstream_adoption_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-starter\/issues\/11)$/m);
+});
+
 test('accepts a locked active packet with immutable target metadata', () => {
   const active = packet({
     status: 'claimed', claimed_by: 'root', claimed_at: '2026-07-17T10:01:00Z',

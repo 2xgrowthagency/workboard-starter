@@ -144,7 +144,9 @@ Every builder, QA, and canonical recovery response includes the raw task ID and 
 ### [ST-011: bring the packet template to production metadata parity](https://github.com/2xgrowthagency/workboard-starter/issues/11)
 
 Status: implemented by `packet_schema_version: 2`, the normalized task packet
-template and lifecycle contract, and `scripts/check-task-packet.mjs`.
+template and lifecycle contract, `scripts/check-task-packet.mjs`, and the
+ST-013 synchronized release record in
+`docs/releases/st-011-task-packet-metadata.md`.
 
 Add or normalize:
 
