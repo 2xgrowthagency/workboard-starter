@@ -11,7 +11,7 @@ Workboard is a shared filesystem/Git protocol:
 1. Write a task packet in `tasks/ready/`.
 2. A root orchestrator claims eligible work into `tasks/claimed/`.
 3. The orchestrator delegates each packet to a correctly-scoped worker thread/project.
-4. Workers update proof and outcomes.
+4. Each worker sends the persistent root task one final callback with immutable proof and the exact next lane.
 5. Work that requires independent verification moves to `tasks/qa/` and a separate QA companion returns `PASS`, `FAIL`, or `BLOCKED`.
 6. QA-passed work, or work that does not require QA, moves to `tasks/review/`.
 7. A human or context owner checks the verified outcome and moves it to `tasks/done/`.
@@ -38,12 +38,12 @@ flowchart LR
     H --> A
     A -->|"scope and create packet"| O
     O -->|"claim and delegate"| W
-    W -->|"implementation and proof"| O
+    W -->|"one final callback and immutable proof"| O
     O -->|"QA required"| Q
     O -->|"QA not required"| R
-    Q -->|"PASS"| R
-    Q -->|"FAIL: rework"| O
-    Q -->|"BLOCKED: decision or capability"| A
+    Q -->|"one final PASS callback"| R
+    Q -->|"one final FAIL callback: rework"| O
+    Q -->|"one final BLOCKED callback"| A
     R -->|"approved"| X["Done"]
     R -->|"changes needed"| O
 ```
@@ -63,6 +63,7 @@ Chat threads are bad source-of-truth. Workboard gives you:
 - visible queue state;
 - safe handoffs between humans and agents;
 - parallel workers without losing the plot;
+- per-target duplicate prevention without blocking unrelated work;
 - proof requirements before “done”;
 - blockers that survive context resets;
 - a simple Git audit trail.
@@ -95,11 +96,24 @@ The root orchestrator is air traffic control. It should:
 - inspect the board;
 - claim only safe, independent tasks;
 - route each task to the right worker/project;
-- monitor status;
+- treat active work as per-target locks;
+- reconcile one-shot completion callbacks;
 - record proof;
 - stop at blockers.
 
 Workers are pilots. Each worker gets one packet, one target path, and clear proof requirements.
+
+Ordinary polls never inspect, monitor, heartbeat, or babysit active task history.
+Claimed and active-QA packets consume capacity and lock their exact decoded
+`target_project_id` + `target_path` tuple. Ready work for other targets keeps
+routing up to capacity. Every builder and QA create handoff receives the persistent source
+`root_task_id` and current `worker_creation_attempt_id`, but no future task ID.
+Complete live readback writes canonical `worker_thread_id`; the task then sends exactly one final callback. Only a
+callback matching the packet's current task and attempt can route; delayed or
+noncanonical callbacks are recovery evidence. The callback gate also requires
+source `worker_creation_status: canonical` and `completion_callback_status: pending` after structural duplicate-key
+rejection. Callback failure emits
+`ROOT_RECONCILIATION_REQUIRED` with the same immutable proof and attempt ID.
 
 QA companions are inspectors. They run as separate `[qa] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
 
@@ -117,10 +131,15 @@ docs/
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-queue.mjs # read-only queue and checkout classifier
+  check-workboard-target-lock.mjs # exact decoded target-lock check
+  check-workboard-callback.mjs # canonical callback status/identity/role/lane check
+  check-task-creation-recovery.mjs # validate recovery state and proof
+  reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
   task-packet.md            # copy this into tasks/ready/
+  task-creation-recovery.md # reconcile ambiguous app-native creation
 tasks/
   ready/                    # ready to claim
   claimed/                  # active work
@@ -130,8 +149,11 @@ tasks/
   done/                     # verified complete
 projects.example.yaml       # copy to projects.yaml and customize
 tests/
+  check-workboard-callback.test.mjs
   check-workboard-queue.test.mjs
+  check-workboard-target-lock.test.mjs
   live-task-visibility-docs.test.mjs
+  task-creation-recovery.test.mjs
 ```
 
 ## Queue-first check
@@ -140,16 +162,27 @@ Before loading project registries, packet bodies, or task history, run the
 dependency-free classifier:
 
 ```bash
-node scripts/check-workboard-queue.mjs --repo "$PWD"
+node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 ```
 
 It does not fetch, merge, rebase, push, move packets, create directories, or
 write automation memory. It reports checkout safety, queue counts, claimed and
-active-QA target locks, completed QA results needing reconciliation, and one
-routing status. Run the focused tests with:
+active-QA target locks, completed QA results, configured/available capacity,
+and one routing status. Capacity defaults to 3; at capacity it reports
+`WORK_IN_PROGRESS` even when ready work is waiting. Run its tests with:
 
 ```bash
 node --test tests/*.test.mjs
+```
+
+When ready work and active locks coexist, check each candidate with:
+
+```bash
+node scripts/check-workboard-target-lock.mjs \
+  --target-project-id "$TARGET_PROJECT_ID" \
+  --target-path "$TARGET_PATH" \
+  --claimed-locks "$CLAIMED_LOCKS" \
+  --qa-active-locks "$QA_ACTIVE_LOCKS"
 ```
 
 
@@ -175,16 +208,43 @@ Supported fields in `templates/task-packet.md` include:
 - `qa_artifacts_dir`
 - `qa_thread_id`
 - `qa_result`
+- persistent `root_task_id`, canonical `worker_thread_id`, and per-creation `worker_creation_attempt_id`
+- completion callback task/attempt identity, receipt, and error fields
 
 The orchestrator must preflight these before delegation and require proof before routing the packet to `tasks/qa/` or `tasks/review/`.
+
+## Ambiguous task creation
+
+An app-native task-creation timeout may happen after persistence. Do not retry it
+as if it were a confirmed failure. Keep the packet claim and target lock, copy
+`templates/task-creation-recovery.md`, and use live app-native list/read to find
+the original, authorize a replacement only when the original is proven absent or
+unusable, and select one canonical task. Archive or stand down only proven
+duplicates; preserve their history.
+
+Validate a filled recovery packet with:
+
+```bash
+node scripts/check-task-creation-recovery.mjs <RECOVERY_PACKET>
+```
+
+Recovery completion records and reruns both dependency promotion and queue
+classification before routing resumes. The full checklist is in
+`docs/orchestrator-protocol.md`. Recovery records distinguish a verified
+`canonical_worker` from a conclusively proven `no_usable_worker`; only the
+latter permits a blocked transition and lock release without canonicalization.
 
 ## Minimum rules
 
 - No secrets in this repo.
 - No raw private memory dumps.
 - One root orchestrator loop at a time.
-- Default max active workers: 3.
+- Default max active claimed or active-QA tasks: 3.
 - One worker per packet.
+- Claimed and active-QA packets lock only their exact target tuple; unrelated targets continue up to capacity.
+- Active workers are event-driven: no periodic history reads, monitoring, or heartbeats.
+- Each builder/QA task sends exactly one final callback to persistent `root_task_id`. Only callback `worker_task_id` matching canonical `worker_thread_id` and matching `worker_creation_attempt_id` can route; noncanonical callbacks are recovery evidence. Callback failure emits `ROOT_RECONCILIATION_REQUIRED`.
+- A task-creation timeout is ambiguous; no replacement is allowed without live app-native absence or unusability proof.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
 - Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
 - Workers do not spawn workers unless a packet explicitly allows a bounded read-only swarm.

@@ -34,6 +34,10 @@ function packet(fields) {
   return `---\n${yaml}\n---\npacket body must not appear in classifier output\n`;
 }
 
+function packetWithDuplicate(fields, key, duplicateValue) {
+  return packet(fields).replace('\n---\npacket body', `\n${key}: ${duplicateValue}\n---\npacket body`);
+}
+
 function commit(root, message) {
   run('git', ['add', '.'], root);
   run('git', ['commit', '-m', message], root);
@@ -71,6 +75,21 @@ function withRepo(callback) {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+function assertDuplicateRejected(state, fields, key, duplicateValue) {
+  withRepo((root) => {
+    const file = join(root, 'tasks', state, `duplicate-${key}.md`);
+    writeFileSync(file, packetWithDuplicate(fields, key, duplicateValue));
+    commit(root, `add duplicate ${key} in ${state}`);
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=duplicate_packet_frontmatter_key/);
+    assert.match(output, new RegExp(`duplicate-${key}\\.md_duplicate_frontmatter_key_${key}`));
+    assert.doesNotMatch(output, /CLAIMED_LOCKS=|QA_ACTIVE_LOCKS=/);
+  });
 }
 
 test('empty queue is idle, read-only, and supports an external no-action streak', () => {
@@ -123,6 +142,64 @@ test('ready work is routable without exposing packet contents', () => {
   });
 });
 
+test('claimed packets reject duplicate metadata keys before emitting a lock', () => {
+  const fields = {
+    id: 'claimed-task',
+    status: 'claimed',
+    target_project_id: 'shop',
+    target_path: '/work/shop',
+    'routing-note': 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'ready'],
+    ['target_project_id', 'other-project'],
+    ['target_path', '/work/other'],
+    ['routing-note', 'replacement'],
+  ]) assertDuplicateRejected('claimed', fields, key, value);
+});
+
+test('ready packets reject duplicate metadata keys before classification', () => {
+  const fields = {
+    id: 'ready-task', status: 'ready', routing_note: 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'claimed'],
+    ['routing_note', 'replacement'],
+  ]) assertDuplicateRejected('ready', fields, key, value);
+});
+
+test('pending-QA packets reject duplicate status, result, and unrelated keys', () => {
+  const fields = {
+    id: 'qa-pending', status: 'qa', qa_status: 'pending', qa_result: '',
+    routing_note: 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'ready'],
+    ['qa_status', 'active'],
+    ['qa_result', 'PASS'],
+    ['routing_note', 'replacement'],
+  ]) assertDuplicateRejected('qa', fields, key, value);
+});
+
+test('active-QA packets reject every duplicate key before emitting a lock', () => {
+  const fields = {
+    id: 'qa-active', status: 'qa', qa_status: 'active', qa_result: '',
+    target_project_id: 'shop', target_path: '/work/shop', routing_note: 'original',
+  };
+  for (const [key, value] of [
+    ['id', 'other-id'],
+    ['status', 'ready'],
+    ['qa_status', 'pending'],
+    ['qa_result', 'PASS'],
+    ['target_project_id', 'other-project'],
+    ['target_path', '/work/other'],
+    ['routing_note', 'replacement'],
+  ]) assertDuplicateRejected('qa', fields, key, value);
+});
+
 test('large packet bodies do not affect frontmatter-only classification', () => {
   withRepo((root) => {
     writeFileSync(
@@ -159,6 +236,214 @@ test('claimed work emits a target lock', () => {
 
     const encodedPath = output.match(/CLAIMED_LOCKS=[^|]+\|[^|]+\|([^; ]+)/)?.[1];
     assert.equal(decodeURIComponent(encodedPath), '/tmp/my app');
+  });
+});
+
+test('active work missing exact target metadata fails closed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'missing-target.md'),
+      packet({
+        id: 'missing-target',
+        status: 'claimed',
+        target_project_id: 'shop',
+      }),
+    );
+    commit(root, 'add claimed work without a target path');
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=invalid_target_lock_metadata/);
+    assert.match(output, /missing-target.md_missing_target_path/);
+  });
+});
+
+test('whitespace-only claimed target metadata fails closed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'blank-target.md'),
+      packet({
+        id: 'blank-target',
+        status: 'claimed',
+        target_project_id: 'shop',
+        target_path: '" \t "',
+      }),
+    );
+    commit(root, 'add claimed work with blank target metadata');
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=invalid_target_lock_metadata/);
+    assert.match(output, /blank-target.md_blank_target_path/);
+  });
+});
+
+test('whitespace-only active-QA target metadata fails closed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'qa', 'blank-project.md'),
+      packet({
+        id: 'blank-project',
+        status: 'qa',
+        qa_status: 'active',
+        target_project_id: '"   "',
+        target_path: '/work/shop',
+      }),
+    );
+    commit(root, 'add active QA with blank target metadata');
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=invalid_target_lock_metadata/);
+    assert.match(output, /blank-project.md_blank_target_project_id/);
+  });
+});
+
+test('malformed UTF-8 in active target metadata fails closed', () => {
+  withRepo((root) => {
+    const prefix = Buffer.from(
+      '---\nid: malformed-utf8\nstatus: claimed\ntarget_project_id: shop\ntarget_path: /work/',
+    );
+    const malformed = Buffer.from([0xc3, 0x28]);
+    const suffix = Buffer.from('\n---\npacket body\n');
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'malformed-utf8.md'),
+      Buffer.concat([prefix, malformed, suffix]),
+    );
+    commit(root, 'add malformed UTF-8 target metadata');
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=invalid_packet_encoding/);
+    assert.match(output, /malformed-utf8.md_invalid_utf8_frontmatter/);
+  });
+});
+
+test('Unicode replacement characters in active target metadata fail closed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'replacement.md'),
+      packet({
+        id: 'replacement',
+        status: 'claimed',
+        target_project_id: 'shop',
+        target_path: '/work/\uFFFD',
+      }),
+    );
+    commit(root, 'add replacement character target metadata');
+    syncOriginRef(root);
+
+    const output = classify(root, [], 1);
+    assert.match(output, /^QUEUE_STATUS=WORKBOARD_REQUIRES_JUDGMENT /);
+    assert.match(output, /REASON=invalid_packet_encoding/);
+    assert.match(output, /unicode_replacement_character_in_frontmatter/);
+  });
+});
+
+test('ready work remains routable while an unrelated target is claimed', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'active.md'),
+      packet({
+        id: 'active-docs',
+        status: 'claimed',
+        target_project_id: 'docs',
+        target_path: '/work/docs',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'ready.md'),
+      packet({
+        id: 'ready-shop',
+        status: 'ready',
+        target_project_id: 'shop',
+        target_path: '/work/shop',
+      }),
+    );
+    commit(root, 'add active and unrelated ready work');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=READY_WORK_AVAILABLE /);
+    assert.match(output, /CLAIMED=1/);
+    assert.match(output, /READY=1/);
+    assert.match(output, /CAPACITY=3 AVAILABLE_CAPACITY=2 CAPACITY_REACHED=0/);
+    assert.match(output, /CLAIMED_LOCKS=active-docs\|docs\|%2Fwork%2Fdocs/);
+  });
+});
+
+test('default full capacity is machine-enforced before ready routing', () => {
+  withRepo((root) => {
+    for (let index = 1; index <= 3; index += 1) {
+      writeFileSync(
+        join(root, 'tasks', 'claimed', `active-${index}.md`),
+        packet({
+          id: `active-${index}`,
+          status: 'claimed',
+          target_project_id: `project-${index}`,
+          target_path: `/work/project-${index}`,
+        }),
+      );
+    }
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'ready.md'),
+      packet({ id: 'ready', status: 'ready' }),
+    );
+    commit(root, 'fill default capacity with ready work waiting');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
+    assert.match(output, /CLAIMED=3/);
+    assert.match(output, /READY=1/);
+    assert.match(output, /CAPACITY=3 AVAILABLE_CAPACITY=0 CAPACITY_REACHED=1/);
+  });
+});
+
+test('custom capacity counts claimed and active QA before ready routing', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'claimed', 'claimed.md'),
+      packet({
+        id: 'claimed',
+        status: 'claimed',
+        target_project_id: 'project-1',
+        target_path: '/work/project-1',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'qa', 'active.md'),
+      packet({
+        id: 'qa-active',
+        status: 'qa',
+        qa_status: 'active',
+        target_project_id: 'project-2',
+        target_path: '/work/project-2',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'ready.md'),
+      packet({ id: 'ready', status: 'ready' }),
+    );
+    commit(root, 'fill custom capacity with mixed active work');
+    syncOriginRef(root);
+
+    const output = classify(root, ['--capacity', '2']);
+    assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
+    assert.match(output, /CLAIMED=1 QA_ACTIVE=1/);
+    assert.match(output, /CAPACITY=2 AVAILABLE_CAPACITY=0 CAPACITY_REACHED=1/);
+  });
+});
+
+test('capacity rejects zero, non-integers, and unsafe integers', () => {
+  withRepo((root) => {
+    for (const value of ['0', '1.5', '9007199254740992']) {
+      classify(root, ['--capacity', value], 2);
+    }
   });
 });
 
@@ -216,6 +501,38 @@ test('active QA counts as work in progress and emits a target lock', () => {
     assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
     assert.match(output, /QA_ACTIVE=1/);
     assert.match(output, /QA_ACTIVE_LOCKS=qa-active\|example\|C%3A%2Fwork%2Fexample/);
+  });
+});
+
+test('ready work remains routable while unrelated QA is active', () => {
+  withRepo((root) => {
+    writeFileSync(
+      join(root, 'tasks', 'qa', 'active.md'),
+      packet({
+        id: 'qa-docs',
+        status: 'qa',
+        qa_status: 'active',
+        target_project_id: 'docs',
+        target_path: '/work/docs',
+      }),
+    );
+    writeFileSync(
+      join(root, 'tasks', 'ready', 'ready.md'),
+      packet({
+        id: 'ready-shop',
+        status: 'ready',
+        target_project_id: 'shop',
+        target_path: '/work/shop',
+      }),
+    );
+    commit(root, 'add active qa and unrelated ready work');
+    syncOriginRef(root);
+
+    const output = classify(root);
+    assert.match(output, /^QUEUE_STATUS=READY_WORK_AVAILABLE /);
+    assert.match(output, /QA_ACTIVE=1/);
+    assert.match(output, /READY=1/);
+    assert.match(output, /QA_ACTIVE_LOCKS=qa-docs\|docs\|%2Fwork%2Fdocs/);
   });
 });
 

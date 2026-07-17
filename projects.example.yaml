@@ -10,7 +10,7 @@ rules:
   orchestrator_default_reasoning: high
   no_thread_reparenting: true
   no_subworkers_by_default: true
-  max_active_worker_claims: 3
+  max_active_tasks: 3
   qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
   qa_read_only_by_default: true
   qa_uses_existing_target_project: true

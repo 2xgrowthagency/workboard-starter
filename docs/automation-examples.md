@@ -11,20 +11,22 @@ Workboard repo: <LOCAL_PATH_TO_WORKBOARD>
 
 Instructions:
 1. Inspect and safely synchronize the Workboard checkout.
-2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD>
+2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS>. Omit capacity only for the default of 3.
 3. Stop on WORKBOARD_SYNC_NEEDED, WORKBOARD_REQUIRES_JUDGMENT, or CHECK_FAILED.
 4. Stop on NOTHING_TO_CLAIM after reporting HEAD and queue counts.
-5. Read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
-6. Inspect claimed tasks before claiming new work.
-7. Respect max 3 active workers unless projects.yaml says otherwise.
-8. Claim only independent eligible ready tasks.
+5. On WORK_IN_PROGRESS, report counts, locks, CAPACITY, and AVAILABLE_CAPACITY, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.
+6. For a routable lane, read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
+7. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
+8. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
 9. Commit/push claim transitions before delegation.
-10. Follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback.
-11. Reconcile only completion callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair.
+10. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
+11. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
 12. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
 13. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
 14. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-15. Commit/push every transition.
+15. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
+16. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
+17. After recovery, rerun dependency promotion and queue classification, then commit/push every transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -56,6 +58,10 @@ Raw/replacement IDs remain recovery evidence until canonical writeback. Delayed
 or noncanonical callbacks also remain recovery evidence: they cannot route
 unless both worker task ID and creation attempt ID match the source packet.
 
+When an app-native create call has an ambiguous outcome, use app-native task list
+and read calls on that same surface before any retry. Returned IDs and partial
+responses belong in the recovery packet even when the create call itself errors.
+
 ## Claude Desktop pattern
 
 Create a Claude project for Workboard and one project per target workspace/repo. The Workboard project runs the root loop. For each claimed packet, start a worker chat in the correct target project and paste the packet plus the worker handoff prompt from `docs/orchestrator-protocol.md`.
@@ -75,7 +81,7 @@ Example shell shape:
 ```bash
 cd /path/to/workboard
 git pull --ff-only origin main
-node scripts/check-workboard-queue.mjs --repo "$PWD"
+node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 # root agent opens only the lane required by the classifier
 
 cd /path/to/target-project

@@ -10,12 +10,13 @@ import {
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { TextDecoder } from 'node:util';
 
 function usage() {
   console.error(
     'Usage: node scripts/check-workboard-queue.mjs [--repo /path/to/workboard] ' +
       '[--promotion-script /path/to/scanner.mjs] [--no-action-streak count] ' +
-      '[--idle-pause-threshold count]',
+      '[--idle-pause-threshold count] [--capacity count]',
   );
 }
 
@@ -25,6 +26,7 @@ function parseArgs(argv) {
     promotionScript: null,
     noActionStreak: 0,
     idlePauseThreshold: 0,
+    capacity: 3,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -50,6 +52,9 @@ function parseArgs(argv) {
       case '--idle-pause-threshold':
         options.idlePauseThreshold = parseCount(value, flag);
         break;
+      case '--capacity':
+        options.capacity = parsePositiveCount(value, flag);
+        break;
       default:
         throw new Error(`Unknown argument: ${flag}`);
     }
@@ -66,6 +71,14 @@ function parseArgs(argv) {
 function parseCount(value, flag) {
   if (!/^\d+$/.test(value)) throw new Error(`${flag} must be a non-negative integer`);
   return Number(value);
+}
+
+function parsePositiveCount(value, flag) {
+  const parsed = Number(value);
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed) || parsed === 0) {
+    throw new Error(`${flag} must be a positive integer`);
+  }
+  return parsed;
 }
 
 function sanitize(value) {
@@ -155,9 +168,8 @@ function readFrontmatter(file) {
   const descriptor = openSync(file, 'r');
   const chunk = Buffer.alloc(512);
   const maxBytes = 64 * 1024;
-  let content = '';
+  let bytes = Buffer.alloc(0);
   let bytesRead = 0;
-  let match = null;
 
   try {
     while (bytesRead < maxBytes) {
@@ -170,21 +182,38 @@ function readFrontmatter(file) {
       );
       if (count === 0) break;
       bytesRead += count;
-      content += chunk.toString('utf8', 0, count);
+      bytes = Buffer.concat([bytes, chunk.subarray(0, count)]);
 
-      if (
-        content.length >= 4 &&
-        !content.startsWith('---\n') &&
-        !content.startsWith('---\r\n')
-      ) {
+      const lfEnd = bytes.indexOf('\n---\n', 4);
+      const crlfEnd = bytes.indexOf('\n---\r\n', 4);
+      const ends = [
+        lfEnd >= 0 ? lfEnd + Buffer.byteLength('\n---\n') : -1,
+        crlfEnd >= 0 ? crlfEnd + Buffer.byteLength('\n---\r\n') : -1,
+      ].filter((end) => end >= 0);
+      if (ends.length > 0) {
+        bytes = bytes.subarray(0, Math.min(...ends));
         break;
       }
-      match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
-      if (match) break;
     }
   } finally {
     closeSync(descriptor);
   }
+
+  let content;
+  try {
+    content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_packet_encoding',
+        DETAIL: sanitize(`${basename(file)}_invalid_utf8_frontmatter`),
+      },
+      1,
+    );
+  }
+
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
 
   if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) {
     emit(
@@ -208,10 +237,36 @@ function readFrontmatter(file) {
     );
   }
 
+  if (match[1].includes('\uFFFD')) {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_packet_encoding',
+        DETAIL: sanitize(`${basename(file)}_unicode_replacement_character_in_frontmatter`),
+      },
+      1,
+    );
+  }
+
   const fields = {};
+  const seenKeys = new Set();
   for (const line of match[1].split(/\r?\n/)) {
-    const fieldMatch = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-    if (fieldMatch) fields[fieldMatch[1]] = stripQuotes(fieldMatch[2]);
+    const separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    const key = line.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(key)) continue;
+    if (seenKeys.has(key)) {
+      emit(
+        'WORKBOARD_REQUIRES_JUDGMENT',
+        {
+          REASON: 'duplicate_packet_frontmatter_key',
+          DETAIL: sanitize(`${basename(file)}_duplicate_frontmatter_key_${key}`),
+        },
+        1,
+      );
+    }
+    seenKeys.add(key);
+    fields[key] = stripQuotes(line.slice(separator + 1));
   }
   return fields;
 }
@@ -220,18 +275,59 @@ function packetId(file, fields) {
   return fields.id || basename(file, '.md');
 }
 
-function lockFor(file) {
-  const fields = readFrontmatter(file);
+function validateLockComponent(file, field, value) {
+  if (String(value ?? '').trim() === '') {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_target_lock_metadata',
+        DETAIL: sanitize(`${basename(file)}_blank_${field}`),
+      },
+      1,
+    );
+  }
+  if (value.includes('\uFFFD')) {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_packet_encoding',
+        DETAIL: sanitize(`${basename(file)}_unicode_replacement_character_in_${field}`),
+      },
+      1,
+    );
+  }
+  return value;
+}
+
+function lockFor({ file, fields }) {
+  const missing = ['target_project_id', 'target_path'].filter((field) => !fields[field]);
+  if (missing.length > 0) {
+    emit(
+      'WORKBOARD_REQUIRES_JUDGMENT',
+      {
+        REASON: 'invalid_target_lock_metadata',
+        DETAIL: sanitize(`${basename(file)}_missing_${missing.join('_and_')}`),
+      },
+      1,
+    );
+  }
+  const id = validateLockComponent(file, 'id', packetId(file, fields));
+  const targetProjectId = validateLockComponent(
+    file,
+    'target_project_id',
+    fields.target_project_id,
+  );
+  const targetPath = validateLockComponent(file, 'target_path', fields.target_path);
   return [
-    packetId(file, fields),
-    fields.target_project_id || 'unknown_project',
-    fields.target_path || 'unknown_path',
+    id,
+    targetProjectId,
+    targetPath,
   ]
     .map(encodeComponent)
     .join('|');
 }
 
-function classifyQa(files) {
+function classifyQa(packets) {
   const pending = [];
   const active = [];
   const terminal = [];
@@ -239,8 +335,7 @@ function classifyQa(files) {
   const invalidResults = [];
   const terminalStates = ['pass', 'passed', 'fail', 'failed', 'blocked'];
 
-  for (const file of files) {
-    const fields = readFrontmatter(file);
+  for (const { file, fields } of packets) {
     const state = (fields.qa_status || '').toLowerCase();
     const result = (fields.qa_result || '').toLowerCase();
 
@@ -252,8 +347,8 @@ function classifyQa(files) {
       continue;
     }
 
-    if (['', 'pending', 'required'].includes(state)) pending.push(file);
-    else if (['active', 'in_progress'].includes(state)) active.push(file);
+    if (['', 'pending', 'required'].includes(state)) pending.push({ file, fields });
+    else if (['active', 'in_progress'].includes(state)) active.push({ file, fields });
     else if (terminalStates.includes(state)) {
       terminal.push({ file, id: packetId(file, fields), result: canonicalQaResult(state) });
     } else invalidStatuses.push({ file, state });
@@ -380,9 +475,15 @@ if (headFull !== originFull) {
   );
 }
 
-const claimedFiles = packetFiles(repo, 'claimed');
-const readyFiles = packetFiles(repo, 'ready');
-const qa = classifyQa(packetFiles(repo, 'qa'));
+// Parse every routable lane before deriving counts or lock output. A malformed
+// packet must fail closed without exposing a partial classification.
+const claimedPackets = packetFiles(repo, 'claimed')
+  .map((file) => ({ file, fields: readFrontmatter(file) }));
+const readyPackets = packetFiles(repo, 'ready')
+  .map((file) => ({ file, fields: readFrontmatter(file) }));
+const qaPackets = packetFiles(repo, 'qa')
+  .map((file) => ({ file, fields: readFrontmatter(file) }));
+const qa = classifyQa(qaPackets);
 
 if (qa.invalidResults.length > 0) {
   emit(
@@ -415,20 +516,23 @@ if (qa.invalidStatuses.length > 0) {
 }
 
 const head = headFull.slice(0, 7);
-const claimedLocks = claimedFiles.length
-  ? claimedFiles.map(lockFor).join(';')
+const claimedLocks = claimedPackets.length
+  ? claimedPackets.map(lockFor).join(';')
   : 'none';
 const qaActiveLocks = qa.active.length ? qa.active.map(lockFor).join(';') : 'none';
-const activeCount = claimedFiles.length + qa.active.length;
+const activeCount = claimedPackets.length + qa.active.length;
 
 const common = {
   HEAD: head,
   BRANCH: sanitize(branch),
-  CLAIMED: claimedFiles.length,
+  CLAIMED: claimedPackets.length,
   QA_ACTIVE: qa.active.length,
   QA_PENDING: qa.pending.length,
   QA_COMPLETE: qa.terminal.length,
-  READY: readyFiles.length,
+  READY: readyPackets.length,
+  CAPACITY: options.capacity,
+  AVAILABLE_CAPACITY: Math.max(options.capacity - activeCount, 0),
+  CAPACITY_REACHED: activeCount >= options.capacity ? 1 : 0,
   CLAIMED_LOCKS: claimedLocks,
   QA_ACTIVE_LOCKS: qaActiveLocks,
 };
@@ -442,13 +546,24 @@ if (qa.terminal.length > 0) {
   });
 }
 
+if (activeCount >= options.capacity) {
+  emit('WORK_IN_PROGRESS', {
+    ...common,
+    NO_ACTION_STREAK: options.noActionStreak,
+    IDLE_PAUSE_RECOMMENDED: pauseRecommended(
+      options.noActionStreak,
+      options.idlePauseThreshold,
+    ),
+  });
+}
+
 let promotion = { status: 'NONE', count: 0, candidates: 'none' };
-if (activeCount === 0 && readyFiles.length === 0 && qa.pending.length === 0) {
+if (activeCount === 0 && readyPackets.length === 0 && qa.pending.length === 0) {
   promotion = runPromotionScanner(repo, options.promotionScript);
 }
 
 if (
-  readyFiles.length === 0 &&
+  readyPackets.length === 0 &&
   qa.pending.length === 0 &&
   activeCount === 0 &&
   promotion.status === 'CANDIDATES'
@@ -460,7 +575,7 @@ if (
   });
 }
 
-if (activeCount === 0 && readyFiles.length === 0 && qa.pending.length === 0) {
+if (activeCount === 0 && readyPackets.length === 0 && qa.pending.length === 0) {
   emit('NOTHING_TO_CLAIM', {
     ...common,
     NO_ACTION_STREAK: options.noActionStreak,
@@ -475,7 +590,7 @@ if (qa.pending.length > 0) {
   emit('QA_WORK_AVAILABLE', common);
 }
 
-if (readyFiles.length === 0) {
+if (readyPackets.length === 0) {
   emit('WORK_IN_PROGRESS', {
     ...common,
     NO_ACTION_STREAK: options.noActionStreak,
