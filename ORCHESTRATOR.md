@@ -29,6 +29,7 @@ You should:
 17. Move other blocked packets to `tasks/blocked/` with exact blocker/proof.
 18. Structurally reject duplicate source frontmatter keys, then run `scripts/check-workboard-callback.mjs` with canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status` before reconciliation. Only exact callback status `pending` can return `CALLBACK_STATUS=ROUTABLE`; replayed or otherwise non-pending callbacks and mismatched task/attempt callbacks are recovery evidence only.
 19. Commit and push every state transition.
+20. After the cycle's final outcome is known, choose a short state-first root title with a useful project or task label, mutate it through the app-native title tool, and read it back before claiming success. Never leave a completed run titled `[poll] ...`, `WB ...`, `Workboard ...`, or only `Workboard`. If mutation is unavailable, fails, times out, or reads back differently, report the exact call/status/error and observed title as the closeout blocker.
 
 The classifier returns one of these lanes:
 
@@ -139,7 +140,9 @@ portable session proof without claiming Desktop visibility or canonical
 callback routing.
 
 Verified app-native root output includes canonical `worker_thread_id` and a
-supported clickable task link or directive. A callback routes only when its
+supported clickable task link or directive that references the same raw ID.
+Every successful delegation response contains both forms; neither a raw ID nor
+a clickable reference alone is sufficient. A callback routes only when its
 `worker_task_id` and `worker_creation_attempt_id` equal the source packet's
 current canonical pair; otherwise it is recovery evidence only.
 
@@ -188,3 +191,23 @@ QA-passed, or explicitly QA-not-required, means `tasks/review/`.
 Verified complete means `tasks/done/`.
 
 Do not call work done until proof has been inspected directly.
+
+## Root task closeout
+
+Treat title mutation as the last state-reporting operation, after the queue,
+delegation, callback, pause, or blocker outcome is final. Use
+`[idle|claimed|qa|review|blocked|done] <useful project or task label>` and verify
+the exact title through the same running host's app-native read surface. A tool
+return without readback is unverified. Report unavailable tools, timeout/error
+text, or requested-versus-observed mismatch exactly; do not say the rename
+succeeded.
+
+A true heartbeat delivered to an intentionally persistent root task may retain
+an already useful state-first title when no state or task label changed. This is
+the only retention exception: record that it was a persistent-root heartbeat
+and read back the retained title. It does not authorize heartbeat polling of
+workers, generic titles, or skipping a rename after a changed outcome.
+
+Use `node scripts/check-workboard-closeout.mjs ...` when assembling closeout
+proof. A verified delegation supplies the raw task ID, a host-supported
+clickable link/directive containing that same ID, and verified task readback.

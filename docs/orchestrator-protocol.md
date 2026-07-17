@@ -377,7 +377,37 @@ When the host genuinely has no app-native task APIs, use the documented
 without claiming live Desktop visibility.
 
 Root output for a verified app-native delegation must include canonical
-`worker_thread_id` and the host-supported clickable task link or directive.
+`worker_thread_id` as a raw ID and the host-supported clickable task link or
+directive referencing that same ID. This applies to every builder and QA
+delegation.
+
+## State-first root closeout
+
+Wait until the cycle's final outcome is known before changing the root task
+title. Choose `[idle|claimed|qa|review|blocked|done] <useful project or task
+label>`; `[poll]`, `WB`, a `Workboard` prefix, or a generic `Workboard` label is
+not a valid final title. Apply the exact title through the running host's
+app-native mutation tool, then read the task back and compare the title exactly.
+
+Do not treat a mutation return, local/session metadata, or a best-effort call as
+verification. If the title tool is absent, returns an error, times out, or the
+readback differs, report the exact tool/call, status or elapsed timeout/error,
+requested title, and observed title when available. State explicitly that the
+title is unavailable or unverified; do not claim the rename happened.
+
+One exception exists for a heartbeat delivered to an intentionally persistent
+root task: when its state and useful label have not changed, retain the stable
+state-first title, record the exception, and verify that retained title with
+app-native readback. This does not permit ordinary worker monitoring or
+heartbeat polling, and it does not preserve generic titles.
+
+Validate assembled closeout evidence with
+`node scripts/check-workboard-closeout.mjs`. A successful delegation includes
+the separately printed raw task ID, a supported clickable directive/link with
+the same ID, and verified app-native task readback. Unavailable or unverified
+title proof supplies structured `--title-call` and `--title-failure` values and
+a blocker record containing the requested title, call, failure, and mismatch
+readback when applicable.
 
 ## Worker handoff prompt
 

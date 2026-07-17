@@ -100,10 +100,42 @@ For `app_native` delegation:
 7. Return the canonical `worker_thread_id` and the host-supported clickable task
    link or directive. In Codex Desktop, a successfully created task can be
    surfaced as `::created-thread{threadId="<RAW_TASK_ID>"}` when that directive
-   is supported by the creation tool.
+   is supported by the creation tool. The delegation response must show the raw
+   ID separately and the directive/link must reference that exact ID.
 
 Creation success alone is not enough. List success without exact readback is not
 enough. A Desktop delegation is not successful until canonical writeback.
+
+## State-first root closeout
+
+Close out the root task only after the cycle's final outcome is known:
+
+1. Map the final outcome to its real state: `idle`, `claimed`, `qa`, `review`,
+   `blocked`, or `done`.
+2. Derive a short useful label from the affected project or task. `poll`, `WB`,
+   `Workboard`, and `Workboard poll` are not useful labels.
+3. Request the exact title `[state] <label>` through the running host's
+   app-native title mutation tool. Do not use `[poll]`, `WB`, or `Workboard` as
+   the final prefix.
+4. Read the task through the app-native read surface and compare its title
+   exactly. Only matching readback is verified title success.
+5. If mutation is unavailable, fails, times out, or reads back a different
+   value, retain the real title state and report the exact tool/call, status or
+   timeout/error text, requested title, and observed title when available. Never
+   claim or imply a successful rename without matching readback.
+
+A heartbeat sent to an intentionally persistent root task may retain an
+existing useful state-first title only when neither its state nor useful label
+changed. Record the persistent-root heartbeat exception and read back the
+retained title exactly. Ordinary polling may not manufacture heartbeats, worker
+heartbeats remain forbidden, and this exception never permits a generic title.
+
+For machine-checkable closeout evidence, run
+`node scripts/check-workboard-closeout.mjs` with the outcome, label, title
+status/readback, exact `--title-call` and `--title-failure` for an unavailable or
+unverified title, and delegation identity when one was created. The
+`--title-blocker` record must contain the requested title, call, failure detail,
+and observed readback for a mismatch.
 
 ## Ambiguous creation and recovery
 

@@ -31,10 +31,12 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.
 - Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
 - Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
+- In every verified builder or QA delegation response, print the raw canonical task ID and a host-supported clickable link/directive that contains the same ID. Verify the task with app-native readback first.
 - On a stalled, timed-out, or partially returned create, keep the source claim and target lock, assign one stable recovery incident ID, open `templates/task-creation-recovery.md`, and do not authorize replacement until live app-native list/read conclusively proves the original absent or unusable.
 - Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
 - Structurally reject duplicate source frontmatter keys, then validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status`. Only exact callback status `pending` with canonical creation can return `ROUTABLE` and authorize one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs is logged but cannot route.
 - Never periodically inspect, monitor, heartbeat, or babysit active workers.
+- Rename the root task only after the cycle's final outcome is known. Use `[idle|claimed|qa|review|blocked|done] <useful project or task label>`, never final `[poll]`, `WB`, or generic `Workboard` naming, and require exact app-native title readback before claiming success.
 - On callback unavailability/failure, require `ROOT_RECONCILIATION_REQUIRED` with the identical envelope and error; do not replace it with monitoring.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
@@ -89,6 +91,26 @@ visibility was not verified. Record `worker_portable_session_id`, leave
 canonical `worker_thread_id` empty, and treat completion as root reconciliation
 evidence. Verified app-native root output includes the raw canonical task ID and
 supported clickable task link or directive.
+
+## Closeout gate
+
+After the final queue/delegation/reconciliation outcome is fixed, apply the
+state-first root title and read it back through the running host. If title
+mutation is unavailable, fails, times out, or reads back differently, report
+the exact tool/call, status/error or elapsed timeout, requested title, and
+observed title. Call the title unavailable or unverified; never report a rename
+as successful from the mutation return alone.
+
+The only title-retention exception is a heartbeat delivered to an intentionally
+persistent root task whose state and useful label did not change. Record that
+exception and read back the retained title. It does not allow generic titles,
+worker heartbeat polling, or retention after a changed outcome.
+
+Run `node scripts/check-workboard-closeout.mjs` for structural closeout proof.
+A delegated task must pass its raw task ID, supported same-ID clickable
+link/directive, and verified app-native task readback. An unavailable or
+unverified title passes the exact `--title-call`, `--title-failure`, and a
+`--title-blocker` record containing the requested title and those details.
 
 ## Defaults
 
