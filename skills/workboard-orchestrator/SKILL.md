@@ -7,6 +7,10 @@ description: Run a Workboard root orchestrator loop: classify queue state, enfor
 
 Use this skill when asked to run, configure, or explain a Workboard local orchestrator.
 
+Use `docs/known-issues-and-recovery.md` to classify host, tool, callback,
+saved-project/path, and Git failures. Its bounded responses preserve the
+normative routing gates in this skill.
+
 ## Start here
 
 1. Read `ORCHESTRATOR.md`.

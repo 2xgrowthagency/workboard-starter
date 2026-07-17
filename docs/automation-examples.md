@@ -2,6 +2,10 @@
 
 These are starting points. Edit paths, project names, cadence, and model settings for your own setup.
 
+For app-native stalls, stale UI, callback delivery, saved-project/path,
+specialist-tool, or Git failures, use `docs/known-issues-and-recovery.md` before
+retrying or changing surfaces.
+
 ## Generic root-orchestrator prompt
 
 ```text
