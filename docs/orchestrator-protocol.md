@@ -34,18 +34,44 @@ node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>
 
 The preflight is root-owned and ordered deliberately:
 
-1. Verify the checkout is on `main`, has no unresolved conflict, and is clean.
-2. Fetch `main` from the intended remote with terminal prompting disabled.
-3. Compare `HEAD` with the fetched commit.
-4. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
-5. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
-6. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+1. Discover the repository and Git common directory without inspecting queue or checkout state.
+2. Atomically create `<git-common-dir>/workboard-root-preflight.lock/` and write `owner.json` containing only version, random lock ID, host name, process ID, and start time; it contains no repository or private filesystem path.
+3. Verify the checkout is on `main`, has no unresolved conflict, and is clean.
+4. Fetch `main` from the intended remote with terminal prompting disabled.
+5. Compare `HEAD` with the fetched commit.
+6. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
+7. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
+8. Emit `READY`, `UPDATED`, or `STOP` synchronously while still owning the lock, then remove the owned lock on normal and failure paths.
+9. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
 
 Stop on `GIT_PREFLIGHT_STATUS=STOP`. Its `REASON` distinguishes dirty,
 conflicted, non-main, ahead, diverged, fetch/auth/network failure, and failed
 fast-forward states. Do not run the classifier after a stop. The preflight
 defaults to remote `origin`; pass `--remote <name>` when the intended remote has
 a different name. The synchronized branch is always `main`.
+
+### Cooperative lock and recovery
+
+Atomic directory creation makes one compliant root the owner. Another root that
+finds the lock returns `GIT_PREFLIGHT_STATUS=STOP REASON=preflight_lock_held`
+before branch/status/fetch inspection. Missing, malformed, oversized, symlinked,
+or otherwise invalid lock metadata also stops. Lock output contains no repository
+path or host-private path.
+
+Locks have no automatic expiry. `LOCK_AGE_SECONDS` is diagnostic only and never
+proves staleness. To recover an abandoned lock, the operator must first verify
+that the recorded PID is not an active preflight on the recorded host and that no
+root on any other host sharing the Git common directory can still own it. Preserve
+the `owner.json` evidence, remove only
+`<git-common-dir>/workboard-root-preflight.lock/`, and rerun the preflight. Never
+remove or replace a lock merely because it is old, and never recover it while its
+owner may still run.
+
+The lock coordinates compliant root preflights only. It does not provide
+compare-and-swap for the checkout and cannot stop an uncooperative external
+process from changing a ref or file after the final observation but before output.
+Single-root/single-writer discipline remains required. Final revalidation is
+retained to detect changes that occur before that last observation.
 
 ## Queue-first classifier
 

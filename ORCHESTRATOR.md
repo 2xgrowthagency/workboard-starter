@@ -44,6 +44,12 @@ Treat judgment and failure statuses as stops. The classifier reports local queue
 state only: it does not inspect, fetch, compare, merge, or repair Git state and
 does not mutate the queue.
 
+The Git preflight owns the cooperative lock under the repository's Git common
+directory through its synchronous status emission. Stop on lock contention or
+invalid lock metadata. Never auto-expire a lock; use the conservative recovery
+procedure in `docs/orchestrator-protocol.md`. This lock coordinates compliant
+roots only, so preserve one-root/single-writer checkout discipline.
+
 `WORK_IN_PROGRESS` is also a stop for an ordinary poll: report emitted counts,
 locks, and capacity without opening active packet bodies or worker/QA history.
 At capacity it remains the machine-enforced result even when ready work exists;

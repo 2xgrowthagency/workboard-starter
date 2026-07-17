@@ -1,7 +1,24 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
+import { hostname } from 'node:os';
+import { join, resolve } from 'node:path';
+
+const LOCK_DIRECTORY = 'workboard-root-preflight.lock';
+const LOCK_OWNER_FILE = 'owner.json';
+const LOCK_VERSION = 1;
+const MAX_LOCK_METADATA_BYTES = 4096;
+
+let activeLock = null;
 
 function usage() {
   console.error(
@@ -43,12 +60,122 @@ function sanitize(value) {
     .slice(0, 500);
 }
 
+function lockMetadata(lockDirectory) {
+  let stats;
+  try {
+    stats = lstatSync(lockDirectory);
+  } catch (error) {
+    return {
+      valid: false,
+      reason: error.code === 'ENOENT' ? 'lock_missing' : `lock_stat_${error.code ?? 'failed'}`,
+    };
+  }
+  if (!stats.isDirectory() || stats.isSymbolicLink()) {
+    return { valid: false, reason: 'lock_path_must_be_a_real_directory' };
+  }
+
+  const ownerFile = join(lockDirectory, LOCK_OWNER_FILE);
+  let ownerStats;
+  let raw;
+  try {
+    ownerStats = lstatSync(ownerFile);
+    if (!ownerStats.isFile() || ownerStats.isSymbolicLink()) {
+      return { valid: false, reason: 'owner_must_be_a_regular_file' };
+    }
+    if (ownerStats.size > MAX_LOCK_METADATA_BYTES) {
+      return { valid: false, reason: 'owner_metadata_too_large' };
+    }
+    raw = readFileSync(ownerFile, 'utf8');
+  } catch (error) {
+    return {
+      valid: false,
+      reason:
+        error.code === 'ENOENT'
+          ? 'owner_metadata_missing'
+          : `owner_read_${error.code ?? 'failed'}`,
+    };
+  }
+
+  let owner;
+  try {
+    owner = JSON.parse(raw);
+  } catch {
+    return { valid: false, reason: 'owner_metadata_invalid_json' };
+  }
+  const keys = Object.keys(owner ?? {}).sort();
+  if (
+    JSON.stringify(keys) !==
+    JSON.stringify(['host', 'lock_id', 'pid', 'started_at', 'version'])
+  ) {
+    return { valid: false, reason: 'owner_metadata_schema_mismatch' };
+  }
+  if (
+    owner.version !== LOCK_VERSION ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      owner.lock_id,
+    ) ||
+    typeof owner.host !== 'string' ||
+    !/^[A-Za-z0-9._-]{1,255}$/.test(owner.host) ||
+    !Number.isSafeInteger(owner.pid) ||
+    owner.pid <= 0 ||
+    typeof owner.started_at !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(owner.started_at) ||
+    !Number.isFinite(Date.parse(owner.started_at))
+  ) {
+    return { valid: false, reason: 'owner_metadata_value_mismatch' };
+  }
+  return { valid: true, owner };
+}
+
+function ownsActiveLock() {
+  if (!activeLock) return true;
+  const metadata = lockMetadata(activeLock.directory);
+  return metadata.valid && metadata.owner.lock_id === activeLock.owner.lock_id;
+}
+
+function releaseActiveLock() {
+  if (!activeLock) return true;
+  if (!ownsActiveLock()) return false;
+  try {
+    rmSync(activeLock.directory, { recursive: true });
+    activeLock = null;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function emit(status, fields = {}, exitCode = 0) {
+  if (activeLock && !ownsActiveLock()) {
+    status = 'STOP';
+    fields = { REASON: 'preflight_lock_lost' };
+    exitCode = 1;
+  }
   const suffix = Object.entries(fields)
     .map(([key, value]) => `${key}=${sanitize(value)}`)
     .join(' ');
-  console.log(`GIT_PREFLIGHT_STATUS=${status}${suffix ? ` ${suffix}` : ''}`);
+  writeSync(
+    process.stdout.fd,
+    `GIT_PREFLIGHT_STATUS=${status}${suffix ? ` ${suffix}` : ''}\n`,
+  );
+  if (!releaseActiveLock()) {
+    writeSync(
+      process.stderr.fd,
+      'GIT_PREFLIGHT_CLEANUP_STATUS=FAILED REASON=preflight_lock_cleanup_failed\n',
+    );
+    exitCode = 1;
+  }
   process.exit(exitCode);
+}
+
+process.on('exit', () => {
+  releaseActiveLock();
+});
+
+for (const signal of ['SIGHUP', 'SIGINT', 'SIGTERM']) {
+  process.on(signal, () =>
+    emit('STOP', { REASON: 'preflight_interrupted', SIGNAL: signal }, 1),
+  );
 }
 
 function git(repo, args, environment = {}) {
@@ -76,6 +203,80 @@ function gitValue(repo, args, reason) {
     emit('STOP', { REASON: reason, DETAIL: result.stderr || result.stdout }, 1);
   }
   return result.stdout;
+}
+
+function acquirePreflightLock(repo) {
+  const commonDirectory = git(repo, ['rev-parse', '--git-common-dir']);
+  if (commonDirectory.status !== 0 || !commonDirectory.stdout) {
+    emit(
+      'STOP',
+      {
+        REASON: 'missing_workboard_git_repo',
+        DETAIL: commonDirectory.stderr || commonDirectory.stdout || repo,
+      },
+      1,
+    );
+  }
+
+  const directory = resolve(repo, commonDirectory.stdout, LOCK_DIRECTORY);
+  try {
+    mkdirSync(directory, { mode: 0o700 });
+  } catch (error) {
+    if (error.code !== 'EEXIST') {
+      emit(
+        'STOP',
+        { REASON: 'preflight_lock_create_failed', DETAIL: error.code ?? 'unknown' },
+        1,
+      );
+    }
+    const metadata = lockMetadata(directory);
+    if (!metadata.valid) {
+      emit('STOP', { REASON: 'preflight_lock_invalid', DETAIL: metadata.reason }, 1);
+    }
+    const ageSeconds = Math.max(
+      0,
+      Math.floor((Date.now() - Date.parse(metadata.owner.started_at)) / 1000),
+    );
+    emit(
+      'STOP',
+      {
+        REASON: 'preflight_lock_held',
+        LOCK_ID: metadata.owner.lock_id,
+        OWNER_HOST: metadata.owner.host,
+        OWNER_PID: metadata.owner.pid,
+        STARTED_AT: metadata.owner.started_at,
+        LOCK_AGE_SECONDS: ageSeconds,
+      },
+      1,
+    );
+  }
+
+  const owner = {
+    version: LOCK_VERSION,
+    lock_id: randomUUID(),
+    host: hostname() || 'unknown-host',
+    pid: process.pid,
+    started_at: new Date().toISOString(),
+  };
+  try {
+    writeFileSync(join(directory, LOCK_OWNER_FILE), JSON.stringify(owner), {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+  } catch (error) {
+    try {
+      rmSync(directory, { recursive: true });
+    } catch {
+      // The invalid lock remains visible and makes every later root fail closed.
+    }
+    emit(
+      'STOP',
+      { REASON: 'preflight_lock_initialization_failed', DETAIL: error.code ?? 'unknown' },
+      1,
+    );
+  }
+  activeLock = { directory, owner };
 }
 
 function revalidateCheckout(repo, expectedHead, expectedFetched, phase) {
@@ -150,6 +351,8 @@ if (insideWorktree.status !== 0 || insideWorktree.stdout !== 'true') {
     1,
   );
 }
+
+acquirePreflightLock(repo);
 
 const branch = gitValue(repo, ['branch', '--show-current'], 'cannot_read_branch');
 if (branch !== 'main') {

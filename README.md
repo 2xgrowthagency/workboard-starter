@@ -175,6 +175,18 @@ branch remains `main`. Before a fast-forward and again before reporting success,
 the gate revalidates the branch, conflict state, exact `HEAD` and `FETCH_HEAD`,
 and full tracked/untracked status. A concurrent change fails closed.
 
+The gate coordinates root processes with an atomic directory at
+`<git-common-dir>/workboard-root-preflight.lock/`. It acquires the lock after
+repository discovery but before branch, status, or fetch inspection, holds it
+through synchronous `READY`, `UPDATED`, or `STOP` emission, and removes its own
+lock immediately afterward. A competing compliant root stops. Existing locks,
+regardless of age, are never auto-expired or auto-removed; follow the explicit
+recovery procedure in `docs/orchestrator-protocol.md`.
+
+This is cooperative exclusion, not compare-and-swap over the Git checkout. It
+cannot stop an uncooperative external process from changing refs or files after
+the final observation. Keep one root writer per Workboard checkout.
+
 ## Queue-first check
 
 Before loading project registries, packet bodies, or task history, run the

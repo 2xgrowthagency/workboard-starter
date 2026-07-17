@@ -3,13 +3,14 @@
 import assert from 'node:assert/strict';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +68,28 @@ function check(root, expectedStatus = 0, environment = {}) {
   });
   assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
   return result.stdout.trim();
+}
+
+function preflightLock(root) {
+  return resolve(
+    root,
+    git(root, 'rev-parse', '--git-common-dir'),
+    'workboard-root-preflight.lock',
+  );
+}
+
+function seedPreflightLock(root, startedAt = new Date().toISOString()) {
+  const directory = preflightLock(root);
+  const owner = {
+    version: 1,
+    lock_id: '11111111-1111-4111-8111-111111111111',
+    host: 'fixture-host',
+    pid: 4242,
+    started_at: startedAt,
+  };
+  mkdirSync(directory, { mode: 0o700 });
+  writeFileSync(join(directory, 'owner.json'), JSON.stringify(owner));
+  return { directory, owner };
 }
 
 function installGitRaceShim(fixture) {
@@ -135,6 +158,7 @@ test('clean synchronized main is ready without changing HEAD', () => {
     assert.match(output, new RegExp(`HEAD=${before}`));
     assert.equal(git(root, 'rev-parse', 'HEAD'), before);
     assert.equal(git(root, 'status', '--porcelain'), '');
+    assert.equal(existsSync(preflightLock(root)), false);
   });
 });
 
@@ -147,6 +171,41 @@ test('strictly behind clean main is fast-forwarded to fetched main', () => {
     assert.match(output, new RegExp(`PREVIOUS_HEAD=${before}`));
     assert.equal(git(fixture.root, 'rev-parse', 'HEAD'), remoteHead);
     assert.equal(git(fixture.root, 'status', '--porcelain'), '');
+    assert.equal(existsSync(preflightLock(fixture.root)), false);
+  });
+});
+
+test('a competing cooperative root lock fails closed without removing the owner lock', () => {
+  withFixture(({ root }) => {
+    const { directory, owner } = seedPreflightLock(root);
+    const output = check(root, 1);
+    assert.match(output, /^GIT_PREFLIGHT_STATUS=STOP /);
+    assert.match(output, /REASON=preflight_lock_held/);
+    assert.match(output, new RegExp(`LOCK_ID=${owner.lock_id}`));
+    assert.match(output, /OWNER_HOST=fixture-host/);
+    assert.match(output, /OWNER_PID=4242/);
+    assert.equal(existsSync(directory), true);
+  });
+});
+
+test('an old lock is never auto-expired or removed', () => {
+  withFixture(({ root }) => {
+    const { directory } = seedPreflightLock(root, '2000-01-01T00:00:00.000Z');
+    const output = check(root, 1);
+    assert.match(output, /REASON=preflight_lock_held/);
+    assert.match(output, /LOCK_AGE_SECONDS=\d+/);
+    assert.equal(existsSync(directory), true);
+  });
+});
+
+test('malformed lock state fails closed and is preserved for explicit recovery', () => {
+  withFixture(({ root }) => {
+    const directory = preflightLock(root);
+    mkdirSync(directory);
+    const output = check(root, 1);
+    assert.match(output, /REASON=preflight_lock_invalid/);
+    assert.match(output, /DETAIL=owner_metadata_missing/);
+    assert.equal(existsSync(directory), true);
   });
 });
 
@@ -170,6 +229,7 @@ for (const [action, reason] of [
       assert.match(output, /^GIT_PREFLIGHT_STATUS=STOP /);
       assert.match(output, new RegExp(`REASON=${reason}`));
       assert.doesNotMatch(output, /GIT_PREFLIGHT_STATUS=UPDATED/);
+      assert.equal(existsSync(preflightLock(fixture.root)), false);
     });
   });
 }
@@ -187,6 +247,7 @@ test('dirty main stops before fetch', () => {
       trackedRemote,
       'unsafe local state must stop before network mutation',
     );
+    assert.equal(existsSync(preflightLock(fixture.root)), false);
   });
 });
 
@@ -247,5 +308,6 @@ test('fetch failure stops with the transport error', () => {
     const output = check(root, 1);
     assert.match(output, /REASON=fetch_failed/);
     assert.match(output, /missing.git/);
+    assert.equal(existsSync(preflightLock(root)), false);
   });
 });

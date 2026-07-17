@@ -58,3 +58,15 @@ test('queue classifier contains no Git invocation or Git-state helper', () => {
   assert.doesNotMatch(classifier, /spawnSync\(['"]git['"]/);
   assert.doesNotMatch(classifier, /function (?:runGit|gitValue)\b/);
 });
+
+test('docs define cooperative locking without claiming impossible checkout CAS', () => {
+  const protocol = read('docs/orchestrator-protocol.md');
+  assert.match(protocol, /<git-common-dir>\/workboard-root-preflight\.lock\//);
+  assert.match(protocol, /Atomic directory creation makes one compliant root the owner/);
+  assert.match(protocol, /Locks have no automatic expiry/);
+  assert.match(protocol, /Preserve[\s\S]{0,180}`owner\.json` evidence/);
+  assert.match(protocol, /cannot stop an uncooperative external[\s\S]{0,100}after the final observation/);
+  assert.match(protocol, /Single-root\/single-writer discipline remains required/);
+  assert.match(protocol, /does not provide\s+compare-and-swap for the checkout/);
+  assert.doesNotMatch(protocol, /guarantees? exclusion of (?:all|arbitrary) writers/i);
+});
