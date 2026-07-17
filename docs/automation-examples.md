@@ -44,14 +44,14 @@ Instructions:
 7. For a routable lane, read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
 8. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
 9. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
-10. For every v2 move, update frontmatter, append the exact state transition log, and run scripts/check-task-packet.mjs against the destination lane and previous log state. On claim, pin the immutable target and exact lock tuple. Legacy --allow-legacy is read-only migration evidence, not permission to move an old packet. Commit/push validated claim transitions before delegation.
+10. For every v2 move, update only known schema fields, append one complete exact state transition block, and run scripts/check-task-packet.mjs against the destination lane and previous log state. Reject unknown/duplicate keys or log fields, partial trailing logs, noncanonical packet/dependency IDs, abbreviated commit SHAs, user-specific absolute paths, and malformed state metadata. On claim, pin the immutable target and exact lock tuple. Legacy --allow-legacy is read-only migration evidence, not permission to move an old packet. Commit/push validated claim transitions before delegation.
 11. Resolve model routing from packet override, then project override, then the portable gpt-5.6-sol medium default. Run scripts/check-model-routing.mjs for overrides or escalation. High requires a task-local category of exactly high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex. Luna Medium requires exact bounded_high_volume eligibility plus independent_verification=true. Unknown or malformed checker options fail closed.
 12. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
 13. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
-14. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked. Preserve durable artifact roots/directories, immutable targets, paired prior QA head/result, callback source/handoff, and publication receipts.
+14. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked. Preserve a relative or `${WORKBOARD_ROOT}` QA artifact root, exact `<root>/<packet-id>` directory, immutable target type/value, active/completed qa_thread_id, paired full-SHA prior QA head and exact result, callback source/handoff, and typed HTTPS publication receipts.
 15. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
 16. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-17. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
+17. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane: ready_for_qa->tasks/qa, ready_for_review or pass->tasks/review, fail->tasks/ready, blocked->tasks/blocked.
 18. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
 19. On PROMOTION_REVIEW_NEEDED, follow docs/dependency-promotion.md. Promote auto candidates from dependency metadata only; open each review candidate for exactly one ready_when check; do not reconsider manual or human/external blockers without new proof.
 20. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
@@ -69,15 +69,15 @@ metadata and append the transition before moving the file:
 
 ```text
 status: qa
-target_commit: 0123456789abcdef
+target_commit: 0123456789abcdef0123456789abcdef01234567
 immutable_target_type: commit
-immutable_target: 0123456789abcdef
+immutable_target: 0123456789abcdef0123456789abcdef01234567
 target_lock_status: held
 qa_status: pending
 qa_artifacts_root: ${WORKBOARD_ROOT}/qa-artifacts
 qa_artifacts_dir: ${WORKBOARD_ROOT}/qa-artifacts/20260717-001-example
 qa_immutable_target_type: commit
-qa_immutable_target: 0123456789abcdef
+qa_immutable_target: 0123456789abcdef0123456789abcdef01234567
 callback_source_task_id: <canonical-builder-task-id>
 qa_publication_status: pending
 qa_publication_receipts: []
@@ -87,7 +87,7 @@ qa_publication_receipts: []
 STATE: qa
 FROM: active
 SUMMARY: Builder completed and independent QA is queued.
-PROOF: commit:0123456789abcdef; callback:<receipt-id>
+PROOF: commit:0123456789abcdef0123456789abcdef01234567; callback:<receipt-id>
 BLOCKER: none
 NEXT: Create one read-only QA companion against the pinned commit.
 UPDATED_AT: 2026-07-17T12:00:00Z

@@ -39,10 +39,18 @@ release. This contribution gate does not alter the runtime queue contracts.
 
 State changes are file moves plus append-only packet transition logs. New and
 migrated packets use `packet_schema_version: 2`; validate the destination lane,
-state-specific fields, lock, transition, receipts, duplicate keys, secrets, and
-private paths with `scripts/check-task-packet.mjs` before every move. Commit/push
+known and unique schema fields, canonical packet/dependency IDs, full commit
+SHAs, exact model/escalation routes, visibility/recovery coherence, packet-scoped
+QA artifacts, callback result/lane pairs, typed HTTPS receipts, complete log
+blocks, secrets, and user-specific absolute paths with
+`scripts/check-task-packet.mjs` before every move. Commit/push
 each meaningful transition so everyone sees the same board. The normalized
 contract and explicit legacy migration path are in `docs/task-packet-schema.md`.
+
+Canonical app-native visibility requires a nonblank creation surface and the
+exact `method=app_native_list_read|receipt=<receipt>` proof plus its UTC
+verification timestamp. Ambiguous creation keeps those verified fields empty
+and remains tied to investigating recovery evidence.
 
 ## Root Git synchronization preflight
 
@@ -229,6 +237,9 @@ and `high`; malformed or unsupported values fail closed.
 `*_luna_eligibility` is exactly `bounded_high_volume` and the matching
 `*_independent_verification` is `true`. Any other eligibility value or missing
 verification rejects the route. Luna output is not its own verification.
+No other model identifier is valid in a v2 packet. A reason note requires its
+recognized high-reasoning escalation category, and Luna eligibility is invalid
+for `gpt-5.6-sol`.
 
 Validate any override, high escalation, or Luna route before dispatch:
 
@@ -266,8 +277,8 @@ not infer model policy from private memory or unrelated task history.
 12. Persist a new `worker_creation_attempt_id` before every actual create call, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write canonical identity only after complete app-native proof. Keep one stable `recovery_id` for an ambiguous incident; an authorized replacement receives a new attempt ID. Preserve the original canonical builder as `builder_thread_id` before creating QA.
 13. Resolve and validate the role's model/reasoning route, then give the worker the full task packet plus the exact worker handoff prompt below.
 14. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, and lane all match the source packet.
-15. Inspect `tasks/qa/`. For each pending packet, verify its durable artifact root/directory and copied immutable target, preserve prior QA head/result together for bounded continuations, then launch one separate `[qa] <short label>` task inside the existing target project.
-16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record durable `qa_publication_receipts` or exact fallback status separately from the verdict.
+15. Inspect `tasks/qa/`. For each pending packet, verify its relative or `${WORKBOARD_ROOT}` artifact root, exact `<root>/<packet-id>` directory, copied immutable target type/value, and full-SHA prior head plus exact prior result for continuations; record `qa_thread_id` when QA becomes active, then launch one separate `[qa] <short label>` task inside the existing target project.
+16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record typed `type=...|destination=...|url=https://...` `qa_publication_receipts` or exact fallback status separately from the verdict.
 17. Before leaving QA, copy the completed immutable target/result into `qa_prior_head`/`qa_prior_result` and retain durable artifacts. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
@@ -323,6 +334,8 @@ next_lane: <tasks/qa|tasks/review|tasks/ready|tasks/blocked>
 The result and lane must agree: builders use `ready_for_qa -> tasks/qa`,
 `ready_for_review -> tasks/review`, or `blocked -> tasks/blocked`; QA uses
 `pass -> tasks/review`, `fail -> tasks/ready`, or `blocked -> tasks/blocked`.
+The packet validator applies this same exact mapping to every retained callback
+envelope and rejects unknown results or alternate lane spellings.
 The callback requests routing; only the root moves the packet. Progress notices
 are not callbacks, and a task must not send a second final callback to amend the
 first one.

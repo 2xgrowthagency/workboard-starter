@@ -56,7 +56,7 @@ adoption backlink and do not need fork ancestry.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
 - Pass packet-linked PR/issue URLs, `builder_thread_id`, and publication policies to QA; verify publication receipts or perform a root fallback. Never expose absolute local paths or local-only artifacts in GitHub comments.
-- Preserve the durable QA artifact root/directory, copied immutable target, and paired prior QA head/result for bounded continuations. Record QA and generic publication receipts separately from the product verdict.
+- Preserve the portable QA artifact root and exact `<root>/<packet-id>` directory, copied immutable target type/value, active/completed `qa_thread_id`, and paired full-SHA prior QA head plus exact prior result for bounded continuations. Record typed QA and generic publication receipts separately from the product verdict.
 - Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
@@ -70,8 +70,11 @@ New packets use `packet_schema_version: 2`. Before each move, append the exact
 transition and run `node scripts/check-task-packet.mjs <packet> --lane <lane>
 --previous-status <from-state>`. Folder, frontmatter, latest log, target lock,
 state-specific metadata, callback provenance, immutable targets, and publication
-receipts must agree. Duplicate keys, invalid transitions, private user paths
-outside normalized fields, and secret-shaped content are hard stops.
+receipts must agree. Reject unknown or duplicate keys, noncanonical packet or
+dependency IDs, abbreviated/malformed commit SHAs, unsupported model routes,
+incomplete canonical visibility, inconsistent recovery/QA state, user-specific
+absolute paths anywhere, malformed typed HTTPS receipts, and any unknown,
+duplicate, reordered, misplaced, or partial state-log field.
 
 `--allow-legacy` is an explicit read-only compatibility check, not permission to
 mutate an old packet. Migrate legacy `orchestrator_*` fields to canonical

@@ -317,9 +317,11 @@ node scripts/check-task-packet.mjs <PACKET> \
   --lane <DESTINATION_LANE> --previous-status <CURRENT_LOG_STATE>
 ```
 
-The check rejects missing or incompatible state metadata, duplicate keys,
-invalid transitions, secret-shaped content, and private user paths outside the
-normalized path fields. Legacy packets are read-only compatible only through an
+The check rejects missing, unknown, duplicate, or incompatible state metadata;
+malformed or partial transition logs; noncanonical IDs and commit SHAs;
+unsupported routes; invalid callbacks, QA paths, or typed receipts;
+secret-shaped content; and user-specific absolute paths anywhere in the packet.
+Legacy packets are read-only compatible only through an
 explicit `--allow-legacy` run; migrate them to v2 before mutation. See
 `docs/task-packet-schema.md`.
 

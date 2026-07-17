@@ -176,7 +176,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Orchestration notes
 
 - Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.
-- `packet_schema_version: 2` is fail-closed. Legacy packets require an explicit, one-run `--allow-legacy` validation and should be migrated before mutation; do not mix legacy `orchestrator_*` aliases with v2 `root_*` fields.
+- `packet_schema_version: 2` is fail-closed. Every frontmatter key must belong to the v2 schema, packet/dependency IDs use `YYYYMMDD-NNN-lowercase-slug`, commit values use the full lowercase 40-character SHA, and every state-log line must belong to one complete seven-field block. Legacy packets require an explicit, one-run `--allow-legacy` validation and should be migrated before mutation; do not mix legacy `orchestrator_*` aliases with v2 `root_*` fields.
 - Root owns dependency promotion. Workers report completion proof but do not move downstream packets.
 - `promotion_policy: auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges; `review` permits one bounded `ready_when` check; omitted or `manual` requires new human/external proof.
 - Only backlog or blocked auto/review packets with exact `blocker_type: dependency` are scanner-eligible. Empty/other blocker types fail closed; human/external blockers stay manual until new proof arrives.
@@ -194,12 +194,12 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Standalone root closeout reads the current task UUID only from `process.env.CODEX_THREAD_ID`, passes the exact value as `--title-task-id`, and fails closed when it is missing, malformed, or mismatched. Never use task list/search or task history to discover the current root ID. Persistent-root heartbeats are exempt.
 - A heartbeat delivered to an intentionally persistent root task may retain an unchanged useful state-first title only when the exception and exact app-native readback are recorded. It does not permit worker heartbeat polling or generic-title retention.
 - Every verified builder, QA, and canonical recovery response reports the raw canonical task ID separately plus the exact same-ID `::created-thread` directive.
-- Before QA replaces the canonical `worker_thread_id`, preserve the original builder identity in `builder_thread_id`; `qa_thread_id` may mirror the canonical QA task for provenance.
+- Before QA replaces the canonical `worker_thread_id`, preserve the original builder identity in `builder_thread_id`; set `qa_thread_id` when QA becomes active and retain it with every completed verdict.
 - Claimed and active-QA packets lock only an exact decoded `target_project_id` + `target_path` tuple. Unrelated targets may route up to capacity; `parallel_safe` does not override a target lock.
 - On claim, set `target_lock_status: held`, copy the exact target tuple into `target_lock_project_id` and `target_lock_path`, and record `target_lock_acquired_at`. Ready, blocked, review, done, and archive packets cannot retain a held lock.
-- Pin `target_commit` or another `immutable_target` before active work. QA additionally copies that value into `qa_immutable_target`, records the durable `qa_artifacts_root` and task-specific `qa_artifacts_dir`, and preserves `qa_prior_head` plus `qa_prior_result` together for a bounded continuation.
+- Pin a full 40-character `target_commit` or another typed `immutable_target` before active work. QA copies the exact target type/value into `qa_immutable_target_type`/`qa_immutable_target`, uses a relative or `${WORKBOARD_ROOT}`-rooted durable `qa_artifacts_root`, sets `qa_artifacts_dir` to exactly `<qa_artifacts_root>/<packet-id>`, and preserves a 40-character `qa_prior_head` plus exact `pass|fail|blocked` prior result for a bounded continuation.
 - During ambiguous creation this packet stays in `tasks/claimed`, keeps its capacity/target lock, sets `worker_creation_status: ambiguous`, `worker_visibility_status: ambiguous`, and `recovery_pending: true`, and records its stable `recovery_id`.
-- Canonical reconciliation atomically writes `worker_thread_id`, the canonical `worker_creation_attempt_id`, `worker_creation_status: canonical`, `worker_visibility_status: verified`, visibility proof/timestamp, `worker_creation_proof`, and `recovery_pending: false` without moving the packet.
+- Canonical reconciliation atomically writes `worker_thread_id`, the canonical `worker_creation_attempt_id`, `worker_creation_status: canonical`, creation surface, task title/link/host identity, `worker_visibility_status: verified`, exact `method=app_native_list_read|receipt=<receipt>` visibility proof and timestamp, `worker_creation_proof`, and `recovery_pending: false` without moving the packet. Ambiguous creation instead requires investigating recovery, a routing blocker, no canonical identity, and no verified visibility proof.
 - A callback can request routing only while `completion_callback_status: pending`, `worker_creation_status: canonical`, visibility is verified, recovery is not pending, and its packet/task/attempt identity plus role/QA/result/lane matrix all match. Duplicate source frontmatter keys fail closed before routing. Replayed, noncanonical, delayed, ambiguous, and mismatched callbacks are recovery evidence only.
 - When `qa_required: true`, implementation completion routes to `tasks/qa/`, not directly to `tasks/review/`.
 - Initialize applicable QA publication and worker-notification status fields to `pending` when routing into `tasks/qa/`.
@@ -213,7 +213,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Callback unavailability/failure emits `ROOT_RECONCILIATION_REQUIRED` with the identical envelope, including `worker_creation_attempt_id`, and records `completion_callback_error`; root must not replace it with monitoring.
 - Root appends every reconciled callback envelope and receipt/error to the status log before resetting `completion_callback_*` for a later builder or QA handoff.
 - Set `callback_source_task_id` to the canonical builder or QA task that emitted the callback. When a callback is no longer pending, it must match `completion_callback_worker_task_id`; `callback_handoff_required: true` keeps the persistent root handoff mandatory.
-- Store public write evidence in `publication_receipts` and QA-specific comment or notification evidence in `qa_publication_receipts`. A `published` status without at least one receipt is invalid.
+- Store public write evidence in `publication_receipts` and QA-specific comment or notification evidence in `qa_publication_receipts`. Each receipt uses `type=<github_comment|github_release|artifact>|destination=<github_issue|github_pr|github_release|artifact>|url=<absolute-https-url>` with a compatible type/destination; GitHub comments use the exact URL including `#issuecomment-<id>`. A `published` status without at least one valid receipt is invalid.
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
 - Resolve each role's routing packet override first, then project override, then the portable `gpt-5.6-sol` medium default.
@@ -222,12 +222,14 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Keep all context task-local. No private memory dumps and no secrets.
 - For production-derived starter upgrades, generalize operational details and follow `docs/upstream-synchronization.md`; customized clones retain the public source issue/release backlink without requiring a fork.
 
-## State transition log
-
-Append one complete block for every lane transition. Use canonical log states
+Append one complete block for every lane transition. Unknown, duplicate,
+reordered, malformed, misplaced, or trailing partial log fields invalidate the
+entire packet. Use canonical log states
 `backlog`, `ready`, `active`, `qa`, `blocked`, `review`, `done`, and `archive`;
 frontmatter and folders use `claimed` for the `active` state. Do not rewrite or
 delete prior blocks.
+
+## State transition log
 
 ```text
 STATE: ready

@@ -6,6 +6,21 @@ import { fileURLToPath } from 'node:url';
 
 const SCHEMA_VERSION = '2';
 const LANES = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
+const LOG_FIELDS = ['STATE', 'FROM', 'SUMMARY', 'PROOF', 'BLOCKER', 'NEXT', 'UPDATED_AT'];
+const PACKET_ID_PATTERN = /^\d{8}-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
+const MODELS = ['gpt-5.6-sol', 'gpt-5.6-luna'];
+const REASONING_LEVELS = ['low', 'medium', 'high'];
+const HIGH_REASON_CATEGORIES = [
+  'high_stakes', 'security_sensitive', 'repeatedly_blocked', 'unusually_complex',
+];
+const CALLBACK_LANE_BY_RESULT = new Map([
+  ['ready_for_qa', 'tasks/qa'],
+  ['ready_for_review', 'tasks/review'],
+  ['pass', 'tasks/review'],
+  ['fail', 'tasks/ready'],
+  ['blocked', 'tasks/blocked'],
+]);
 const LOG_STATE_BY_LANE = {
   backlog: 'backlog', ready: 'ready', claimed: 'active', qa: 'qa', blocked: 'blocked',
   review: 'review', done: 'done', archive: 'archive',
@@ -47,6 +62,7 @@ const REQUIRED_V2_FIELDS = [
   'qa_luna_eligibility', 'qa_independent_verification',
   'qa_artifacts_root', 'qa_artifacts_dir',
   'qa_immutable_target_type', 'qa_immutable_target', 'qa_prior_head', 'qa_prior_result',
+  'qa_thread_id',
   'qa_result', 'qa_publication_status', 'qa_publication_receipts',
   'publication_status', 'publication_receipts', 'completion_callback_status',
   'completion_callback_result', 'completion_callback_worker_task_id',
@@ -62,6 +78,7 @@ const REQUIRED_V2_FIELDS = [
   'github_pr', 'target_project_name', 'branch_policy', 'allowed_actions',
   'forbidden_actions', 'parallel_safe',
 ];
+const V2_FIELDS = new Set(REQUIRED_V2_FIELDS);
 const LEGACY_ROOT_FIELDS = [
   'orchestrator_model', 'orchestrator_reasoning',
   'orchestrator_model_routing_reason_category', 'orchestrator_model_routing_reason_note',
@@ -109,10 +126,16 @@ function parseArgs(argv) {
 
 function stripQuotes(value) {
   const normalized = String(value ?? '').trim();
-  if (normalized.length >= 2 && (
-    (normalized.startsWith('"') && normalized.endsWith('"')) ||
-    (normalized.startsWith("'") && normalized.endsWith("'"))
-  )) return normalized.slice(1, -1);
+  if (normalized.length >= 2 && normalized.startsWith('"') && normalized.endsWith('"')) {
+    try {
+      return JSON.parse(normalized);
+    } catch {
+      return normalized.slice(1, -1);
+    }
+  }
+  if (normalized.length >= 2 && normalized.startsWith("'") && normalized.endsWith("'")) {
+    return normalized.slice(1, -1);
+  }
   return normalized;
 }
 
@@ -150,7 +173,38 @@ function inlineList(value, field, errors) {
     return [];
   }
   if (normalized === '[]') return [];
-  const values = normalized.slice(1, -1).split(',').map(stripQuotes).map((item) => item.trim());
+  const source = normalized.slice(1, -1);
+  const rawValues = [];
+  let quote = null;
+  let current = '';
+  for (const character of source) {
+    if (quote) {
+      current += character;
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === ',') {
+      rawValues.push(current);
+      current = '';
+      continue;
+    }
+    if (character === '[' || character === ']') {
+      errors.push(`${field} must not contain nested lists`);
+      return [];
+    }
+    current += character;
+  }
+  if (quote) {
+    errors.push(`${field} contains an unterminated quoted item`);
+    return [];
+  }
+  rawValues.push(current);
+  const values = rawValues.map(stripQuotes).map((item) => item.trim());
   if (values.some((item) => !item)) errors.push(`${field} contains an empty list item`);
   if (new Set(values).size !== values.length) errors.push(`${field} contains duplicate values`);
   return values.filter(Boolean);
@@ -170,7 +224,111 @@ function requireEnum(fields, field, allowed, errors) {
   }
 }
 
-function scanSensitiveContent(content, fields, body, errors) {
+function isUtcTimestamp(value) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().replace('.000Z', 'Z') === value;
+}
+
+function validateCommit(value, field, errors) {
+  if (value && !COMMIT_PATTERN.test(value)) {
+    errors.push(`${field} must be a lowercase 40-character Git commit SHA`);
+  }
+}
+
+function validatePacketId(value, field, errors) {
+  if (value && !PACKET_ID_PATTERN.test(value)) {
+    errors.push(`${field} must match YYYYMMDD-NNN-lowercase-slug`);
+  }
+}
+
+function validateDependencyIds(values, field, errors) {
+  for (const value of values) validatePacketId(value, `${field} entry`, errors);
+}
+
+function parseHttpsUrl(value, field, errors) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    errors.push(`${field} must be an absolute HTTPS URL`);
+    return null;
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    errors.push(`${field} must be an absolute HTTPS URL without credentials`);
+    return null;
+  }
+  return parsed;
+}
+
+function isGithubCommentUrl(parsed) {
+  return parsed?.hostname === 'github.com' &&
+    /^\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+$/.test(parsed.pathname) &&
+    /^#issuecomment-\d+$/.test(parsed.hash);
+}
+
+function validateGithubCommentUrls(values, field, errors) {
+  for (const value of values) {
+    const parsed = parseHttpsUrl(value, `${field} entry`, errors);
+    if (parsed && !isGithubCommentUrl(parsed)) {
+      errors.push(`${field} entry must be an exact GitHub issue or PR comment URL`);
+    }
+  }
+}
+
+function validatePublicationReceipts(values, field, errors) {
+  const allowedDestinations = {
+    github_comment: new Set(['github_issue', 'github_pr']),
+    github_release: new Set(['github_release']),
+    artifact: new Set(['artifact']),
+  };
+  for (const value of values) {
+    const match = value.match(
+      /^type=(github_comment|github_release|artifact)\|destination=(github_issue|github_pr|github_release|artifact)\|url=(.+)$/,
+    );
+    if (!match) {
+      errors.push(
+        `${field} entry must use type=<type>|destination=<destination>|url=<https-url>`,
+      );
+      continue;
+    }
+    const [, type, destination, url] = match;
+    if (!allowedDestinations[type].has(destination)) {
+      errors.push(`${field} entry has an incompatible type and destination`);
+    }
+    const parsed = parseHttpsUrl(url, `${field} entry URL`, errors);
+    if (!parsed) continue;
+    if (type === 'github_comment' && !isGithubCommentUrl(parsed)) {
+      errors.push(`${field} GitHub comment receipt must use an exact issue or PR comment URL`);
+    }
+    if (type === 'github_release' && (
+      parsed.hostname !== 'github.com' ||
+      !/^\/[^/]+\/[^/]+\/releases\/tag\/[^/]+$/.test(parsed.pathname)
+    )) {
+      errors.push(`${field} GitHub release receipt must use an exact GitHub release URL`);
+    }
+  }
+}
+
+function isPortableArtifactRoot(value) {
+  if (!value || value.endsWith('/') || value.includes('\\')) return false;
+  const withoutPlaceholder = value.startsWith('${WORKBOARD_ROOT}/')
+    ? value.slice('${WORKBOARD_ROOT}/'.length)
+    : value;
+  if (!withoutPlaceholder || withoutPlaceholder.startsWith('/')) return false;
+  const components = withoutPlaceholder.split('/');
+  return components.every((part) => part && part !== '.' && part !== '..' && /^[A-Za-z0-9._-]+$/.test(part));
+}
+
+function isSupportedTaskDirective(value, taskId) {
+  return Boolean(taskId) && value === `::created-thread{threadId="${taskId}"}`;
+}
+
+function isCanonicalVisibilityProof(value) {
+  return /^method=app_native_list_read\|receipt=\S(?:.*\S)?$/.test(value);
+}
+
+function scanSensitiveContent(content, errors) {
   const secretPatterns = [
     ['private key', /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/],
     ['GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/],
@@ -190,28 +348,87 @@ function scanSensitiveContent(content, fields, body, errors) {
     }
   }
 
-  const allowedPathFields = new Set([
-    'target_path', 'target_lock_path', 'qa_artifacts_root', 'qa_artifacts_dir',
-    'immutable_target', 'qa_immutable_target',
-  ]);
-  const privatePath = /(?:^|[\s`'"(])(?:\/Users\/(?!YOU(?:\/|\b))[^/\s]+|\/home\/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)/m;
-  if (privatePath.test(body)) errors.push('private user path detected outside normalized path fields');
-  for (const [field, value] of Object.entries(fields)) {
-    if (!allowedPathFields.has(field) && privatePath.test(value)) {
-      errors.push(`private user path detected in ${field}`);
-    }
-  }
+  const privatePath = /(?:^|[\s`'"(=])(?:file:\/\/)?(?:\/Users\/[^/\s]+|\/home\/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)/m;
+  if (privatePath.test(content)) errors.push('private user-specific absolute path detected');
 }
 
 function parseStateLogs(body, errors) {
+  const lines = body.split(/\r?\n/);
+  const headings = lines.reduce((indexes, line, index) => {
+    if (line.trim() === '## State transition log') indexes.push(index);
+    return indexes;
+  }, []);
+  if (headings.length !== 1) {
+    errors.push('packet must contain exactly one State transition log section');
+    return [];
+  }
+  const start = headings[0] + 1;
+  let end = lines.length;
+  for (let index = start; index < lines.length; index += 1) {
+    if (/^##\s+/.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  const outside = [...lines.slice(0, headings[0]), ...lines.slice(end)];
+  if (outside.some((line) => /^\s*(?:STATE|FROM|SUMMARY|PROOF|BLOCKER|NEXT|UPDATED_AT)\s*:/.test(line))) {
+    errors.push('state log fields are only allowed inside the State transition log section');
+  }
+
+  const section = lines.slice(start, end);
+  const nonblank = section.filter((line) => line.trim());
+  if (nonblank[0] === '```text' && nonblank.at(-1) === '```') {
+    nonblank.shift();
+    nonblank.pop();
+  } else if (nonblank.some((line) => line.startsWith('```'))) {
+    errors.push('state transition log has unmatched or unsupported code fences');
+  }
+
   const events = [];
-  const eventPattern = /(?:^|\n)STATE:\s*([^\r\n]+)\r?\nFROM:\s*([^\r\n]+)\r?\nSUMMARY:\s*([^\r\n]*)\r?\nPROOF:\s*([^\r\n]*)\r?\nBLOCKER:\s*([^\r\n]*)\r?\nNEXT:\s*([^\r\n]*)\r?\nUPDATED_AT:\s*([^\r\n]+)/g;
-  for (const match of body.matchAll(eventPattern)) {
-    events.push({
-      state: match[1].trim(), from: match[2].trim(), summary: match[3].trim(),
-      proof: match[4].trim(), blocker: match[5].trim(), next: match[6].trim(),
-      updatedAt: match[7].trim(),
-    });
+  let current = {};
+  let expectedIndex = 0;
+  for (const line of nonblank) {
+    const match = line.match(/^([A-Z_]+):(?:[ \t](.*))?$/);
+    if (!match) {
+      errors.push(`malformed state log line: ${line}`);
+      continue;
+    }
+    const [, key, rawValue = ''] = match;
+    if (!LOG_FIELDS.includes(key)) {
+      errors.push(`unknown state log field: ${key}`);
+      continue;
+    }
+    if (Object.hasOwn(current, key)) {
+      errors.push(`duplicate state log field: ${key}`);
+      continue;
+    }
+    if (key !== LOG_FIELDS[expectedIndex]) {
+      errors.push(`state log expected ${LOG_FIELDS[expectedIndex]} but found ${key}`);
+      if (key === 'STATE') {
+        current = {};
+        expectedIndex = 0;
+      } else {
+        continue;
+      }
+    }
+    current[key] = rawValue.trim();
+    expectedIndex += 1;
+    if (expectedIndex === LOG_FIELDS.length) {
+      events.push({
+        state: current.STATE,
+        from: current.FROM,
+        summary: current.SUMMARY,
+        proof: current.PROOF,
+        blocker: current.BLOCKER,
+        next: current.NEXT,
+        updatedAt: current.UPDATED_AT,
+      });
+      current = {};
+      expectedIndex = 0;
+    }
+  }
+  if (expectedIndex !== 0 || Object.keys(current).length > 0) {
+    errors.push(`incomplete trailing state log block; expected ${LOG_FIELDS[expectedIndex]}`);
   }
   for (const event of events) {
     if (!Object.hasOwn(TRANSITIONS, event.state)) errors.push(`invalid log state: ${event.state}`);
@@ -223,7 +440,7 @@ function parseStateLogs(body, errors) {
     if (event.state !== 'blocked' && event.blocker && event.blocker !== 'none') {
       errors.push(`${event.state} state log BLOCKER must be blank or none`);
     }
-    if (event.updatedAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(event.updatedAt)) {
+    if (event.updatedAt && !isUtcTimestamp(event.updatedAt)) {
       errors.push(`state log ${event.state} UPDATED_AT must be an RFC3339 UTC timestamp`);
     }
   }
@@ -246,6 +463,11 @@ function validateTransitions(events, expectedState, previousStatus, errors) {
     }
     if (Object.hasOwn(TRANSITIONS, event.from) && !TRANSITIONS[event.from].includes(event.state)) {
       errors.push(`invalid state transition: ${event.from} -> ${event.state}`);
+    }
+    if (index > 0 && isUtcTimestamp(event.updatedAt) &&
+        isUtcTimestamp(events[index - 1].updatedAt) &&
+        event.updatedAt <= events[index - 1].updatedAt) {
+      errors.push('state log UPDATED_AT timestamps must increase strictly');
     }
   }
   if (previousStatus && events.at(-1).from !== previousStatus) {
@@ -274,13 +496,16 @@ function validateRouting(fields, errors) {
       errors.push(`${role}_model and ${role}_reasoning must be set together`);
       continue;
     }
-    requireEnum(fields, `${role}_reasoning`, ['low', 'medium', 'high'], errors);
+    requireEnum(fields, `${role}_model`, MODELS, errors);
+    requireEnum(fields, `${role}_reasoning`, REASONING_LEVELS, errors);
     if (fields[`${role}_reasoning`] === 'high') {
-      requireEnum(fields, `${role}_model_routing_reason_category`, [
-        'high_stakes', 'security_sensitive', 'repeatedly_blocked', 'unusually_complex',
-      ], errors);
+      requireEnum(fields, `${role}_model_routing_reason_category`, HIGH_REASON_CATEGORIES, errors);
     } else if (fields[`${role}_model_routing_reason_category`]) {
       errors.push(`${role}_model_routing_reason_category requires high reasoning`);
+    }
+    if (fields[`${role}_model_routing_reason_note`] &&
+        !fields[`${role}_model_routing_reason_category`]) {
+      errors.push(`${role}_model_routing_reason_note requires an escalation category`);
     }
     if (fields[`${role}_model`] === 'gpt-5.6-luna') {
       if (fields[`${role}_reasoning`] !== 'medium') errors.push(`${role} Luna routing requires medium reasoning`);
@@ -290,11 +515,16 @@ function validateRouting(fields, errors) {
       if (fields[`${role}_independent_verification`] !== 'true') {
         errors.push(`${role} Luna routing requires independent verification`);
       }
+    } else if (fields[`${role}_luna_eligibility`]) {
+      errors.push(`${role}_luna_eligibility is only valid for gpt-5.6-luna`);
     }
   }
 }
 
 function validateV2(fields, body, lane, previousStatus, errors) {
+  for (const field of Object.keys(fields)) {
+    if (!V2_FIELDS.has(field)) errors.push(`unknown v2 field: ${field}`);
+  }
   for (const field of REQUIRED_V2_FIELDS) {
     if (!Object.hasOwn(fields, field)) errors.push(`missing required v2 field: ${field}`);
   }
@@ -302,23 +532,29 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   for (const field of ['id', 'created_by', 'created_at', 'target_project_id', 'target_path']) {
     requireValue(fields, field, errors);
   }
-  if (fields.id && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fields.id)) {
-    errors.push('id must be a canonical packet identifier');
-  }
+  validatePacketId(fields.id, 'id', errors);
   if (fields.target_project_id && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fields.target_project_id)) {
     errors.push('target_project_id must be a canonical project identifier');
   }
-  if (fields.created_at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fields.created_at)) {
+  if (fields.created_at && !isUtcTimestamp(fields.created_at)) {
     errors.push('created_at must be an RFC3339 UTC timestamp');
   }
   for (const field of [
     'claimed_at', 'target_lock_acquired_at', 'target_lock_released_at',
     'worker_visibility_verified_at', 'completion_callback_sent_at',
   ]) {
-    if (fields[field] && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(fields[field])) {
+    if (fields[field] && !isUtcTimestamp(fields[field])) {
       errors.push(`${field} must be an RFC3339 UTC timestamp`);
     }
   }
+  validateCommit(fields.target_commit, 'target_commit', errors);
+  if (fields.immutable_target_type === 'commit') {
+    validateCommit(fields.immutable_target, 'immutable_target', errors);
+  }
+  if (fields.qa_immutable_target_type === 'commit') {
+    validateCommit(fields.qa_immutable_target, 'qa_immutable_target', errors);
+  }
+  validateCommit(fields.qa_prior_head, 'qa_prior_head', errors);
   for (const legacyField of LEGACY_ROOT_FIELDS) {
     if (Object.hasOwn(fields, legacyField)) errors.push(`legacy field is not allowed in v2: ${legacyField}`);
   }
@@ -344,6 +580,10 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   requireEnum(fields, 'qa_publish_to_github', ['auto', 'required', 'never'], errors);
   requireEnum(fields, 'qa_worker_notification_policy', ['on_failure_or_no_github', 'always', 'never'], errors);
   requireEnum(fields, 'qa_worker_notification_status', ['not_required', 'pending', 'sent', 'failed', 'blocked'], errors);
+  requireEnum(fields, 'qa_artifact_policy', ['local_paths_only'], errors);
+  requireEnum(fields, 'root_closeout_title_status', [
+    'pending', 'verified', 'unavailable', 'failed', 'timeout', 'mismatch', 'retained',
+  ], errors);
   for (const field of [
     'requires_network', 'requires_auth', 'requires_local_gui', 'requires_browser',
     'requires_computer_use', 'requires_google_drive', 'requires_google_docs',
@@ -353,25 +593,47 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   if (!/^\d+$/.test(fields.max_runtime_minutes) || Number(fields.max_runtime_minutes) < 1) {
     errors.push('max_runtime_minutes must be a positive integer');
   }
+  const listValues = {};
   for (const field of [
     'depends_on', 'unblocks', 'required_skills', 'qa_github_comment_urls',
     'qa_publication_receipts', 'publication_receipts', 'allowed_actions',
     'forbidden_actions',
   ]) {
-    inlineList(fields[field], field, errors);
+    listValues[field] = inlineList(fields[field], field, errors);
   }
+  validateDependencyIds(listValues.depends_on, 'depends_on', errors);
+  validateDependencyIds(listValues.unblocks, 'unblocks', errors);
+  validateGithubCommentUrls(listValues.qa_github_comment_urls, 'qa_github_comment_urls', errors);
+  validatePublicationReceipts(listValues.qa_publication_receipts, 'qa_publication_receipts', errors);
+  validatePublicationReceipts(listValues.publication_receipts, 'publication_receipts', errors);
   validateRouting(fields, errors);
+  if (fields.root_closeout_title_status === 'pending') {
+    for (const field of [
+      'root_closeout_title', 'root_closeout_title_proof', 'root_closeout_title_blocker',
+    ]) requireEmpty(fields, field, errors);
+  } else if (['verified', 'retained'].includes(fields.root_closeout_title_status)) {
+    requireValue(fields, 'root_closeout_title', errors);
+    requireValue(fields, 'root_closeout_title_proof', errors);
+    requireEmpty(fields, 'root_closeout_title_blocker', errors);
+  } else {
+    requireValue(fields, 'root_closeout_title', errors);
+    requireValue(fields, 'root_closeout_title_blocker', errors);
+  }
   if ((fields.immutable_target_type === 'none') !== !fields.immutable_target) {
     errors.push('immutable_target_type and immutable_target must be set together');
   }
   if ((fields.qa_immutable_target_type === 'none') !== !fields.qa_immutable_target) {
     errors.push('qa_immutable_target_type and qa_immutable_target must be set together');
   }
+  if (fields.target_commit && fields.immutable_target_type === 'commit' &&
+      fields.immutable_target !== fields.target_commit) {
+    errors.push('commit immutable_target must equal target_commit');
+  }
 
   if (fields.promotion_policy === 'auto') {
     if (fields.blocker_type !== 'dependency') errors.push('auto promotion requires blocker_type dependency');
     if (fields.ready_when !== 'dependencies_satisfied') errors.push('auto promotion requires ready_when dependencies_satisfied');
-    if (inlineList(fields.depends_on, 'depends_on', []).length === 0) errors.push('auto promotion requires depends_on');
+    if (listValues.depends_on.length === 0) errors.push('auto promotion requires depends_on');
   }
   if (fields.callback_handoff_required === 'true' && ['claimed', 'qa'].includes(fields.status)) {
     requireValue(fields, 'root_task_id', errors);
@@ -390,6 +652,12 @@ function validateV2(fields, body, lane, previousStatus, errors) {
         fields.callback_source_task_id !== fields.completion_callback_worker_task_id) {
       errors.push('callback_source_task_id must equal completion_callback_worker_task_id');
     }
+    const expectedLane = CALLBACK_LANE_BY_RESULT.get(fields.completion_callback_result);
+    if (!expectedLane) {
+      errors.push('completion_callback_result is not recognized');
+    } else if (fields.completion_callback_next_lane !== expectedLane) {
+      errors.push(`completion_callback_result ${fields.completion_callback_result} requires next lane ${expectedLane}`);
+    }
   } else {
     for (const field of [
       'callback_source_task_id', 'completion_callback_result',
@@ -400,24 +668,82 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   }
 
   if (fields.worker_creation_status === 'ambiguous') {
-    requireValue(fields, 'worker_creation_attempt_id', errors);
-    requireValue(fields, 'recovery_id', errors);
+    for (const field of [
+      'worker_creation_surface', 'worker_creation_attempt_id', 'worker_routing_blocker', 'recovery_id',
+    ]) requireValue(fields, field, errors);
     if (fields.worker_visibility_status !== 'ambiguous') errors.push('ambiguous creation requires ambiguous visibility');
+    if (fields.recovery_status !== 'investigating') errors.push('ambiguous creation requires recovery_status investigating');
     if (fields.recovery_pending !== 'true') errors.push('ambiguous creation requires recovery_pending true');
     if (fields.status !== 'claimed') errors.push('ambiguous creation must remain claimed');
+    for (const field of [
+      'worker_thread_id', 'worker_task_link', 'worker_visibility_verified_at', 'worker_visibility_proof',
+    ]) requireEmpty(fields, field, errors);
+  }
+  if (fields.worker_creation_status === 'pending') {
+    if (fields.worker_visibility_status !== 'pending') errors.push('pending creation requires pending visibility');
+    if (fields.recovery_status !== 'not_required' || fields.recovery_pending !== 'false') {
+      errors.push('pending creation cannot retain recovery state');
+    }
+    requireEmpty(fields, 'recovery_id', errors);
   }
   if (fields.worker_creation_status === 'canonical') {
-    for (const field of ['worker_creation_attempt_id', 'worker_thread_id', 'worker_creation_proof']) {
+    for (const field of [
+      'worker_creation_surface', 'worker_creation_attempt_id', 'worker_thread_id',
+      'worker_task_title', 'worker_task_link', 'worker_host_identity', 'worker_creation_proof',
+      'worker_visibility_verified_at', 'worker_visibility_proof',
+    ]) {
       requireValue(fields, field, errors);
     }
     if (fields.worker_visibility_status !== 'verified') errors.push('canonical creation requires verified visibility');
+    if (fields.worker_visibility_proof && !isCanonicalVisibilityProof(fields.worker_visibility_proof)) {
+      errors.push('canonical visibility proof must use method=app_native_list_read|receipt=<receipt>');
+    }
     if (fields.recovery_pending !== 'false') errors.push('canonical creation requires recovery_pending false');
+    if (fields.recovery_status === 'investigating') errors.push('canonical creation cannot retain investigating recovery');
+    requireEmpty(fields, 'worker_routing_blocker', errors);
+  }
+  if (fields.worker_creation_status === 'completed') {
+    for (const field of [
+      'worker_creation_surface', 'worker_creation_attempt_id', 'worker_thread_id',
+      'worker_task_title', 'worker_task_link', 'worker_host_identity', 'worker_creation_proof',
+      'worker_visibility_verified_at', 'worker_visibility_proof',
+    ]) requireValue(fields, field, errors);
+    if (fields.worker_visibility_status !== 'verified') errors.push('completed creation requires verified visibility');
+    if (fields.worker_visibility_proof && !isCanonicalVisibilityProof(fields.worker_visibility_proof)) {
+      errors.push('completed visibility proof must use method=app_native_list_read|receipt=<receipt>');
+    }
+    if (fields.recovery_pending !== 'false') errors.push('completed creation requires recovery_pending false');
+  }
+  if (['canonical', 'completed'].includes(fields.worker_creation_status) &&
+      fields.worker_task_link &&
+      !isSupportedTaskDirective(fields.worker_task_link, fields.worker_thread_id)) {
+    errors.push('worker_task_link must be the exact supported directive for worker_thread_id');
+  }
+  if (fields.worker_visibility_status === 'verified' &&
+      !['canonical', 'completed'].includes(fields.worker_creation_status)) {
+    errors.push('verified visibility requires canonical or completed creation');
+  }
+  if (fields.worker_visibility_status !== 'verified') {
+    requireEmpty(fields, 'worker_visibility_verified_at', errors);
+    requireEmpty(fields, 'worker_visibility_proof', errors);
   }
   if (fields.dispatch_mode === 'portable_only') {
     if (fields.worker_visibility_status !== 'portable_only' && fields.worker_visibility_status !== 'pending') {
       errors.push('portable_only dispatch requires pending or portable_only visibility');
     }
     if (fields.worker_thread_id) errors.push('portable_only dispatch cannot set worker_thread_id');
+    if (fields.worker_creation_status === 'portable_only') {
+      for (const field of ['worker_creation_surface', 'worker_portable_session_id']) {
+        requireValue(fields, field, errors);
+      }
+    }
+  }
+  if (fields.worker_creation_status === 'portable_only') {
+    if (fields.dispatch_mode !== 'portable_only') errors.push('portable_only creation requires portable_only dispatch');
+    if (fields.worker_visibility_status !== 'portable_only') errors.push('portable_only creation requires portable_only visibility');
+    if (fields.recovery_status !== 'not_required' || fields.recovery_pending !== 'false') {
+      errors.push('portable_only creation cannot retain recovery state');
+    }
   }
 
   const lockHeld = ['claimed', 'qa'].includes(fields.status);
@@ -474,6 +800,57 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   if (fields.status === 'archive') requireValue(fields, 'archive_reason', errors);
   else requireEmpty(fields, 'archive_reason', errors);
 
+  requireValue(fields, 'qa_artifacts_root', errors);
+  if (fields.qa_artifacts_root && !isPortableArtifactRoot(fields.qa_artifacts_root)) {
+    errors.push('qa_artifacts_root must be relative or rooted at ${WORKBOARD_ROOT} without traversal');
+  }
+  if (fields.qa_artifacts_dir) {
+    const expectedArtifactDir = `${fields.qa_artifacts_root}/${fields.id}`;
+    if (fields.qa_artifacts_dir !== expectedArtifactDir) {
+      errors.push('qa_artifacts_dir must equal qa_artifacts_root plus the canonical packet ID');
+    }
+  }
+  if ((fields.qa_prior_head && !fields.qa_prior_result) ||
+      (!fields.qa_prior_head && fields.qa_prior_result)) {
+    errors.push('qa_prior_head and qa_prior_result must be set together');
+  }
+  if (fields.qa_prior_result && !['pass', 'fail', 'blocked'].includes(fields.qa_prior_result)) {
+    errors.push('qa_prior_result must be pass, fail, or blocked');
+  }
+  if (fields.qa_result && !['pass', 'fail', 'blocked'].includes(fields.qa_result)) {
+    errors.push('qa_result must be pass, fail, or blocked');
+  }
+  const qaCompleted = ['pass', 'fail', 'blocked'].includes(fields.qa_status);
+  const qaHasThread = ['active', 'continuation'].includes(fields.qa_status) || qaCompleted;
+  if (fields.qa_required === 'false' && fields.qa_status !== 'not_required') {
+    errors.push('qa_required false requires qa_status not_required');
+  }
+  if (fields.qa_required === 'true' && fields.qa_status === 'not_required') {
+    errors.push('qa_required true requires a QA status');
+  }
+  if (['active', 'continuation'].includes(fields.qa_status) && fields.status !== 'qa') {
+    errors.push(`${fields.qa_status} QA status must remain in the qa lane`);
+  }
+  if (qaHasThread) requireValue(fields, 'qa_thread_id', errors);
+  else requireEmpty(fields, 'qa_thread_id', errors);
+  if (qaCompleted) {
+    if (fields.qa_result !== fields.qa_status) errors.push('completed qa_status must equal qa_result');
+    for (const field of [
+      'qa_prior_head', 'qa_prior_result', 'qa_artifacts_root', 'qa_artifacts_dir',
+      'qa_immutable_target_type', 'qa_immutable_target', 'qa_model', 'qa_reasoning',
+    ]) requireValue(fields, field, errors);
+    if (fields.qa_required !== 'true') errors.push('completed QA requires qa_required true');
+  } else {
+    requireEmpty(fields, 'qa_result', errors);
+  }
+  if (fields.qa_status === 'continuation') {
+    requireValue(fields, 'qa_prior_head', errors);
+    requireValue(fields, 'qa_prior_result', errors);
+  } else if (!qaCompleted) {
+    requireEmpty(fields, 'qa_prior_head', errors);
+    requireEmpty(fields, 'qa_prior_result', errors);
+  }
+
   if (fields.status === 'qa') {
     if (fields.qa_required !== 'true') errors.push('qa lane requires qa_required true');
     requireEnum(fields, 'qa_status', ['pending', 'active', 'continuation'], errors);
@@ -485,8 +862,21 @@ function validateV2(fields, body, lane, previousStatus, errors) {
         fields.qa_immutable_target !== fields.target_commit) {
       errors.push('qa_immutable_target must equal immutable_target or target_commit');
     }
-    if ((fields.qa_prior_head && !fields.qa_prior_result) || (!fields.qa_prior_head && fields.qa_prior_result)) {
-      errors.push('qa_prior_head and qa_prior_result must be set together');
+    const expectedQaType = fields.immutable_target
+      ? fields.immutable_target_type
+      : fields.target_commit ? 'commit' : 'none';
+    if (fields.qa_immutable_target_type !== expectedQaType) {
+      errors.push('qa_immutable_target_type must match the pinned target type');
+    }
+  }
+  if (qaCompleted) {
+    const expectedQaTarget = fields.immutable_target || fields.target_commit;
+    const expectedQaType = fields.immutable_target
+      ? fields.immutable_target_type
+      : fields.target_commit ? 'commit' : 'none';
+    if (!expectedQaTarget || fields.qa_immutable_target !== expectedQaTarget ||
+        fields.qa_immutable_target_type !== expectedQaType) {
+      errors.push('completed QA must retain the exact pinned immutable target and type');
     }
   }
   if (['review', 'done'].includes(fields.status) && fields.qa_required === 'true') {
@@ -502,22 +892,11 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   if (fields.qa_required === 'true' && ['qa', 'review', 'done'].includes(fields.status)) {
     requireValue(fields, 'qa_artifacts_root', errors);
     requireValue(fields, 'qa_artifacts_dir', errors);
-    if (/^(?:\/tmp|[A-Za-z]:\\Temp)(?:[\\/]|$)/i.test(fields.qa_artifacts_root) ||
-        /^(?:\/tmp|[A-Za-z]:\\Temp)(?:[\\/]|$)/i.test(fields.qa_artifacts_dir)) {
-      errors.push('v2 QA artifacts must use a durable non-temporary location');
-    }
   }
-  if (fields.qa_result && !['pass', 'fail', 'blocked'].includes(fields.qa_result)) {
-    errors.push('qa_result must be pass, fail, or blocked');
-  }
-  if (fields.qa_status === 'continuation') {
-    requireValue(fields, 'qa_prior_head', errors);
-    requireValue(fields, 'qa_prior_result', errors);
-  }
-  if (fields.publication_status === 'published' && inlineList(fields.publication_receipts, 'publication_receipts', []).length === 0) {
+  if (fields.publication_status === 'published' && listValues.publication_receipts.length === 0) {
     errors.push('published status requires publication_receipts');
   }
-  if (fields.qa_publication_status === 'published' && inlineList(fields.qa_publication_receipts, 'qa_publication_receipts', []).length === 0) {
+  if (fields.qa_publication_status === 'published' && listValues.qa_publication_receipts.length === 0) {
     errors.push('published QA status requires qa_publication_receipts');
   }
 
@@ -549,7 +928,7 @@ function validateV2(fields, body, lane, previousStatus, errors) {
 export function validateTaskPacket(content, options = {}) {
   const errors = [];
   const { fields, body } = parseFrontmatter(content, errors);
-  scanSensitiveContent(content, fields, body, errors);
+  scanSensitiveContent(content, errors);
   const inferredLane = options.lane || null;
   const version = fields.packet_schema_version;
   if (!version) {
