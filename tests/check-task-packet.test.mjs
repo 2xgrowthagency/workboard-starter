@@ -8,6 +8,7 @@ import { validateTaskPacket } from '../scripts/check-task-packet.mjs';
 
 const TARGET_SHA = '0123456789abcdef0123456789abcdef01234567';
 const PRIOR_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
+const APP_NATIVE_SURFACE = 'app-native task tools';
 
 function fields(overrides = {}) {
   return {
@@ -92,7 +93,7 @@ function activePacket(overrides = {}) {
 function canonicalCallbackPacket(overrides = {}) {
   return activePacket({
     worker_thread_id: 'worker-task-1', worker_task_title: 'Build packet metadata',
-    worker_creation_surface: 'app-native create/list/read tools',
+    worker_creation_surface: APP_NATIVE_SURFACE,
     worker_creation_attempt_id: 'creation-attempt-1', worker_creation_status: 'canonical',
     worker_creation_proof: 'create and canonical readback receipt',
     worker_task_link: '::created-thread{threadId="worker-task-1"}',
@@ -103,7 +104,7 @@ function canonicalCallbackPacket(overrides = {}) {
     completion_callback_result: 'ready_for_review',
     completion_callback_worker_task_id: 'worker-task-1',
     completion_callback_worker_creation_attempt_id: 'creation-attempt-1',
-    completion_callback_immutable_proof: TARGET_SHA,
+    completion_callback_immutable_proof: `type=commit|source=target_commit|sha=${TARGET_SHA}`,
     completion_callback_next_lane: 'tasks/review',
     completion_callback_sent_at: '2026-07-17T10:03:00Z',
     ...overrides,
@@ -363,7 +364,7 @@ test('rejects all 13 independent QA fail-open fixtures through normalized schema
     {
       name: 'inconsistent ambiguous recovery',
       content: activePacket({
-        worker_creation_surface: 'app-native create/list/read tools',
+        worker_creation_surface: APP_NATIVE_SURFACE,
         worker_creation_attempt_id: 'attempt-1', worker_creation_status: 'ambiguous',
         worker_visibility_status: 'ambiguous', worker_routing_blocker: 'readback timed out',
         recovery_id: '20260717-001-recovery', recovery_status: 'completed', recovery_pending: 'true',
@@ -436,13 +437,139 @@ test('strict schemas reject unknown frontmatter and malformed, duplicate, or mis
     .includes('state log fields are only allowed inside the State transition log section'));
 });
 
-test('accepts exact typed publication receipts and rejects incompatible receipt destinations', () => {
-  const receipt = 'type=github_comment|destination=github_pr|' +
+test('accepts exact typed publication receipts and rejects malformed provenance', () => {
+  const receipt = 'type=github_pr|destination=2xgrowthagency/workboard-starter#34|' +
     'url=https://github.com/2xgrowthagency/workboard-starter/pull/34#issuecomment-5000759212';
-  const published = packet({ publication_status: 'published', publication_receipts: `[${receipt}]` });
+  const published = packet({
+    repo: '2xgrowthagency/workboard-starter', github_pr: '34',
+    publication_status: 'published', publication_receipts: `[${receipt}]`,
+  });
   assert.deepEqual(validateTaskPacket(published, { lane: 'ready' }), []);
 
-  const incompatible = published.replace('destination=github_pr', 'destination=artifact');
-  assert.ok(validateTaskPacket(incompatible, { lane: 'ready' })
-    .includes('publication_receipts entry has an incompatible type and destination'));
+  const invalidCases = [
+    ['wrong kind', published.replace('/pull/34', '/issues/34'), /exact matching public GitHub comment URL/],
+    [
+      'wrong repository',
+      published
+        .replace('destination=2xgrowthagency/workboard-starter', 'destination=other/repo')
+        .replace('url=https://github.com/2xgrowthagency/workboard-starter', 'url=https://github.com/other/repo'),
+      /destination repository must equal packet repo/,
+    ],
+    ['zero destination ID', published.replaceAll('#34', '#0').replace('/34#', '/0#'), /positive-id/],
+    ['URL suffix', published.replace('#issuecomment-', '/extra#issuecomment-'), /exact matching public GitHub comment URL/],
+    ['URL case', published.replace('/workboard-starter/pull', '/Workboard-Starter/pull'), /exact matching public GitHub comment URL/],
+    ['destination case', published.replace('2xgrowthagency/workboard-starter#34', '2xgrowthagency/Workboard-Starter#34'), /lowercase owner\/repo/],
+    ['wrong packet ID', published.replace('github_pr: 34', 'github_pr: 35'), /destination ID must equal packet github_pr/],
+  ];
+  for (const [name, content, expected] of invalidCases) {
+    const errors = validateTaskPacket(content, { lane: 'ready' });
+    assert.ok(errors.some((error) => expected.test(error)), `${name}: ${errors.join('; ')}`);
+  }
+
+  const issueReceipt = 'type=github_issue|destination=2xgrowthagency/workboard-starter#11|' +
+    'url=https://github.com/2xgrowthagency/workboard-starter/issues/11#issuecomment-5000759213';
+  const publishedIssue = packet({
+    repo: '2xgrowthagency/workboard-starter', github_issue: '11',
+    publication_status: 'published', publication_receipts: `[${issueReceipt}]`,
+  });
+  assert.deepEqual(validateTaskPacket(publishedIssue, { lane: 'ready' }), []);
+  assert.ok(validateTaskPacket(publishedIssue.replace('/issues/11', '/pull/11'), { lane: 'ready' })
+    .some((error) => /exact matching public GitHub comment URL/.test(error)));
+});
+
+test('callback immutable proof is structured and bound to the applicable pinned commit', () => {
+  assert.deepEqual(validateTaskPacket(canonicalCallbackPacket(), { lane: 'claimed' }), []);
+
+  const invalidCases = [
+    ['opaque SHA', TARGET_SHA, /must use type=commit/],
+    [
+      'mismatched SHA',
+      `type=commit|source=target_commit|sha=${PRIOR_SHA}`,
+      /commit SHA must equal packet target_commit/,
+    ],
+    [
+      'wrong source',
+      `type=commit|source=qa_prior_head|sha=${TARGET_SHA}`,
+      /requires immutable proof source target_commit/,
+    ],
+    [
+      'uppercase SHA',
+      `type=commit|source=target_commit|sha=${TARGET_SHA.toUpperCase()}`,
+      /must use type=commit/,
+    ],
+  ];
+  for (const [name, proof, expected] of invalidCases) {
+    const errors = validateTaskPacket(
+      canonicalCallbackPacket({ completion_callback_immutable_proof: proof }),
+      { lane: 'claimed' },
+    );
+    assert.ok(errors.some((error) => expected.test(error)), `${name}: ${errors.join('; ')}`);
+  }
+
+  const qaCallback = packet({
+    status: 'ready', claimed_by: 'root', claimed_at: '2026-07-17T10:01:00Z',
+    root_task_id: 'root-task', target_commit: PRIOR_SHA,
+    immutable_target_type: 'commit', immutable_target: PRIOR_SHA,
+    target_lock_status: 'released', target_lock_project_id: 'example',
+    target_lock_path: '/workspace/example', target_lock_acquired_at: '2026-07-17T10:01:00Z',
+    target_lock_released_at: '2026-07-17T10:03:00Z', builder_thread_id: 'builder-task',
+    qa_required: 'true', qa_status: 'fail', qa_thread_id: 'qa-task',
+    qa_model: 'gpt-5.6-sol', qa_reasoning: 'medium',
+    qa_artifacts_dir: '${WORKBOARD_ROOT}/qa-artifacts/20260717-001-example',
+    qa_immutable_target_type: 'commit', qa_immutable_target: PRIOR_SHA,
+    qa_prior_head: PRIOR_SHA, qa_prior_result: 'fail', qa_result: 'fail',
+    callback_source_task_id: 'qa-task', completion_callback_status: 'sent',
+    completion_callback_result: 'fail', completion_callback_worker_task_id: 'qa-task',
+    completion_callback_worker_creation_attempt_id: 'qa-attempt-1',
+    completion_callback_immutable_proof: `type=commit|source=qa_prior_head|sha=${PRIOR_SHA}`,
+    completion_callback_next_lane: 'tasks/ready',
+    completion_callback_sent_at: '2026-07-17T10:04:00Z',
+  }, [
+    { state: 'ready', from: 'created' },
+    { state: 'active', from: 'ready' },
+    { state: 'qa', from: 'active' },
+    { state: 'ready', from: 'qa' },
+  ]);
+  assert.deepEqual(validateTaskPacket(qaCallback, { lane: 'ready' }), []);
+  const qaMismatch = qaCallback.replace(`sha=${PRIOR_SHA}`, `sha=${TARGET_SHA}`);
+  assert.ok(validateTaskPacket(qaMismatch, { lane: 'ready' })
+    .includes('completion callback commit SHA must equal packet qa_prior_head'));
+
+  const builderBlockedAfterQa = packet({
+    status: 'blocked', blocker_type: 'implementation', claimed_by: 'root',
+    claimed_at: '2026-07-17T10:01:00Z', root_task_id: 'root-task',
+    target_commit: TARGET_SHA, immutable_target_type: 'commit', immutable_target: TARGET_SHA,
+    target_lock_status: 'released', target_lock_project_id: 'example',
+    target_lock_path: '/workspace/example', target_lock_acquired_at: '2026-07-17T10:01:00Z',
+    target_lock_released_at: '2026-07-17T10:03:00Z', builder_thread_id: 'builder-task',
+    qa_required: 'true', qa_status: 'blocked', qa_thread_id: 'prior-qa-task',
+    qa_model: 'gpt-5.6-sol', qa_reasoning: 'medium',
+    qa_artifacts_dir: '${WORKBOARD_ROOT}/qa-artifacts/20260717-001-example',
+    qa_immutable_target_type: 'commit', qa_immutable_target: TARGET_SHA,
+    qa_prior_head: TARGET_SHA, qa_prior_result: 'blocked', qa_result: 'blocked',
+    callback_source_task_id: 'builder-task', completion_callback_status: 'sent',
+    completion_callback_result: 'blocked',
+    completion_callback_worker_task_id: 'builder-task',
+    completion_callback_worker_creation_attempt_id: 'builder-attempt-2',
+    completion_callback_immutable_proof: `type=commit|source=target_commit|sha=${TARGET_SHA}`,
+    completion_callback_next_lane: 'tasks/blocked',
+    completion_callback_sent_at: '2026-07-17T10:04:00Z',
+  }, [
+    { state: 'ready', from: 'created' },
+    { state: 'active', from: 'ready' },
+    { state: 'blocked', from: 'active', blocker: 'implementation failed' },
+  ]);
+  assert.deepEqual(validateTaskPacket(builderBlockedAfterQa, { lane: 'blocked' }), []);
+});
+
+test('canonical and ambiguous app-native creation require the exact live surface enum', () => {
+  for (const surface of ['email', 'helper', 'app-server', 'unknown', 'App-native task tools']) {
+    const errors = validateTaskPacket(
+      canonicalCallbackPacket({ worker_creation_surface: surface }),
+      { lane: 'claimed' },
+    );
+    assert.ok(errors.includes(
+      `canonical creation requires worker_creation_surface ${APP_NATIVE_SURFACE}`,
+    ), `${surface}: ${errors.join('; ')}`);
+  }
 });

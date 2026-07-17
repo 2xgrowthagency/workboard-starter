@@ -47,7 +47,8 @@ blocks, secrets, and user-specific absolute paths with
 each meaningful transition so everyone sees the same board. The normalized
 contract and explicit legacy migration path are in `docs/task-packet-schema.md`.
 
-Canonical app-native visibility requires a nonblank creation surface and the
+Canonical app-native visibility requires exact creation surface
+`app-native task tools` and the
 exact `method=app_native_list_read|receipt=<receipt>` proof plus its UTC
 verification timestamp. Ambiguous creation keeps those verified fields empty
 and remains tied to investigating recovery evidence.
@@ -276,9 +277,9 @@ not infer model policy from private memory or unrelated task history.
 11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, pin `target_commit` or another immutable target, set the exact target lock fields, append `STATE: active`, validate the packet, then commit/push before delegating.
 12. Persist a new `worker_creation_attempt_id` before every actual create call, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write canonical identity only after complete app-native proof. Keep one stable `recovery_id` for an ambiguous incident; an authorized replacement receives a new attempt ID. Preserve the original canonical builder as `builder_thread_id` before creating QA.
 13. Resolve and validate the role's model/reasoning route, then give the worker the full task packet plus the exact worker handoff prompt below.
-14. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, and lane all match the source packet.
+14. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, lane, and exact `type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>` proof all match the source packet's applicable pinned commit.
 15. Inspect `tasks/qa/`. For each pending packet, verify its relative or `${WORKBOARD_ROOT}` artifact root, exact `<root>/<packet-id>` directory, copied immutable target type/value, and full-SHA prior head plus exact prior result for continuations; record `qa_thread_id` when QA becomes active, then launch one separate `[qa] <short label>` task inside the existing target project.
-16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record typed `type=...|destination=...|url=https://...` `qa_publication_receipts` or exact fallback status separately from the verdict.
+16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record exact `type=<github_issue|github_pr>|destination=<lowercase-owner/repo>#<positive-id>|url=https://github.com/<same-owner>/<same-repo>/<issues|pull>/<same-id>#issuecomment-<positive-id>` `qa_publication_receipts` associated with packet `repo` and numeric issue/PR fields, or exact fallback status separately from the verdict.
 17. Before leaving QA, copy the completed immutable target/result into `qa_prior_head`/`qa_prior_result` and retain durable artifacts. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.

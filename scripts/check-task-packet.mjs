@@ -9,6 +9,9 @@ const LANES = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done',
 const LOG_FIELDS = ['STATE', 'FROM', 'SUMMARY', 'PROOF', 'BLOCKER', 'NEXT', 'UPDATED_AT'];
 const PACKET_ID_PATTERN = /^\d{8}-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
+const GITHUB_REPO_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?\/[a-z0-9._-]+$/;
+const POSITIVE_ID_PATTERN = /^[1-9]\d*$/;
+const LIVE_APP_NATIVE_CREATION_SURFACE = 'app-native task tools';
 const MODELS = ['gpt-5.6-sol', 'gpt-5.6-luna'];
 const REASONING_LEVELS = ['low', 'medium', 'high'];
 const HIGH_REASON_CATEGORIES = [
@@ -261,31 +264,27 @@ function parseHttpsUrl(value, field, errors) {
   return parsed;
 }
 
-function isGithubCommentUrl(parsed) {
-  return parsed?.hostname === 'github.com' &&
-    /^\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+$/.test(parsed.pathname) &&
-    /^#issuecomment-\d+$/.test(parsed.hash);
+function parseGithubCommentUrl(value) {
+  const match = value.match(
+    /^https:\/\/github\.com\/([a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?)\/([a-z0-9._-]+)\/(issues|pull)\/([1-9]\d*)#issuecomment-([1-9]\d*)$/,
+  );
+  if (!match) return null;
+  const [, owner, repo, kind, number] = match;
+  return { repo: `${owner}/${repo}`, kind, number };
 }
 
 function validateGithubCommentUrls(values, field, errors) {
   for (const value of values) {
     const parsed = parseHttpsUrl(value, `${field} entry`, errors);
-    if (parsed && !isGithubCommentUrl(parsed)) {
+    if (parsed && !parseGithubCommentUrl(value)) {
       errors.push(`${field} entry must be an exact GitHub issue or PR comment URL`);
     }
   }
 }
 
-function validatePublicationReceipts(values, field, errors) {
-  const allowedDestinations = {
-    github_comment: new Set(['github_issue', 'github_pr']),
-    github_release: new Set(['github_release']),
-    artifact: new Set(['artifact']),
-  };
+function validatePublicationReceipts(values, field, fields, errors) {
   for (const value of values) {
-    const match = value.match(
-      /^type=(github_comment|github_release|artifact)\|destination=(github_issue|github_pr|github_release|artifact)\|url=(.+)$/,
-    );
+    const match = value.match(/^type=(github_issue|github_pr|github_release|artifact)\|destination=([^|]+)\|url=([^|]+)$/);
     if (!match) {
       errors.push(
         `${field} entry must use type=<type>|destination=<destination>|url=<https-url>`,
@@ -293,21 +292,49 @@ function validatePublicationReceipts(values, field, errors) {
       continue;
     }
     const [, type, destination, url] = match;
-    if (!allowedDestinations[type].has(destination)) {
-      errors.push(`${field} entry has an incompatible type and destination`);
-    }
     const parsed = parseHttpsUrl(url, `${field} entry URL`, errors);
     if (!parsed) continue;
-    if (type === 'github_comment' && !isGithubCommentUrl(parsed)) {
-      errors.push(`${field} GitHub comment receipt must use an exact issue or PR comment URL`);
+    if (type === 'github_issue' || type === 'github_pr') {
+      const destinationMatch = destination.match(/^([a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?\/[a-z0-9._-]+)#([1-9]\d*)$/);
+      if (!destinationMatch) {
+        errors.push(`${field} ${type} destination must use lowercase owner/repo#<positive-id>`);
+        continue;
+      }
+      const [, destinationRepo, destinationNumber] = destinationMatch;
+      const comment = parseGithubCommentUrl(url);
+      const expectedKind = type === 'github_issue' ? 'issues' : 'pull';
+      if (!comment || comment.kind !== expectedKind) {
+        errors.push(`${field} ${type} receipt must use an exact matching public GitHub comment URL`);
+        continue;
+      }
+      if (comment.repo !== destinationRepo || comment.number !== destinationNumber) {
+        errors.push(`${field} ${type} URL must match its destination repository and ID`);
+      }
+      if (fields.repo !== destinationRepo) {
+        errors.push(`${field} ${type} destination repository must equal packet repo`);
+      }
+      if (fields[type] !== destinationNumber) {
+        errors.push(`${field} ${type} destination ID must equal packet ${type}`);
+      }
     }
     if (type === 'github_release' && (
+      destination !== 'github_release' ||
       parsed.hostname !== 'github.com' ||
       !/^\/[^/]+\/[^/]+\/releases\/tag\/[^/]+$/.test(parsed.pathname)
     )) {
       errors.push(`${field} GitHub release receipt must use an exact GitHub release URL`);
     }
+    if (type === 'artifact' && destination !== 'artifact') {
+      errors.push(`${field} artifact receipt destination must be artifact`);
+    }
   }
+}
+
+function parseCallbackImmutableProof(value) {
+  const match = value.match(
+    /^type=commit\|source=(target_commit|qa_prior_head)\|sha=([0-9a-f]{40})$/,
+  );
+  return match ? { source: match[1], sha: match[2] } : null;
 }
 
 function isPortableArtifactRoot(value) {
@@ -604,9 +631,22 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   validateDependencyIds(listValues.depends_on, 'depends_on', errors);
   validateDependencyIds(listValues.unblocks, 'unblocks', errors);
   validateGithubCommentUrls(listValues.qa_github_comment_urls, 'qa_github_comment_urls', errors);
-  validatePublicationReceipts(listValues.qa_publication_receipts, 'qa_publication_receipts', errors);
-  validatePublicationReceipts(listValues.publication_receipts, 'publication_receipts', errors);
+  if (fields.repo && !GITHUB_REPO_PATTERN.test(fields.repo)) {
+    errors.push('repo must use canonical lowercase owner/repo format');
+  }
+  for (const field of ['github_issue', 'github_pr']) {
+    if (fields[field] && !POSITIVE_ID_PATTERN.test(fields[field])) {
+      errors.push(`${field} must be a positive numeric ID`);
+    }
+  }
+  validatePublicationReceipts(
+    listValues.qa_publication_receipts, 'qa_publication_receipts', fields, errors,
+  );
+  validatePublicationReceipts(
+    listValues.publication_receipts, 'publication_receipts', fields, errors,
+  );
   validateRouting(fields, errors);
+  const events = parseStateLogs(body, errors);
   if (fields.root_closeout_title_status === 'pending') {
     for (const field of [
       'root_closeout_title', 'root_closeout_title_proof', 'root_closeout_title_blocker',
@@ -658,6 +698,24 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     } else if (fields.completion_callback_next_lane !== expectedLane) {
       errors.push(`completion_callback_result ${fields.completion_callback_result} requires next lane ${expectedLane}`);
     }
+    const proof = parseCallbackImmutableProof(fields.completion_callback_immutable_proof);
+    if (!proof) {
+      errors.push(
+        'completion_callback_immutable_proof must use ' +
+        'type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>',
+      );
+    } else {
+      const qaResult = ['pass', 'fail'].includes(fields.completion_callback_result) ||
+        (fields.completion_callback_result === 'blocked' && events.at(-1)?.from === 'qa');
+      const expectedSource = qaResult ? 'qa_prior_head' : 'target_commit';
+      const expectedSha = fields[expectedSource];
+      if (proof.source !== expectedSource) {
+        errors.push(`completion callback result requires immutable proof source ${expectedSource}`);
+      }
+      if (!COMMIT_PATTERN.test(expectedSha || '') || proof.sha !== expectedSha) {
+        errors.push(`completion callback commit SHA must equal packet ${expectedSource}`);
+      }
+    }
   } else {
     for (const field of [
       'callback_source_task_id', 'completion_callback_result',
@@ -678,6 +736,17 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     for (const field of [
       'worker_thread_id', 'worker_task_link', 'worker_visibility_verified_at', 'worker_visibility_proof',
     ]) requireEmpty(fields, field, errors);
+  }
+  if (['ambiguous', 'canonical', 'completed'].includes(fields.worker_creation_status)) {
+    if (fields.dispatch_mode !== 'app_native') {
+      errors.push(`${fields.worker_creation_status} creation requires app_native dispatch`);
+    }
+    if (fields.worker_creation_surface !== LIVE_APP_NATIVE_CREATION_SURFACE) {
+      errors.push(
+        `${fields.worker_creation_status} creation requires worker_creation_surface ` +
+        LIVE_APP_NATIVE_CREATION_SURFACE,
+      );
+    }
   }
   if (fields.worker_creation_status === 'pending') {
     if (fields.worker_visibility_status !== 'pending') errors.push('pending creation requires pending visibility');
@@ -740,6 +809,9 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   }
   if (fields.worker_creation_status === 'portable_only') {
     if (fields.dispatch_mode !== 'portable_only') errors.push('portable_only creation requires portable_only dispatch');
+    if (fields.worker_creation_surface !== 'portable_only') {
+      errors.push('portable_only creation requires worker_creation_surface portable_only');
+    }
     if (fields.worker_visibility_status !== 'portable_only') errors.push('portable_only creation requires portable_only visibility');
     if (fields.recovery_status !== 'not_required' || fields.recovery_pending !== 'false') {
       errors.push('portable_only creation cannot retain recovery state');
@@ -900,7 +972,6 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     errors.push('published QA status requires qa_publication_receipts');
   }
 
-  const events = parseStateLogs(body, errors);
   if (events.at(-1)?.from === 'qa') {
     const expectedResult = { ready: 'fail', blocked: 'blocked', review: 'pass' }[fields.status];
     if (expectedResult && fields.qa_result !== expectedResult) {

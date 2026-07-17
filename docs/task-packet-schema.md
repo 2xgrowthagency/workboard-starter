@@ -49,10 +49,12 @@ resolved before the QA companion is created.
 - **Publication and archive:** generic `publication_status` and
   `publication_receipts`, QA publication receipts, and `archive_reason`.
 
-Publication receipt entries use the exact flat schema
-`type=<github_comment|github_release|artifact>|destination=<github_issue|github_pr|github_release|artifact>|url=<absolute-https-url>`.
-The type and destination must be compatible, and GitHub comment URLs must
-include the exact `#issuecomment-<id>` fragment. Never store tokens,
+GitHub issue and PR publication receipts use the exact flat schema
+`type=<github_issue|github_pr>|destination=<lowercase-owner/repo>#<positive-id>|url=https://github.com/<same-owner>/<same-repo>/<issues|pull>/<same-id>#issuecomment-<positive-id>`.
+The repository and ID must also equal packet `repo` and the corresponding
+numeric `github_issue` or `github_pr`. Kind, path, case, suffix, repository, or
+ID mismatches fail closed. GitHub release and artifact receipts retain their
+compatible typed destinations and absolute HTTPS URLs. Never store tokens,
 credentials, local-only evidence contents, or private home-directory paths in
 receipt values.
 
@@ -73,11 +75,17 @@ receipt values.
 visibility, one attempt ID, one recovery ID, investigating recovery,
 `recovery_pending: true`, an exact routing blocker, and the held lock preserved;
 canonical identity and verified proof fields stay empty.
-`worker_creation_status: canonical` requires the creation surface, canonical
-task/attempt/title/link/host, creation proof, exact
+Canonical, completed, or ambiguous app-native creation requires exactly
+`worker_creation_surface: app-native task tools`. Canonical creation requires
+the canonical task/attempt/title/link/host, creation proof, exact
 `method=app_native_list_read|receipt=<receipt>` visibility proof and timestamp,
 and no pending recovery.
 Portable dispatch leaves `worker_thread_id` empty.
+
+Non-pending callback immutable proof is structured as
+`type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>`.
+Worker results use and equal `target_commit`; QA pass, fail, or QA-blocked
+results use and equal `qa_prior_head`.
 
 Published generic or QA status requires at least one corresponding receipt.
 Publication failure remains separate from `qa_result`.

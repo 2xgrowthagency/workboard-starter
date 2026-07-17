@@ -15,7 +15,7 @@ Use the source packet's existing names throughout the visibility flow:
 - `target_project_id`: saved project/target identity;
 - `target_path`: requested cwd;
 - `worker_task_title`: exact state-first task title;
-- `worker_creation_surface`: app-native or portable creation surface;
+- `worker_creation_surface`: exact `app-native task tools` for live app-native creation/readback, or exact `portable_only` for portable creation;
 - `worker_creation_attempt_id`: immutable ID generated before the current
   creation or authorized replacement attempt;
 - `worker_thread_id`: current canonical worker task ID;

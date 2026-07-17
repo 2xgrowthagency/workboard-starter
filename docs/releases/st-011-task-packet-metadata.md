@@ -15,8 +15,10 @@ Queue, callback, promotion, recovery, QA, and closeout behavior remains
 available, but mutable packets now use the normalized v2 metadata and append-only
 transition contract. The explicit legacy validator mode remains read-only.
 The validator consumes state logs completely and enforces exact identity,
-routing, visibility/recovery, immutable QA, artifact containment, callback, and
-typed publication receipt schemas; malformed or unknown data is never ignored.
+routing, exact live creation surfaces, visibility/recovery, immutable QA,
+artifact containment, callback proofs bound to pinned commits, and repository-
+associated publication receipt schemas; malformed or unknown data is never
+ignored.
 
 ## Migration Impact
 
