@@ -521,6 +521,14 @@ test('callback immutable proof is structured and bound to the applicable pinned 
     qa_artifacts_dir: '${WORKBOARD_ROOT}/qa-artifacts/20260717-001-example',
     qa_immutable_target_type: 'commit', qa_immutable_target: PRIOR_SHA,
     qa_prior_head: PRIOR_SHA, qa_prior_result: 'fail', qa_result: 'fail',
+    worker_thread_id: 'qa-task', worker_task_title: '[qa] Packet metadata',
+    worker_creation_surface: APP_NATIVE_SURFACE,
+    worker_creation_attempt_id: 'qa-attempt-1', worker_creation_status: 'completed',
+    worker_creation_proof: 'create and canonical readback receipt',
+    worker_task_link: '::created-thread{threadId="qa-task"}',
+    worker_host_identity: 'desktop-local', worker_visibility_status: 'verified',
+    worker_visibility_verified_at: '2026-07-17T10:02:00Z',
+    worker_visibility_proof: 'method=app_native_list_read|receipt=qa-read-1',
     callback_source_task_id: 'qa-task', completion_callback_status: 'sent',
     completion_callback_result: 'fail', completion_callback_worker_task_id: 'qa-task',
     completion_callback_worker_creation_attempt_id: 'qa-attempt-1',
@@ -537,6 +545,16 @@ test('callback immutable proof is structured and bound to the applicable pinned 
   const qaMismatch = qaCallback.replace(`sha=${PRIOR_SHA}`, `sha=${TARGET_SHA}`);
   assert.ok(validateTaskPacket(qaMismatch, { lane: 'ready' })
     .includes('completion callback commit SHA must equal packet qa_prior_head'));
+  assert.ok(validateTaskPacket(
+    qaCallback.replace('completion_callback_worker_task_id: qa-task',
+      'completion_callback_worker_task_id: stale-qa-task'),
+    { lane: 'ready' },
+  ).includes('completion callback worker task ID must equal packet qa_thread_id'));
+  assert.ok(validateTaskPacket(
+    qaCallback.replace('completion_callback_worker_creation_attempt_id: qa-attempt-1',
+      'completion_callback_worker_creation_attempt_id: stale-attempt'),
+    { lane: 'ready' },
+  ).includes('completion callback creation attempt ID must equal packet worker_creation_attempt_id'));
 
   const artifactTarget = 'artifact-build-20260717-001';
   const artifactCallback = canonicalCallbackPacket({
@@ -574,6 +592,14 @@ test('callback immutable proof is structured and bound to the applicable pinned 
     qa_artifacts_dir: '${WORKBOARD_ROOT}/qa-artifacts/20260717-001-example',
     qa_immutable_target_type: 'commit', qa_immutable_target: TARGET_SHA,
     qa_prior_head: TARGET_SHA, qa_prior_result: 'blocked', qa_result: 'blocked',
+    worker_thread_id: 'builder-task', worker_task_title: 'Build packet metadata',
+    worker_creation_surface: APP_NATIVE_SURFACE,
+    worker_creation_attempt_id: 'builder-attempt-2', worker_creation_status: 'completed',
+    worker_creation_proof: 'create and canonical readback receipt',
+    worker_task_link: '::created-thread{threadId="builder-task"}',
+    worker_host_identity: 'desktop-local', worker_visibility_status: 'verified',
+    worker_visibility_verified_at: '2026-07-17T10:02:00Z',
+    worker_visibility_proof: 'method=app_native_list_read|receipt=builder-read-2',
     callback_source_task_id: 'builder-task', completion_callback_status: 'sent',
     completion_callback_result: 'blocked',
     completion_callback_worker_task_id: 'builder-task',

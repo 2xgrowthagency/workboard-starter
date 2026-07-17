@@ -705,6 +705,18 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     } else if (fields.completion_callback_next_lane !== expectedLane) {
       errors.push(`completion_callback_result ${fields.completion_callback_result} requires next lane ${expectedLane}`);
     }
+    const qaResult = ['pass', 'fail'].includes(fields.completion_callback_result) ||
+      (fields.completion_callback_result === 'blocked' && events.at(-1)?.from === 'qa');
+    const expectedCallbackTask = qaResult ? fields.qa_thread_id : fields.worker_thread_id;
+    if (!expectedCallbackTask ||
+        fields.completion_callback_worker_task_id !== expectedCallbackTask) {
+      const identityField = qaResult ? 'qa_thread_id' : 'worker_thread_id';
+      errors.push(`completion callback worker task ID must equal packet ${identityField}`);
+    }
+    if (!fields.worker_creation_attempt_id ||
+        fields.completion_callback_worker_creation_attempt_id !== fields.worker_creation_attempt_id) {
+      errors.push('completion callback creation attempt ID must equal packet worker_creation_attempt_id');
+    }
     const proof = parseCallbackImmutableProof(fields.completion_callback_immutable_proof);
     if (!proof) {
       errors.push(
@@ -712,8 +724,6 @@ function validateV2(fields, body, lane, previousStatus, errors) {
         'the exact structured commit or immutable-target proof schema',
       );
     } else {
-      const qaResult = ['pass', 'fail'].includes(fields.completion_callback_result) ||
-        (fields.completion_callback_result === 'blocked' && events.at(-1)?.from === 'qa');
       const commitBacked = qaResult
         ? fields.qa_immutable_target_type === 'commit'
         : Boolean(fields.target_commit);
