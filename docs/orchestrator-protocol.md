@@ -659,6 +659,10 @@ Rules:
 - Verify the pinned commit or immutable artifact named by the packet.
 - Keep the product target read-only. Do not fix code, merge, deploy, publish product/release changes, or mutate production data. Packet-authorized QA result comments and informational task notices are the only closeout-write exception.
 - When `qa_publish_to_github` is `auto` or `required`, add or update one idempotent marker-bearing verdict comment on verified packet-linked PR/issue targets without uploading local-only evidence or exposing absolute local paths.
+- When the linked pull request has a GitHub-hosted Codex review for the exact
+  pinned head, inspect its findings as additional evidence and classify them;
+  do not fix code or treat a missing/pending hosted run as a product verdict.
+  Root owns the separate merge gate.
 - Apply `qa_worker_notification_policy` to `builder_thread_id`. The notice is informational and must forbid fixes until root requeues the packet.
 - Keep publication status separate from `qa_result`; publication failure records an exact fallback reason without changing the product verdict.
 - Use the packet's required tools, interactions, viewports, and artifact directory.
@@ -682,6 +686,22 @@ Required proof:
 - GitHub comment URL(s), worker-notification status, or exact publication fallback reason.
 - Completion callback delivery receipt, or the explicit reconciliation marker and callback error.
 ```
+
+## GitHub-hosted Codex review gate
+
+For repositories that run Codex review from GitHub, follow
+`docs/github-codex-review-gate.md` before merge or final review completion.
+Independent QA and hosted review must both apply to the exact current PR head.
+
+A pending, unreadable, wrong-head, or valid-unresolved hosted review blocks
+merge when the repository or packet requires that review. Triage each finding
+against the code and relevant tests. Route valid findings to the existing
+builder lane; QA remains read-only. Record evidence when rejecting an invalid
+finding.
+
+Any builder fix creates a new immutable head and invalidates the previous QA
+verdict and hosted-review clearance. Rerun both gates. GitHub mergeability, a
+local autoreview, or an older-head review is not sufficient merge proof.
 
 ## Completion standard
 
