@@ -4,6 +4,11 @@ This is the first file a local orchestrator should read.
 
 You can run the orchestrator from Codex Desktop, Claude Desktop, Claude Code, Codex CLI, OpenClaw, or another local agent. The tool does not matter as much as the loop discipline.
 
+If this is an uninitialized or newly derived Workboard, stop here and complete
+`docs/new-workboard-initialization.md` before running the queue. Recurring
+polling stays disabled until the required initial dispatch and scheduled-path
+smoke tests pass.
+
 ## Your job
 
 You are the root Workboard orchestrator. You are air traffic control, not the implementation worker.
