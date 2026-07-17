@@ -10,26 +10,27 @@ Run one Workboard orchestrator polling cycle.
 Workboard repo: <LOCAL_PATH_TO_WORKBOARD>
 
 Instructions:
-1. Inspect and safely synchronize the Workboard checkout.
-2. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. Omit capacity only for the default of 3; omit all idle-control flags for a stateless manual poll.
-3. Stop on WORKBOARD_SYNC_NEEDED, WORKBOARD_REQUIRES_JUDGMENT, or CHECK_FAILED.
-4. Stop on NOTHING_TO_CLAIM after reporting the classifier line. Do not read packet bodies, project registries, non-routable lanes, thread history, or old automation narratives.
-5. On WORK_IN_PROGRESS, report the classifier line, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.
-6. For a routable lane, read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
-7. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
-8. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
-9. Commit/push claim transitions before delegation.
-10. Resolve model routing from packet override, then project override, then the portable gpt-5.6-sol medium default. Run scripts/check-model-routing.mjs for overrides or escalation. High requires a task-local category of exactly high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex. Luna Medium requires exact bounded_high_volume eligibility plus independent_verification=true. Unknown or malformed checker options fail closed.
-11. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
-12. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
-13. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
-14. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
-15. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
-16. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
-17. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
-18. On PROMOTION_REVIEW_NEEDED, follow docs/dependency-promotion.md. Promote auto candidates from dependency metadata only; open each review candidate for exactly one ready_when check; do not reconsider manual or human/external blockers without new proof.
-19. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
-20. Commit/push every promotion transition before rerunning queue classification. After recovery, rerun dependency promotion and queue classification, preserve its validated rerun receipts, then commit/push the recovery transition.
+1. Run: node scripts/check-workboard-git-preflight.mjs --repo <LOCAL_PATH_TO_WORKBOARD>. The path must resolve to the exact repository root; symlink and .. aliases resolving to that root are accepted, while nested directories are rejected.
+2. Continue only on GIT_PREFLIGHT_STATUS=READY or GIT_PREFLIGHT_STATUS=UPDATED; stop and report the exact REASON/DETAIL for GIT_PREFLIGHT_STATUS=STOP. STOP REASON=INTERRUPTED is final and requires a fresh run. The preflight lock coordinates compliant roots only: never auto-expire it, use explicit verified recovery for an abandoned lock, and retain one-root/single-writer discipline against external writers.
+3. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. The classifier independently requires that canonical root identity without invoking Git. Omit capacity only for the default of 3; omit all idle-control flags for a stateless manual poll.
+4. Stop on WORKBOARD_REQUIRES_JUDGMENT or CHECK_FAILED.
+5. Stop on NOTHING_TO_CLAIM after reporting the preflight HEAD and classifier line. Do not read packet bodies, project registries, non-routable lanes, thread history, or old automation narratives.
+6. On WORK_IN_PROGRESS, report the preflight HEAD and classifier line, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.
+7. For a routable lane, read projects.yaml, docs/orchestrator-protocol.md, and only the packet lane required by the classifier result.
+8. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
+9. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
+10. Commit/push claim transitions before delegation.
+11. Resolve model routing from packet override, then project override, then the portable gpt-5.6-sol medium default. Run scripts/check-model-routing.mjs for overrides or escalation. High requires a task-local category of exactly high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex. Luna Medium requires exact bounded_high_volume eligibility plus independent_verification=true. Unknown or malformed checker options fail closed.
+12. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
+13. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
+14. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked.
+15. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
+16. Launch separate QA tasks only for pending QA and route PASS to review, FAIL to ready, or BLOCKED to blocked.
+17. Require every builder/QA task to send exactly one final callback to root_task_id with packet ID, result, canonical worker_thread_id as callback worker_task_id, unchanged worker_creation_attempt_id, immutable proof, and exact next lane.
+18. Structurally reject duplicate source frontmatter keys, then run scripts/check-workboard-callback.mjs with canonical source handoff kind, packet qa_required, source worker_creation_status, and source completion_callback_status. Only exact pending callback status with canonical creation can return ROUTABLE and permit one bounded canonical-task read and lane move. RECOVERY_EVIDENCE from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs cannot route. Callback failure must emit ROOT_RECONCILIATION_REQUIRED with the same envelope; never start monitoring.
+19. On PROMOTION_REVIEW_NEEDED, follow docs/dependency-promotion.md. Promote auto candidates from dependency metadata only; open each review candidate for exactly one ready_when check; do not reconsider manual or human/external blockers without new proof.
+20. If IDLE_PAUSE_REQUESTED=1, call the host's native automation pause operation and verify paused state before reporting success. If IDLE_PAUSE_RECOMMENDED=1 and request is 0, report only a recommendation. Ready or pending-QA inventory must never be paused by this control.
+21. Commit/push every promotion transition before rerunning queue classification. After recovery, rerun dependency promotion and queue classification, preserve its validated rerun receipts, then commit/push the recovery transition.
 
 Stop before secrets, destructive actions, production data, deployments, account/billing settings, or ambiguous acceptance criteria.
 ```
@@ -125,7 +126,8 @@ Example shell shape:
 
 ```bash
 cd /path/to/workboard
-git pull --ff-only origin main
+node scripts/check-workboard-git-preflight.mjs --repo "$PWD"
+# stop unless GIT_PREFLIGHT_STATUS is READY or UPDATED
 node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 # root agent opens only the lane required by the classifier
 
