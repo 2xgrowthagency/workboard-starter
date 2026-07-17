@@ -84,6 +84,12 @@ Chat threads are bad source-of-truth. Workboard gives you:
 
 ## Quick start
 
+For a new organization or named orchestrator deployment, start with
+[`docs/new-workboard-initialization.md`](docs/new-workboard-initialization.md).
+It explains whether to fork or create an independent repository, separates the
+root controller from local operator responsibilities, and requires a harmless
+first-task dispatch smoke before recurring polling is enabled.
+
 ```bash
 git clone <YOUR_WORKBOARD_REPO_URL> workboard
 cd workboard
@@ -142,6 +148,7 @@ docs/
   task-packet-schema.md     # v2 metadata, transitions, validation, migration
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
+  new-workboard-initialization.md # repo, controller, automation, and smoke setup
   live-task-visibility.md   # app-native proof and portable fallback
   codex-task-finalization.md # optional local Codex task hygiene
   known-issues-and-recovery.md # operator symptoms, stops, evidence, recovery
@@ -167,6 +174,8 @@ skills/
 templates/
   task-packet.md            # copy this into tasks/ready/
   task-creation-recovery.md # reconcile ambiguous app-native creation
+  local-operator-setup.md   # private local project and automation handoff
+  workboard-initialization-record.md # durable first-smoke and activation proof
   upstream-sync-record.md # compatibility/migration/adoption record
 tasks/
   backlog/                  # valid work not yet eligible to claim

@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "9b5b775996a9af25d5c6770e93c2cfd702c41b72bd7bf417c029faab717e464a"
+      "evidence_sha256": "65cba9010340c84b58f0d028136d53e85ce663703477156dc14db90491b574c0"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "339a9c90e7dc82c826f560da38da7b9f54f2d7786d1d22dd0dcc888e44cf81a2"
+      "evidence_sha256": "6e923b2aebc8ea7643c77bcce03f8fcab9991c567c5a71bcd15359d81eba9eb1"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -155,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "0fed7a08f764ba83179f9dedc512a17ec0cff64ce6e41f84dc0d41bcab88b21a"
+      "evidence_sha256": "1e250ad219ac6ad792be119ac5957aae6fd7664fc2f5ecb896ec3530064bbe1a"
     },
     "git_preflight": {
       "status": "supported",
