@@ -2,6 +2,8 @@
 
 import assert from 'node:assert/strict';
 import {
+  chmodSync,
+  mkdirSync,
   mkdtempSync,
   rmSync,
   writeFileSync,
@@ -57,8 +59,63 @@ function advanceRemote(fixture, name = 'remote.txt') {
   return git(clone, 'rev-parse', 'HEAD');
 }
 
-function check(root, expectedStatus = 0) {
-  return run(process.execPath, [preflight, '--repo', root], dirname(preflight), expectedStatus);
+function check(root, expectedStatus = 0, environment = {}) {
+  const result = spawnSync(process.execPath, [preflight, '--repo', root], {
+    cwd: dirname(preflight),
+    encoding: 'utf8',
+    env: { ...process.env, ...environment },
+  });
+  assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
+  return result.stdout.trim();
+}
+
+function installGitRaceShim(fixture) {
+  const lookup = spawnSync('which', ['git'], { encoding: 'utf8' });
+  assert.equal(lookup.status, 0, lookup.stderr);
+  const bin = join(fixture.parent, 'race-bin');
+  const shim = join(bin, 'git');
+  mkdirSync(bin);
+  writeFileSync(
+    shim,
+    `#!/usr/bin/env node
+const { appendFileSync, writeFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+const realGit = process.env.PREFLIGHT_REAL_GIT;
+const result = spawnSync(realGit, args, {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+  env: process.env,
+});
+if (result.stdout) process.stdout.write(result.stdout);
+if (result.stderr) process.stderr.write(result.stderr);
+if (result.status === 0 && args[0] === 'merge') {
+  const action = process.env.PREFLIGHT_RACE_ACTION;
+  if (action === 'dirty_tracked') appendFileSync('README.md', 'late tracked change\\n');
+  if (action === 'dirty_untracked') writeFileSync('late-untracked.txt', 'late\\n');
+  if (action === 'head_ref') {
+    spawnSync(realGit, ['update-ref', 'refs/heads/main', process.env.PREFLIGHT_RACE_TARGET], {
+      cwd: process.cwd(),
+      stdio: 'ignore',
+    });
+  }
+  if (action === 'fetch_head') {
+    const pathResult = spawnSync(realGit, ['rev-parse', '--git-path', 'FETCH_HEAD'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    writeFileSync(resolve(process.cwd(), pathResult.stdout.trim()), process.env.PREFLIGHT_RACE_TARGET + '\\n');
+  }
+}
+process.exit(result.status ?? 1);
+`,
+  );
+  chmodSync(shim, 0o755);
+  return {
+    PATH: `${bin}:${process.env.PATH}`,
+    PREFLIGHT_REAL_GIT: lookup.stdout.trim(),
+  };
 }
 
 function withFixture(callback) {
@@ -92,6 +149,30 @@ test('strictly behind clean main is fast-forwarded to fetched main', () => {
     assert.equal(git(fixture.root, 'status', '--porcelain'), '');
   });
 });
+
+for (const [action, reason] of [
+  ['dirty_tracked', 'checkout_changed_before_success'],
+  ['dirty_untracked', 'checkout_changed_before_success'],
+  ['head_ref', 'head_changed_before_success'],
+  ['fetch_head', 'fetched_main_changed_before_success'],
+]) {
+  test(`final revalidation stops after concurrent ${action} mutation`, () => {
+    withFixture((fixture) => {
+      const before = git(fixture.root, 'rev-parse', 'HEAD');
+      advanceRemote(fixture);
+      const environment = {
+        ...installGitRaceShim(fixture),
+        PREFLIGHT_RACE_ACTION: action,
+        PREFLIGHT_RACE_TARGET: before,
+      };
+
+      const output = check(fixture.root, 1, environment);
+      assert.match(output, /^GIT_PREFLIGHT_STATUS=STOP /);
+      assert.match(output, new RegExp(`REASON=${reason}`));
+      assert.doesNotMatch(output, /GIT_PREFLIGHT_STATUS=UPDATED/);
+    });
+  });
+}
 
 test('dirty main stops before fetch', () => {
   withFixture((fixture) => {

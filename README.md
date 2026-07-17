@@ -171,7 +171,9 @@ the checkout is clean `main` and strictly behind. Continue only for
 conflicted, non-main, ahead, diverged, fetch/auth/network, and failed
 fast-forward states return `GIT_PREFLIGHT_STATUS=STOP` without queue reads.
 Use `--remote <name>` when the intended remote is not `origin`; the intended
-branch remains `main`.
+branch remains `main`. Before a fast-forward and again before reporting success,
+the gate revalidates the branch, conflict state, exact `HEAD` and `FETCH_HEAD`,
+and full tracked/untracked status. A concurrent change fails closed.
 
 ## Queue-first check
 
@@ -182,11 +184,34 @@ dependency-free classifier:
 node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
 ```
 
-It does not invoke Git, move packets, create directories, or write automation
-memory. It reports local queue counts, claimed and active-QA target locks,
-completed QA results, configured/available capacity, and one routing status.
-Capacity defaults to 3; at capacity it reports
-`WORK_IN_PROGRESS` even when ready work is waiting. Run its tests with:
+It does not invoke Git, move packets, create directories, or write inside the
+Workboard repository. It reports local queue counts, claimed and active-QA
+target locks, completed QA results, configured/available capacity, and one
+routing status. Capacity defaults to 3; at capacity it reports
+`WORK_IN_PROGRESS` even when ready work is waiting.
+
+Scheduled polls can opt into a strict one-line state file outside the repo:
+
+```bash
+node scripts/check-workboard-queue.mjs \
+  --repo "$PWD" \
+  --run-memory "$HOME/.local/state/workboard/poll.json" \
+  --idle-pause-threshold 4 \
+  --idle-pause-action recommend
+```
+
+Create the external parent directory during automation setup; the classifier
+creates and atomically replaces only the state file.
+
+Stable `NOTHING_TO_CLAIM` and claimed-only `WORK_IN_PROGRESS` snapshots increment
+`NO_ACTION_STREAK`. A changed queue signature or any actionable lane resets it.
+At the threshold, `recommend` emits a recommendation; `pause` emits
+`IDLE_PAUSE_REQUESTED=1` for the host automation controller to execute and verify.
+Ready or pending-QA inventory never requests a pause. The memory file contains
+only version, outcome, hashed queue signature, streak, and timestamp; malformed,
+multiline, oversized, symlinked, or in-repo memory fails closed.
+
+Run the tests with:
 
 ```bash
 node --test tests/*.test.mjs

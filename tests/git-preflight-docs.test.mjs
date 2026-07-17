@@ -46,6 +46,10 @@ test('operator contract fails closed and keeps Git judgment out of classifier', 
     protocol,
     /Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`/,
   );
+  assert.match(
+    protocol,
+    /Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked\/untracked status immediately before success/,
+  );
   assert.match(protocol, /classifier[\s\S]{0,180}never invokes Git/);
 });
 

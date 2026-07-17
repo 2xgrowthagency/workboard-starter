@@ -78,6 +78,57 @@ function gitValue(repo, args, reason) {
   return result.stdout;
 }
 
+function revalidateCheckout(repo, expectedHead, expectedFetched, phase) {
+  const branch = gitValue(repo, ['branch', '--show-current'], `cannot_${phase}_branch`);
+  if (branch !== 'main') {
+    emit('STOP', { REASON: `checkout_changed_${phase}`, BRANCH: branch || 'detached' }, 1);
+  }
+
+  const conflicts = gitValue(
+    repo,
+    ['diff', '--name-only', '--diff-filter=U'],
+    `cannot_${phase}_conflict_state`,
+  );
+  if (conflicts) {
+    emit('STOP', { REASON: 'unresolved_conflict', DETAIL: conflicts }, 1);
+  }
+
+  const head = gitValue(repo, ['rev-parse', 'HEAD'], `cannot_${phase}_head`);
+  if (head !== expectedHead) {
+    emit(
+      'STOP',
+      { REASON: `head_changed_${phase}`, HEAD: head, EXPECTED_HEAD: expectedHead },
+      1,
+    );
+  }
+
+  const fetched = gitValue(
+    repo,
+    ['rev-parse', 'FETCH_HEAD'],
+    `cannot_${phase}_fetched_main`,
+  );
+  if (fetched !== expectedFetched) {
+    emit(
+      'STOP',
+      {
+        REASON: `fetched_main_changed_${phase}`,
+        FETCH_HEAD: fetched,
+        EXPECTED_FETCH_HEAD: expectedFetched,
+      },
+      1,
+    );
+  }
+
+  const status = gitValue(
+    repo,
+    ['status', '--porcelain=v1', '--untracked-files=all'],
+    `cannot_${phase}_worktree`,
+  );
+  if (status) {
+    emit('STOP', { REASON: `checkout_changed_${phase}`, DETAIL: status }, 1);
+  }
+}
+
 let options;
 try {
   options = parseArgs(process.argv.slice(2));
@@ -114,7 +165,11 @@ if (conflicts) {
   emit('STOP', { REASON: 'unresolved_conflict', DETAIL: conflicts }, 1);
 }
 
-const status = gitValue(repo, ['status', '--porcelain'], 'cannot_read_worktree');
+const status = gitValue(
+  repo,
+  ['status', '--porcelain=v1', '--untracked-files=all'],
+  'cannot_read_worktree',
+);
 if (status) {
   emit('STOP', { REASON: 'dirty_worktree', DETAIL: status }, 1);
 }
@@ -147,7 +202,7 @@ if (conflictsAfterFetch) {
 }
 const statusAfterFetch = gitValue(
   repo,
-  ['status', '--porcelain'],
+  ['status', '--porcelain=v1', '--untracked-files=all'],
   'cannot_recheck_worktree',
 );
 if (statusAfterFetch) {
@@ -180,14 +235,16 @@ if (ahead > 0 && behind > 0) {
   emit('STOP', { REASON: 'diverged_from_remote_main', HEAD: before, REMOTE_HEAD: fetched }, 1);
 }
 if (ahead === 0 && behind > 0) {
+  revalidateCheckout(repo, before, fetched, 'before_fast_forward');
   const merge = git(repo, ['merge', '--ff-only', fetched], {
     GIT_MERGE_AUTOEDIT: 'no',
   });
   if (merge.status !== 0) {
     emit('STOP', { REASON: 'fast_forward_failed', DETAIL: merge.stderr || merge.stdout }, 1);
   }
-  const head = gitValue(repo, ['rev-parse', 'HEAD'], 'cannot_resolve_updated_head');
-  emit('UPDATED', { HEAD: head, PREVIOUS_HEAD: before, REMOTE: remote, BRANCH: 'main' });
+  revalidateCheckout(repo, fetched, fetched, 'before_success');
+  emit('UPDATED', { HEAD: fetched, PREVIOUS_HEAD: before, REMOTE: remote, BRANCH: 'main' });
 }
 
+revalidateCheckout(repo, before, fetched, 'before_success');
 emit('READY', { HEAD: before, REMOTE: remote, BRANCH: 'main' });

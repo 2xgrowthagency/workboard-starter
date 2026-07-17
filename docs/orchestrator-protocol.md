@@ -38,7 +38,8 @@ The preflight is root-owned and ordered deliberately:
 2. Fetch `main` from the intended remote with terminal prompting disabled.
 3. Compare `HEAD` with the fetched commit.
 4. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
-5. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+5. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
+6. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
 
 Stop on `GIT_PREFLIGHT_STATUS=STOP`. Its `REASON` distinguishes dirty,
 conflicted, non-main, ahead, diverged, fetch/auth/network failure, and failed
@@ -60,9 +61,27 @@ limit, pass that configured value directly; do not read packet bodies or worker
 history to compute it.
 
 The classifier inspects only local queue metadata needed for counts, QA state,
-and target locks. It never invokes Git, moves packets, creates task directories,
-or writes automation state. Git synchronization and judgment belong exclusively
-to the root preflight.
+and target locks. It never invokes Git, moves packets, or creates task
+directories. Git synchronization and judgment belong exclusively to the root
+preflight. Its default mode writes nothing. A scheduled poll may opt into one
+strict memory record outside the repository:
+
+```bash
+node scripts/check-workboard-queue.mjs \
+  --repo <WORKBOARD_PATH> \
+  --capacity <MAX_ACTIVE_TASKS> \
+  --run-memory <EXTERNAL_STATE_PATH>/poll.json \
+  --idle-pause-threshold <NO_ACTION_RUNS> \
+  --idle-pause-action <recommend|pause>
+```
+
+Do not combine `--run-memory` with the compatibility input
+`--no-action-streak`. Persistent mode increments a stable no-action signature,
+starts at one after a queue transition, and resets to zero for an actionable
+lane. The signature hashes only status, counts, and locks; the one-line JSON
+record stores no packet body, path, project registry, thread history, or prior
+narrative. Memory must remain outside the repo and fails closed when malformed,
+multiline, oversized, symlinked, or incompatible.
 
 Use the result to open the smallest required lane:
 
@@ -74,6 +93,15 @@ Use the result to open the smallest required lane:
 - `PROMOTION_REVIEW_NEEDED`: use the separate promotion policy/scanner workflow.
 - `WORKBOARD_REQUIRES_JUDGMENT`: stop for malformed packet metadata or unrecognized QA state/result.
 - `CHECK_FAILED`: report the exact classifier failure and stop.
+
+Every successful lane emits `NO_ACTION_STREAK`, `IDLE_PAUSE_RECOMMENDED`,
+`IDLE_PAUSE_REQUESTED`, and `IDLE_PAUSE_ACTION`. Only stable
+`NOTHING_TO_CLAIM` and claimed/active-QA-only `WORK_IN_PROGRESS` snapshots count
+as no action. Ready, pending-QA, completed-QA, or promotion inventory resets the
+streak and suppresses pause, including ready work waiting at full capacity.
+`recommend` is advisory. For `pause`, the classifier requests the action but the
+host controller must call its native automation pause operation and read back
+the paused state. Never claim success from the request field alone.
 
 Claimed and active-QA lock values are metadata summaries in the form
 `packet_id|target_project_id|target_path`. Each component is percent-encoded so
@@ -121,9 +149,9 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 
 1. `cd` into the Workboard repo.
 2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` and stop unless it returns `READY` or `UPDATED`.
-3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; omit `--capacity` only when using the default of 3.
+3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; a scheduled poll may add the external memory, threshold, and pause-action flags above.
 4. Stop immediately on preflight, judgment, or classifier failure statuses.
-5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context.
+5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context. On an idle/claimed-only lane, use only the classifier line and strict run-memory record, never old automation narratives.
 6. Treat claimed and active-QA packets only as capacity usage and per-target locks. Never inspect, monitor, heartbeat, or babysit their task history during an ordinary poll.
 7. Trust the classifier's `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED` fields. `WORK_IN_PROGRESS` machine-enforces a stop when available capacity is zero.
 8. If the classifier returns a routable lane and capacity remains, inspect `tasks/ready/` by priority and age even when another target is active.
@@ -138,7 +166,8 @@ Do not silently skip required tools. A packet with unmet builder proof cannot mo
 17. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
 19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
-20. Commit/push every state transition.
+20. If `IDLE_PAUSE_REQUESTED=1`, call and verify the host-native pause operation. If only `IDLE_PAUSE_RECOMMENDED=1`, report the recommendation without claiming a pause.
+21. Commit/push every queue state transition.
 
 ## Completion callback contract
 
