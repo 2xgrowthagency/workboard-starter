@@ -82,10 +82,13 @@ the canonical task/attempt/title/link/host, creation proof, exact
 and no pending recovery.
 Portable dispatch leaves `worker_thread_id` empty.
 
-Non-pending callback immutable proof is structured as
+Commit-backed non-pending callback proof is structured as
 `type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>`.
 Worker results use and equal `target_commit`; QA pass, fail, or QA-blocked
-results use and equal `qa_prior_head`.
+results use and equal `qa_prior_head`. Packets pinned only to a non-commit target
+use `type=<artifact|url|path>|source=<immutable_target|qa_prior_head>|value=<exact-value>`,
+with worker results bound to `immutable_target` and QA results bound to the
+retained `qa_prior_head`. Type, source, and value must all match.
 
 Published generic or QA status requires at least one corresponding receipt.
 Publication failure remains separate from `qa_result`.

@@ -354,7 +354,7 @@ Supported fields in `templates/task-packet.md` include:
 - `qa_status`
 - `backlog_reason`, dependency/promotion fields, and exact target-lock fields
 - `target_commit`, generic and QA immutable targets, and prior QA head/result
-- `dispatch_mode`, exact live creation surface, callback source/handoff and pinned-commit proof fields, and repository-associated publication receipts
+- `dispatch_mode`, exact live creation surface, callback source/handoff and typed pinned-target proof fields, and repository-associated publication receipts
 - `github_pr`, `github_issue`, `root_task_id`, and canonical `worker_thread_id`
 - worker task title, creation surface/attempt ID, portable session ID, link, host identity, visibility status/proof, recovery status/pending, callback envelope, and routing blocker fields
 - `qa_publish_to_github`, `qa_worker_notification_policy`, and publication receipt fields

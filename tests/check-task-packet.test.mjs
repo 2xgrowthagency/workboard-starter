@@ -484,7 +484,7 @@ test('callback immutable proof is structured and bound to the applicable pinned 
   assert.deepEqual(validateTaskPacket(canonicalCallbackPacket(), { lane: 'claimed' }), []);
 
   const invalidCases = [
-    ['opaque SHA', TARGET_SHA, /must use type=commit/],
+    ['opaque SHA', TARGET_SHA, /exact structured commit or immutable-target proof schema/],
     [
       'mismatched SHA',
       `type=commit|source=target_commit|sha=${PRIOR_SHA}`,
@@ -498,7 +498,7 @@ test('callback immutable proof is structured and bound to the applicable pinned 
     [
       'uppercase SHA',
       `type=commit|source=target_commit|sha=${TARGET_SHA.toUpperCase()}`,
-      /must use type=commit/,
+      /exact structured commit or immutable-target proof schema/,
     ],
   ];
   for (const [name, proof, expected] of invalidCases) {
@@ -537,6 +537,30 @@ test('callback immutable proof is structured and bound to the applicable pinned 
   const qaMismatch = qaCallback.replace(`sha=${PRIOR_SHA}`, `sha=${TARGET_SHA}`);
   assert.ok(validateTaskPacket(qaMismatch, { lane: 'ready' })
     .includes('completion callback commit SHA must equal packet qa_prior_head'));
+
+  const artifactTarget = 'artifact-build-20260717-001';
+  const artifactCallback = canonicalCallbackPacket({
+    target_commit: '', immutable_target_type: 'artifact', immutable_target: artifactTarget,
+    completion_callback_immutable_proof:
+      `type=artifact|source=immutable_target|value=${artifactTarget}`,
+  });
+  assert.deepEqual(validateTaskPacket(artifactCallback, { lane: 'claimed' }), []);
+  const artifactMismatch = artifactCallback.replace(`value=${artifactTarget}`, 'value=other-artifact');
+  assert.ok(validateTaskPacket(artifactMismatch, { lane: 'claimed' })
+    .includes('completion callback immutable value must equal packet immutable_target'));
+
+  const qaArtifactCallback = qaCallback
+    .replace(/^target_commit:.*$/m, 'target_commit:')
+    .replace(/^immutable_target_type:.*$/m, 'immutable_target_type: artifact')
+    .replace(/^immutable_target:.*$/m, `immutable_target: ${artifactTarget}`)
+    .replace(/^qa_immutable_target_type:.*$/m, 'qa_immutable_target_type: artifact')
+    .replace(/^qa_immutable_target:.*$/m, `qa_immutable_target: ${artifactTarget}`)
+    .replace(/^qa_prior_head:.*$/m, `qa_prior_head: ${artifactTarget}`)
+    .replace(
+      /^completion_callback_immutable_proof:.*$/m,
+      `completion_callback_immutable_proof: type=artifact|source=qa_prior_head|value=${artifactTarget}`,
+    );
+  assert.deepEqual(validateTaskPacket(qaArtifactCallback, { lane: 'ready' }), []);
 
   const builderBlockedAfterQa = packet({
     status: 'blocked', blocker_type: 'implementation', claimed_by: 'root',

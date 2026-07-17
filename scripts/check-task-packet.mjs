@@ -331,10 +331,18 @@ function validatePublicationReceipts(values, field, fields, errors) {
 }
 
 function parseCallbackImmutableProof(value) {
-  const match = value.match(
+  const commitMatch = value.match(
     /^type=commit\|source=(target_commit|qa_prior_head)\|sha=([0-9a-f]{40})$/,
   );
-  return match ? { source: match[1], sha: match[2] } : null;
+  if (commitMatch) {
+    return { type: 'commit', source: commitMatch[1], value: commitMatch[2] };
+  }
+  const immutableMatch = value.match(
+    /^type=(artifact|url|path)\|source=(immutable_target|qa_prior_head)\|value=([^|\r\n]+)$/,
+  );
+  return immutableMatch
+    ? { type: immutableMatch[1], source: immutableMatch[2], value: immutableMatch[3] }
+    : null;
 }
 
 function isPortableArtifactRoot(value) {
@@ -581,7 +589,9 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   if (fields.qa_immutable_target_type === 'commit') {
     validateCommit(fields.qa_immutable_target, 'qa_immutable_target', errors);
   }
-  validateCommit(fields.qa_prior_head, 'qa_prior_head', errors);
+  if (fields.qa_immutable_target_type === 'commit') {
+    validateCommit(fields.qa_prior_head, 'qa_prior_head', errors);
+  }
   for (const legacyField of LEGACY_ROOT_FIELDS) {
     if (Object.hasOwn(fields, legacyField)) errors.push(`legacy field is not allowed in v2: ${legacyField}`);
   }
@@ -702,18 +712,30 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     if (!proof) {
       errors.push(
         'completion_callback_immutable_proof must use ' +
-        'type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>',
+        'the exact structured commit or immutable-target proof schema',
       );
     } else {
       const qaResult = ['pass', 'fail'].includes(fields.completion_callback_result) ||
         (fields.completion_callback_result === 'blocked' && events.at(-1)?.from === 'qa');
-      const expectedSource = qaResult ? 'qa_prior_head' : 'target_commit';
-      const expectedSha = fields[expectedSource];
+      const commitBacked = qaResult
+        ? fields.qa_immutable_target_type === 'commit'
+        : Boolean(fields.target_commit);
+      const expectedType = commitBacked
+        ? 'commit'
+        : qaResult ? fields.qa_immutable_target_type : fields.immutable_target_type;
+      const expectedSource = qaResult
+        ? 'qa_prior_head'
+        : commitBacked ? 'target_commit' : 'immutable_target';
+      const expectedValue = fields[expectedSource];
+      if (proof.type !== expectedType) {
+        errors.push(`completion callback immutable proof type must equal ${expectedType}`);
+      }
       if (proof.source !== expectedSource) {
         errors.push(`completion callback result requires immutable proof source ${expectedSource}`);
       }
-      if (!COMMIT_PATTERN.test(expectedSha || '') || proof.sha !== expectedSha) {
-        errors.push(`completion callback commit SHA must equal packet ${expectedSource}`);
+      if (!expectedValue || proof.value !== expectedValue) {
+        const valueLabel = commitBacked ? 'commit SHA' : 'immutable value';
+        errors.push(`completion callback ${valueLabel} must equal packet ${expectedSource}`);
       }
     }
   } else {

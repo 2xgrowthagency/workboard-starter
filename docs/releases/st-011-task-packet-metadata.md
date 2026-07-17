@@ -16,7 +16,8 @@ available, but mutable packets now use the normalized v2 metadata and append-onl
 transition contract. The explicit legacy validator mode remains read-only.
 The validator consumes state logs completely and enforces exact identity,
 routing, exact live creation surfaces, visibility/recovery, immutable QA,
-artifact containment, callback proofs bound to pinned commits, and repository-
+artifact containment, callback proofs bound to pinned targets with exact commit
+SHAs where applicable, and repository-
 associated publication receipt schemas; malformed or unknown data is never
 ignored.
 
