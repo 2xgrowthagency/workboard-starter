@@ -138,7 +138,11 @@ docs/
   live-task-visibility.md   # app-native proof and portable fallback
   codex-task-finalization.md # optional local Codex task hygiene
   known-issues-and-recovery.md # operator symptoms, stops, evidence, recovery
+  upstream-synchronization.md # production-derived upgrade and release gate
   pending-improvements.md   # production hardening backlog for the starter
+  releases/                 # compatibility, migration, and adoption records
+CONTRIBUTING.md              # contribution workflow and portability boundary
+RELEASE.md                   # release checklist
 ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-git-preflight.mjs # root-owned Git status/fetch/ff-only gate
@@ -149,11 +153,13 @@ scripts/
   check-task-creation-recovery.mjs # validate recovery state and proof
   check-workboard-closeout.mjs # validate state-first title and task-link proof
   reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
+  check-upstream-sync.mjs # validate synchronized production-derived upgrades
 skills/
   workboard-orchestrator/    # optional portable skill instructions
 templates/
   task-packet.md            # copy this into tasks/ready/
   task-creation-recovery.md # reconcile ambiguous app-native creation
+  upstream-sync-record.md # compatibility/migration/adoption record
 tasks/
   ready/                    # ready to claim
   claimed/                  # active work
@@ -261,6 +267,31 @@ Run the tests with:
 ```bash
 node --test tests/*.test.mjs
 ```
+
+## Upstreaming Production-Derived Upgrades
+
+Operational improvements must be generalized without copying host-specific
+state. Update the protocol, portable skill, task packet template, automation
+examples, focused tests, and one compatibility/migration record together. The
+record links each customized clone's adoption back to the originating public
+starter issue or release; no fork relationship or remote naming convention is
+required.
+
+Follow [`docs/upstream-synchronization.md`](docs/upstream-synchronization.md),
+then validate the actual change set against an explicit local base ref:
+
+```bash
+node scripts/check-upstream-sync.mjs \
+  --repo <WORKBOARD_STARTER_ROOT> \
+  --base <LOCAL_BASE_REF> \
+  --record docs/releases/<UPGRADE_RECORD>.md
+```
+
+The check rejects incomplete synchronization, missing compatibility or migration
+impact, absent adoption backlinks, and newly introduced host-specific paths,
+identifiers, private identity values, credentials, or local persistence
+assumptions. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`RELEASE.md`](RELEASE.md) for the contributor and release checklists.
 
 When ready work and active locks coexist, check each candidate with:
 
@@ -391,5 +422,9 @@ Start here:
 - `docs/automation-examples.md`
 - `docs/live-task-visibility.md`
 - `docs/codex-task-finalization.md`
+- `docs/known-issues-and-recovery.md`
+- `docs/upstream-synchronization.md`
 - `docs/pending-improvements.md`
+- `CONTRIBUTING.md`
+- `RELEASE.md`
 - `templates/task-packet.md`

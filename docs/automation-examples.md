@@ -6,6 +6,27 @@ For app-native stalls, stale UI, callback delivery, saved-project/path,
 specialist-tool, or Git failures, use `docs/known-issues-and-recovery.md` before
 retrying or changing surfaces.
 
+## Production-Derived Upgrade Validation
+
+When an automation or operational clone proves a reusable improvement, do not
+copy its host-local configuration into the starter. Generalize the behavior and
+update the protocol, portable skill, task template, automation examples, focused
+tests, and compatibility/migration record together.
+
+Run the offline gate with caller-supplied clone inputs:
+
+```bash
+node scripts/check-upstream-sync.mjs \
+  --repo <WORKBOARD_STARTER_ROOT> \
+  --base <LOCAL_BASE_REF> \
+  --record docs/releases/<UPGRADE_RECORD>.md
+```
+
+The release record's downstream adoption reference must point to the originating
+public starter issue or release. This works in independently customized clones;
+the check does not fetch, inspect remotes, or require fork ancestry. See
+`docs/upstream-synchronization.md` for the portability boundary.
+
 ## Generic root-orchestrator prompt
 
 ```text
