@@ -29,25 +29,32 @@ diagnoses.
 
 ### Safe Response
 
-1. Stop the affected app-native operation and preserve the exact call and wait.
-2. Keep an already-claimed packet, target lock, capacity slot, attempt ID, and
+1. After 15-30 seconds without a response from a non-mutating app-native task
+   call, record the operation and perform at most one bounded read or rerun. If
+   that attempt also stalls, declare the result ambiguous and enter the matching
+   recovery path.
+2. For task creation, message delivery, or another side-effecting call, do not
+   rerun the operation. List/read back first and reconcile any existing result.
+3. Keep an already-claimed packet, target lock, capacity slot, attempt ID, and
    partial task IDs unchanged.
-3. Record saved-project lookup and local path validation independently.
-4. For creation ambiguity, open one stable recovery incident. For another
+4. Record saved-project lookup and local path validation independently.
+5. For creation ambiguity, open one stable recovery incident. For another
    mutation, require later app-native readback before claiming success.
 
 ### Forbidden Shortcuts
 
 - Do not invent a fallback worker, repeat a mutation, or perform delegated work
   in the root task.
+- Never retry task creation blindly; a stalled create may already have persisted.
 - Do not treat a local directory, helper result, process, index, or persistence
   record as live app-native proof.
 - Do not report a mutation or delegation as successful without live readback.
 
 ### Evidence To Capture
 
-- Tool surface, exact operation, timestamps, bounded wait, sanitized arguments,
-  and error or partial response.
+- Tool surface, exact operation, timestamps, whether the call was non-mutating
+  or side-effecting, the 15-30 second wait, the one bounded read/rerun receipt,
+  sanitized arguments, and error or partial response.
 - Packet ID, target tuple, attempt ID, requested title, raw task IDs, and which
   create/list/read checks completed or remain missing.
 - Separate saved-project lookup and local path validation results.
@@ -128,19 +135,29 @@ or route callbacks against an unverified task.
    current app-native list/read.
 3. Keep standalone scheduled work read-only when the live surface is absent.
    Record the mutation as blocked or ambiguous until readback.
-4. Prefer a persistent app-visible root task for later task-management writes.
+4. A stalled scheduled or automation task must hand control and its captured
+   evidence back to the canonical persistent root task. It must not spawn
+   another root task.
+5. Prefer the persistent app-visible root task for later task-management writes.
+6. A Desktop restart is manual and operator-only. Consider it only after the
+   bounded recovery attempts still fail, evidence has been captured, and the
+   operator accepts disruption to other active tasks.
 
 ### Forbidden Shortcuts
 
 - Do not claim a live UI mutation from a helper receipt alone.
 - Do not use local storage internals as the operator recovery contract.
 - Do not repeatedly mutate state in an attempt to force refresh.
+- Never automatically restart Codex Desktop or use restart as the primary
+  recovery action.
 
 ### Evidence To Capture
 
 - Requested mutation, helper receipt, timestamps, and app-native list/read result.
 - Expected and observed title/archive state, task ID, project, cwd, and host.
 - Whether live tools were absent, stalled, mismatched, or returned stale state.
+- Scheduled/automation handback receipt and canonical root task ID. Before any
+  manual restart, capture the bounded attempts and operator decision.
 
 ### Portable Mitigation
 

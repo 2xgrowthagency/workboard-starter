@@ -70,6 +70,43 @@ test('guide maps known issues and preserves core contracts', () => {
   assert.match(guide, /bounded continuation/);
 });
 
+test('non-mutating stalls get one bounded retry while creation never retries blindly', () => {
+  const record = section(guide, 'App-Native Calls Stall Or Time Out');
+  const response = section(record, 'Safe Response', 3);
+  const forbidden = section(record, 'Forbidden Shortcuts', 3);
+  const evidence = section(record, 'Evidence To Capture', 3);
+
+  assert.match(response, /After 15-30 seconds[^.]+non-mutating app-native task\s+call/i);
+  assert.match(response, /at most one bounded read or rerun/i);
+  assert.match(response, /If\s+that attempt also stalls, declare the result ambiguous/i);
+  assert.match(response, /For task creation[\s\S]{0,100}do not\s+rerun the operation[\s\S]{0,40}List\/read back first/i);
+  assert.match(forbidden, /Never retry task creation blindly/i);
+  assert.match(evidence, /15-30 second wait[^.]+one bounded read\/rerun receipt/i);
+});
+
+test('stalled scheduled work hands evidence to the canonical persistent root', () => {
+  const record = section(guide, 'Live Desktop UI Is Stale');
+  const response = section(record, 'Safe Response', 3);
+  const evidence = section(record, 'Evidence To Capture', 3);
+
+  assert.match(response, /stalled scheduled or automation task must hand control and its captured\s+evidence back to the canonical persistent root task/i);
+  assert.match(response, /must not spawn\s+another root task/i);
+  assert.match(evidence, /Scheduled\/automation handback receipt and canonical root task ID/i);
+});
+
+test('Desktop restart is a manual operator-only last resort', () => {
+  const record = section(guide, 'Live Desktop UI Is Stale');
+  const response = section(record, 'Safe Response', 3);
+  const forbidden = section(record, 'Forbidden Shortcuts', 3);
+  const evidence = section(record, 'Evidence To Capture', 3);
+
+  assert.match(response, /Desktop restart is manual and operator-only/i);
+  assert.match(response, /only after the\s+bounded recovery attempts still fail, evidence has been captured/i);
+  assert.match(forbidden, /Never automatically restart Codex Desktop/i);
+  assert.match(forbidden, /or use restart as the primary\s+recovery action/i);
+  assert.match(evidence, /Before any\s+manual restart, capture the bounded attempts and operator decision/i);
+});
+
 test('guide contains no private path, local database, or secret material', () => {
   assert.doesNotMatch(guide, /\/(?:Users|home|private|var\/folders)\//);
   assert.doesNotMatch(guide, /\b(?:sqlite|\.db\b|database row|database file|session_index)\b/i);
