@@ -135,6 +135,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Diff/PR/commit link, if code changed
 - [ ] Screenshot/browser proof, if UI-facing
 - [ ] Autoreview/review result for non-trivial code changes, or reason skipped
+- [ ] For a production-derived starter upgrade: synchronized protocol, portable skill, packet template, automation examples, focused tests, compatibility/migration record, and public starter issue/release adoption backlink validated with `scripts/check-upstream-sync.mjs`
 - [ ] Independent QA result and artifact paths when `qa_required: true`
 - [ ] Caveats documented
 - [ ] Canonical worker ID/proof and matching creation-attempt ID recorded after any creation recovery
@@ -182,6 +183,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Before escalating any role to high reasoning, set its `*_model_routing_reason_category` to exactly `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`. Put optional descriptive context in the separate `*_model_routing_reason_note` field.
 - Use `gpt-5.6-luna` only at medium reasoning when the role's `*_luna_eligibility` is exactly `bounded_high_volume` and `*_independent_verification: true`; the independent verifier must inspect the result before completion.
 - Keep all context task-local. No private memory dumps and no secrets.
+- For production-derived starter upgrades, generalize operational details and follow `docs/upstream-synchronization.md`; customized clones retain the public source issue/release backlink without requiring a fork.
 
 ## Status log
 

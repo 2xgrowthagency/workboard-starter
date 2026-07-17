@@ -158,6 +158,8 @@ Each issue needs symptoms, impact, safe response, forbidden shortcuts, and evide
 
 ### [ST-013: add an upstream synchronization checklist](https://github.com/2xgrowthagency/workboard-starter/issues/13)
 
+Status: implemented.
+
 Every production-derived upgrade should update the starter protocol, portable skill, template, automation example, and tests together. Add a release checklist that rejects user-specific paths, automation IDs, private names, secrets, and local database assumptions.
 
 ### [ST-014: add capability/version metadata](https://github.com/2xgrowthagency/workboard-starter/issues/14)
