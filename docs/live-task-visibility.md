@@ -278,3 +278,12 @@ Portable completion can be retained as root reconciliation evidence tied to
 `worker_portable_session_id` and `worker_creation_attempt_id`, but it does not
 pass the canonical callback gate. This is valid portable delegation evidence,
 but it must never be relabeled as app-native or live Desktop visibility.
+
+## Task hygiene boundary
+
+The optional [Codex task finalizer](codex-task-finalization.md) may emit a
+state-first rename for a task containing canonical visibility proof, but it must
+not archive or weaken that proof. Task-hygiene rename/archive mutations use the
+same live app-native readback standard as delegation: a direct database edit,
+session-index update, or mutation response without exact readback does not prove
+the running Desktop UI changed. Never hard-delete SQLite rows to close a task.

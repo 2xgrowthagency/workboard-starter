@@ -78,6 +78,15 @@ automation is paused before reporting success. A failed or unavailable pause is
 a blocker, not proof of pause. `IDLE_PAUSE_RECOMMENDED=1` with request `0` is
 advisory only.
 
+After the outcome is known, an optional local Codex hygiene pass may use
+`scripts/classify-codex-task-finalizer.mjs` under
+`docs/codex-task-finalization.md`. Supply rollout files and exact paired
+automation IDs/names explicitly. Mutate only emitted candidates through app-native task tools and
+strictly parse `codex-task-finalizer/v1` JSONL first; apply only raw parsed task IDs, titles,
+and actions, never encoded or serialized text. Verify each rename and archive by readback. Preserve manual follow-ups, useful
+errors, blockers, review/delegation/canonical proof, and never hard-delete
+SQLite rows.
+
 ## What you should not do
 
 - Do not free-roam through projects looking for work.

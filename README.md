@@ -137,6 +137,7 @@ docs/
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   live-task-visibility.md   # app-native proof and portable fallback
+  codex-task-finalization.md # optional local Codex task hygiene
   known-issues-and-recovery.md # operator symptoms, stops, evidence, recovery
   upstream-synchronization.md # production-derived upgrade and release gate
   pending-improvements.md   # production hardening backlog for the starter
@@ -147,6 +148,7 @@ ORCHESTRATOR.md              # first file for the local root orchestrator
 scripts/
   check-workboard-git-preflight.mjs # root-owned Git status/fetch/ff-only gate
   check-workboard-queue.mjs # read-only local queue classifier
+  classify-codex-task-finalizer.mjs # read-only task-hygiene candidates
   check-workboard-target-lock.mjs # exact decoded target-lock check
   check-workboard-callback.mjs # canonical callback status/identity/role/lane check
   check-task-packet.mjs # fail-closed packet schema and lifecycle validator
@@ -175,6 +177,7 @@ tests/
   check-task-packet.test.mjs
   check-workboard-queue.test.mjs
   check-workboard-target-lock.test.mjs
+  codex-task-finalizer.test.mjs
   live-task-visibility-docs.test.mjs
   task-creation-recovery.test.mjs
   workboard-closeout.test.mjs
@@ -256,6 +259,16 @@ At the threshold, `recommend` emits a recommendation; `pause` emits
 Ready or pending-QA inventory never requests a pause. The memory file contains
 only version, outcome, hashed queue signature, streak, and timestamp; malformed,
 multiline, oversized, symlinked, or in-repo memory fails closed.
+
+After an outcome is known, Codex operators may run the optional read-only task
+finalizer described in [`docs/codex-task-finalization.md`](docs/codex-task-finalization.md).
+It accepts only explicitly named local rollout files and exact configured
+automation ID/name pairs, emits bounded state-first candidates, and leaves every mutation
+and readback to app-native task tools. It does not scan private session roots,
+read a Codex database, or hard-delete task rows.
+Its output is canonical `codex-task-finalizer/v1` JSONL: strict parsing yields
+raw task IDs/titles/actions, and encoded or serialized wire text must never be
+used as an app-native title.
 
 Run the tests with:
 
@@ -446,6 +459,7 @@ Start here:
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
 - `docs/live-task-visibility.md`
+- `docs/codex-task-finalization.md`
 - `docs/known-issues-and-recovery.md`
 - `docs/upstream-synchronization.md`
 - `docs/pending-improvements.md`
