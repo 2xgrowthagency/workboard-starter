@@ -77,6 +77,21 @@ every synchronized surface, validates the release record, and scans newly added
 portable documentation/template/skill lines for prohibited local assumptions.
 It performs no fetch, push, remote lookup, release mutation, or fork check.
 
+Every changed path consumed by the validator, including the release/adoption
+record, synchronized surfaces, and focused tests, must be a regular file. The
+validator checks the directory entry without following it, resolves its
+canonical path, and requires that path to remain inside the canonical repository
+root before reading content. Symbolic links are rejected even when they resolve
+inside the repository; escaped links, directories, devices, sockets, and named
+pipes also fail closed. No nonregular file type is supported by this release
+contract.
+
+CLI execution canonicalizes both the invoked script path and module path before
+deciding whether to run. Relative and absolute paths, spaces, symlinked path
+aliases, and platform aliases for the same temporary directory therefore emit
+exactly one `UPSTREAM_SYNC_STATUS` line. Importing the module for tests or reuse
+does not execute the CLI.
+
 `UPSTREAM_SYNC_STATUS=VALID` is required before release. `REJECTED` identifies a
 contract violation; `CHECK_FAILED` identifies invalid arguments, repository
 identity, Git comparison, or record parsing. Fix the input and rerun rather than

@@ -42,4 +42,5 @@ is incomplete, or newly added portable text contains host-specific paths,
 automation identifiers, private identity fields, credential material, or local
 application-persistence assumptions. Stage all files or leave all files
 unstaged; mixed or partial staging is rejected so validation matches the
-eventual commit.
+eventual commit. All referenced paths must be repository-contained regular
+files; symlinks and nonregular file types are not accepted.

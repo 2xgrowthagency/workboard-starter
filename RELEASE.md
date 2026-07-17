@@ -23,5 +23,9 @@ Workboard upgrade.
 8. Publish release notes that summarize compatibility, migration impact, and
    the originating public reference. Do not publish local-only evidence.
 
+The release/adoption record and every changed path read by the validator must be
+a regular file whose canonical path remains inside the canonical repository
+root. Symlinks and nonregular file types fail closed.
+
 The detailed rules and command contract are in
 [`docs/upstream-synchronization.md`](docs/upstream-synchronization.md).

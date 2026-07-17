@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -91,8 +91,32 @@ function normalizeRecordPath(repo, recordPath) {
   if (!relation || relation.startsWith(`..${sep}`) || relation === '..') {
     throw new Error('record must stay inside the repository');
   }
-  if (!statSync(absolute).isFile()) throw new Error('record must be a regular file');
   return { normalized, absolute };
+}
+
+function isInside(root, candidate) {
+  const relation = relative(root, candidate);
+  return relation === '' || (!isAbsolute(relation) && relation !== '..' && !relation.startsWith(`..${sep}`));
+}
+
+function validateRepositoryFile(repo, path, label = 'referenced file') {
+  if (isAbsolute(path)) throw new Error(`${label} must be repository-relative: ${path}`);
+  const absolute = resolve(repo, path);
+  if (!isInside(repo, absolute)) throw new Error(`${label} must stay inside the repository: ${path}`);
+
+  const metadata = lstatSync(absolute);
+  let canonical;
+  try {
+    canonical = realpathSync(absolute);
+  } catch {
+    throw new Error(`${label} canonical path cannot be resolved: ${path}`);
+  }
+  if (!isInside(repo, canonical)) {
+    throw new Error(`${label} resolves outside the canonical repository root: ${path}`);
+  }
+  if (metadata.isSymbolicLink()) throw new Error(`${label} must not be a symbolic link: ${path}`);
+  if (!metadata.isFile()) throw new Error(`${label} must be a regular file: ${path}`);
+  return absolute;
 }
 
 function parseFrontmatter(source) {
@@ -152,13 +176,13 @@ function listLines(source) {
 
 function snapshot(repo, base) {
   git(repo, ['rev-parse', '--verify', `${base}^{commit}`]);
-  const staged = listLines(git(repo, ['diff', '--cached', '--no-ext-diff', '--name-only', '--diff-filter=ACMR', base, '--']));
-  const unstaged = listLines(git(repo, ['diff', '--no-ext-diff', '--name-only', '--diff-filter=ACMR', '--']));
+  const staged = listLines(git(repo, ['diff', '--cached', '--no-ext-diff', '--name-only', '--diff-filter=ACMRT', base, '--']));
+  const unstaged = listLines(git(repo, ['diff', '--no-ext-diff', '--name-only', '--diff-filter=ACMRT', '--']));
   const untracked = listLines(git(repo, ['ls-files', '--others', '--exclude-standard']));
   const useIndex = staged.length > 0;
   const compared = useIndex
     ? staged
-    : listLines(git(repo, ['diff', '--no-ext-diff', '--name-only', '--diff-filter=ACMR', base, '--']));
+    : listLines(git(repo, ['diff', '--no-ext-diff', '--name-only', '--diff-filter=ACMRT', base, '--']));
   return {
     useIndex,
     mixed: useIndex && (unstaged.length > 0 || untracked.length > 0),
@@ -180,33 +204,56 @@ function addedLines(repo, base, path, useIndex) {
 }
 
 export function validateUpstreamSync({ repo, base, recordPath }) {
-  const current = snapshot(repo, base);
+  const canonicalRoot = realpathSync(resolve(repo));
+  const normalizedRecord = normalizeRecordPath(canonicalRoot, recordPath).normalized;
+  const current = snapshot(canonicalRoot, base);
   const { files, useIndex } = current;
   const errors = [];
+  const validFiles = new Set();
+  const invalidFiles = new Set();
+  const ensureFile = (path, label = 'referenced file') => {
+    if (validFiles.has(path)) return true;
+    if (invalidFiles.has(path)) return false;
+    try {
+      validateRepositoryFile(canonicalRoot, path, label);
+      validFiles.add(path);
+      return true;
+    } catch (error) {
+      invalidFiles.add(path);
+      errors.push(error.message);
+      return false;
+    }
+  };
+
   if (current.mixed) {
     errors.push('staged changes cannot be mixed with unstaged or untracked changes; stage all or unstage all before validation');
   }
+  for (const path of files) ensureFile(path);
   for (const path of REQUIRED_FILES) {
-    if (!files.includes(path) || addedLines(repo, base, path, useIndex).every((line) => !line.trim())) {
+    const regular = ensureFile(path, 'required synchronized surface');
+    if (!regular || !files.includes(path) || addedLines(canonicalRoot, base, path, useIndex).every((line) => !line.trim())) {
       errors.push(`required synchronized surface is unchanged: ${path}`);
     }
   }
-  if (!files.some((path) => /^tests\/[^/]+\.test\.mjs$/.test(path) && addedLines(repo, base, path, useIndex).some((line) => line.trim()))) {
+  if (!files.some((path) => /^tests\/[^/]+\.test\.mjs$/.test(path) && validFiles.has(path) && addedLines(canonicalRoot, base, path, useIndex).some((line) => line.trim()))) {
     errors.push('at least one focused tests/*.test.mjs file must change');
   }
-  if (!files.includes(recordPath) || addedLines(repo, base, recordPath, useIndex).every((line) => !line.trim())) {
-    errors.push(`release record has no added content: ${recordPath}`);
+  const recordIsRegular = ensureFile(normalizedRecord, 'release/adoption record');
+  if (!recordIsRegular || !files.includes(normalizedRecord) || addedLines(canonicalRoot, base, normalizedRecord, useIndex).every((line) => !line.trim())) {
+    errors.push(`release record has no added content: ${normalizedRecord}`);
   }
 
   let record;
-  try {
-    record = validateRecord(readFileSync(resolve(repo, recordPath), 'utf8'));
-  } catch (error) {
-    errors.push(error.message);
+  if (recordIsRegular) {
+    try {
+      record = validateRecord(readFileSync(resolve(canonicalRoot, normalizedRecord), 'utf8'));
+    } catch (error) {
+      errors.push(error.message);
+    }
   }
 
-  for (const path of files.filter((candidate) => PORTABLE_TEXT.test(candidate) && !CHECKER_FILES.has(candidate))) {
-    const lines = addedLines(repo, base, path, useIndex);
+  for (const path of files.filter((candidate) => validFiles.has(candidate) && PORTABLE_TEXT.test(candidate) && !CHECKER_FILES.has(candidate))) {
+    const lines = addedLines(canonicalRoot, base, path, useIndex);
     for (let index = 0; index < lines.length; index += 1) {
       for (const [label, pattern] of PROHIBITED) {
         if (pattern.test(lines[index])) errors.push(`${path}: added line ${index + 1} contains ${label}`);
@@ -221,8 +268,7 @@ function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
     const repo = canonicalRepo(options.repo);
-    const record = normalizeRecordPath(repo, options.record);
-    const result = validateUpstreamSync({ repo, base: options.base, recordPath: record.normalized });
+    const result = validateUpstreamSync({ repo, base: options.base, recordPath: options.record });
     if (!result.valid) {
       console.error(`UPSTREAM_SYNC_STATUS=REJECTED REASON=${encode(result.errors.join('; '))}`);
       process.exitCode = 1;
@@ -239,4 +285,13 @@ function main() {
   }
 }
 
-if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) main();
+export function isMainModule(argvEntry = process.argv[1], moduleUrl = import.meta.url) {
+  if (!argvEntry) return false;
+  try {
+    return realpathSync(resolve(argvEntry)) === realpathSync(fileURLToPath(moduleUrl));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) main();

@@ -1,12 +1,21 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { validateUpstreamSync } from '../scripts/check-upstream-sync.mjs';
 
@@ -42,8 +51,8 @@ function record(overrides = {}) {
   return `---\n${Object.entries(values).map(([key, value]) => `${key}: ${value}`).join('\n')}\n---\n\n# Test release\n`;
 }
 
-function fixture({ recordInBase = false } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'workboard-upstream-sync-'));
+function fixture({ recordInBase = false, parent = tmpdir() } = {}) {
+  const root = mkdtempSync(join(parent, 'workboard upstream sync-'));
   run('git', ['init', '-q'], root);
   run('git', ['config', 'user.email', 'test@example.com'], root);
   run('git', ['config', 'user.name', 'Test User'], root);
@@ -56,6 +65,28 @@ function fixture({ recordInBase = false } = {}) {
   for (const path of REQUIRED) write(root, path, `${readFileSync(join(root, path), 'utf8')}portable update\n`);
   if (!recordInBase) write(root, 'docs/releases/st-test.md', record());
   return { root, base, recordPath: 'docs/releases/st-test.md' };
+}
+
+function statusLines(result) {
+  return `${result.stdout}\n${result.stderr}`
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('UPSTREAM_SYNC_STATUS='));
+}
+
+function assertSingleStatus(result, expected) {
+  const lines = statusLines(result);
+  assert.equal(lines.length, 1, `expected exactly one status line:\n${result.stdout}\n${result.stderr}`);
+  assert.match(lines[0], new RegExp(`^UPSTREAM_SYNC_STATUS=${expected}\\b`));
+}
+
+function cli(script, input, cwd = input.root, extra = []) {
+  return spawnSync(process.execPath, [
+    script,
+    '--repo', input.root,
+    '--base', input.base,
+    '--record', input.recordPath,
+    ...extra,
+  ], { cwd, encoding: 'utf8' });
 }
 
 test('accepts a complete customized clone change without a remote or fork', () => {
@@ -108,6 +139,67 @@ test('rejects a mode-only change to a pre-existing release record', () => {
   assert.ok(result.errors.includes(`release record has no added content: ${input.recordPath}`));
 });
 
+test('rejects internal and escaped release-record symlinks', () => {
+  for (const escaped of [false, true]) {
+    const input = fixture();
+    const recordPath = join(input.root, input.recordPath);
+    rmSync(recordPath);
+    if (escaped) {
+      const outside = join(dirname(input.root), `outside-record-${Date.now()}.md`);
+      writeFileSync(outside, record());
+      symlinkSync(outside, recordPath);
+    } else {
+      write(input.root, 'docs/releases/actual.md', record());
+      symlinkSync('actual.md', recordPath);
+    }
+    const result = validateUpstreamSync({ repo: input.root, base: input.base, recordPath: input.recordPath });
+    assert.equal(result.valid, false);
+    assert.match(result.errors.join('; '), escaped ? /outside the canonical repository root/ : /must not be a symbolic link/);
+  }
+});
+
+test('rejects internal and escaped synchronized-surface symlinks', () => {
+  for (const escaped of [false, true]) {
+    const input = fixture();
+    const surface = join(input.root, 'docs/orchestrator-protocol.md');
+    rmSync(surface);
+    if (escaped) {
+      const outside = join(dirname(input.root), `outside-protocol-${Date.now()}.md`);
+      writeFileSync(outside, 'portable update\n');
+      symlinkSync(outside, surface);
+    } else {
+      write(input.root, 'docs/actual-protocol.md', 'portable update\n');
+      symlinkSync('actual-protocol.md', surface);
+    }
+    const result = validateUpstreamSync({ repo: input.root, base: input.base, recordPath: input.recordPath });
+    assert.equal(result.valid, false);
+    assert.match(result.errors.join('; '), escaped ? /outside the canonical repository root/ : /must not be a symbolic link/);
+  }
+});
+
+test('rejects directories and FIFOs before reading release content', { skip: process.platform === 'win32' }, () => {
+  const directoryInput = fixture();
+  const directoryRecord = join(directoryInput.root, directoryInput.recordPath);
+  rmSync(directoryRecord);
+  mkdirSync(directoryRecord);
+  const directoryResult = validateUpstreamSync({
+    repo: directoryInput.root,
+    base: directoryInput.base,
+    recordPath: directoryInput.recordPath,
+  });
+  assert.equal(directoryResult.valid, false);
+  assert.match(directoryResult.errors.join('; '), /release\/adoption record must be a regular file/);
+
+  const fifoInput = fixture();
+  const fifoRecord = join(fifoInput.root, fifoInput.recordPath);
+  rmSync(fifoRecord);
+  const made = spawnSync('mkfifo', [fifoRecord], { encoding: 'utf8' });
+  assert.equal(made.status, 0, made.stderr);
+  const fifoResult = validateUpstreamSync({ repo: fifoInput.root, base: fifoInput.base, recordPath: fifoInput.recordPath });
+  assert.equal(fifoResult.valid, false);
+  assert.match(fifoResult.errors.join('; '), /release\/adoption record must be a regular file/);
+});
+
 test('requires explicit compatibility, migration impact, and matching adoption backlink', () => {
   const input = fixture();
   write(input.root, input.recordPath, record({
@@ -154,24 +246,60 @@ test('rejects newly added non-portable operational details', () => {
   }
 });
 
-test('CLI fails closed for invalid arguments and reports valid records', () => {
+test('CLI emits exactly one status for absolute and relative invocation from paths with spaces', () => {
   const input = fixture();
   const script = fileURLToPath(new URL('../scripts/check-upstream-sync.mjs', import.meta.url));
-  const valid = spawnSync(process.execPath, [
-    script,
-    '--repo', input.root,
-    '--base', input.base,
-    '--record', input.recordPath,
-  ], { cwd: input.root, encoding: 'utf8' });
-  assert.equal(valid.status, 0, valid.stderr);
-  assert.match(valid.stdout, /^UPSTREAM_SYNC_STATUS=VALID /);
+  const absolute = cli(script, input);
+  assert.equal(absolute.status, 0, absolute.stderr);
+  assertSingleStatus(absolute, 'VALID');
+
+  const relativeScript = relative(realpathSync(input.root), realpathSync(script));
+  const relativeRun = cli(relativeScript, input);
+  assert.equal(relativeRun.status, 0, relativeRun.stderr);
+  assertSingleStatus(relativeRun, 'VALID');
 
   const invalid = spawnSync(process.execPath, [script, '--repo', input.root], {
     cwd: input.root,
     encoding: 'utf8',
   });
   assert.equal(invalid.status, 1);
-  assert.match(invalid.stderr, /^UPSTREAM_SYNC_STATUS=CHECK_FAILED /);
+  assertSingleStatus(invalid, 'CHECK_FAILED');
+});
+
+test('CLI main detection survives the macOS /tmp canonical path alias', {
+  skip: process.platform !== 'darwin' || realpathSync('/tmp') === '/tmp',
+}, () => {
+  const input = fixture({ parent: '/tmp' });
+  const script = realpathSync(fileURLToPath(new URL('../scripts/check-upstream-sync.mjs', import.meta.url)));
+  const canonicalTmp = realpathSync('/tmp');
+  assert.ok(script.startsWith(`${canonicalTmp}${sep}`), `script is not under the canonical temporary root: ${script}`);
+  const alias = resolve('/tmp', relative(canonicalTmp, script));
+  const result = cli(alias, input);
+  assert.equal(result.status, 0, result.stderr);
+  assertSingleStatus(result, 'VALID');
+});
+
+test('CLI main detection survives a symlinked script alias', () => {
+  const input = fixture();
+  const script = realpathSync(fileURLToPath(new URL('../scripts/check-upstream-sync.mjs', import.meta.url)));
+  const alias = join(dirname(input.root), `validator alias ${Date.now()}.mjs`);
+  symlinkSync(script, alias);
+  const result = cli(alias, input);
+  assert.equal(result.status, 0, result.stderr);
+  assertSingleStatus(result, 'VALID');
+});
+
+test('importing the validator has no CLI side effects', () => {
+  const script = fileURLToPath(new URL('../scripts/check-upstream-sync.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [
+    '--input-type=module',
+    '--eval',
+    `await import(${JSON.stringify(pathToFileURL(script).href)})`,
+  ], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
+  assert.equal(statusLines(result).length, 0);
 });
 
 test('portable entry points describe the same synchronized release contract', () => {
