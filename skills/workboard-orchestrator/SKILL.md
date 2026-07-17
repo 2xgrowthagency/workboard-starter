@@ -10,9 +10,9 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 ## Start here
 
 1. Read `ORCHESTRATOR.md`.
-2. Inspect and safely synchronize the Workboard checkout.
+2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` with a path resolving to the exact repository root and continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`. Symlink and `..` aliases to that root are accepted; nested directories are rejected.
 3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>` before broad reads; scheduled polls may add an external one-line `--run-memory`, a nonzero `--idle-pause-threshold`, and `--idle-pause-action recommend|pause`.
-4. Stop on `NOTHING_TO_CLAIM`, `WORKBOARD_SYNC_NEEDED`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
+4. Stop on Git preflight `STOP`, `NOTHING_TO_CLAIM`, `WORKBOARD_REQUIRES_JUDGMENT`, or `CHECK_FAILED` after reporting the emitted proof.
 5. On `QA_RESULT_AVAILABLE`, read only the emitted QA packets, verify their evidence, and route each verdict to its exact next lane without launching duplicate QA.
 6. On `WORK_IN_PROGRESS`, report counts and locks, then stop without reading active packets or task history.
 7. On `PROMOTION_REVIEW_NEEDED`, follow `docs/dependency-promotion.md` and inspect only emitted candidates.
@@ -21,7 +21,10 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 
 ## Core loop
 
-- Pull latest main.
+- Run the explicit root Git preflight; never replace it with generic pull guidance.
+- Pass the same exact canonical repository identity to preflight and classifier. The classifier's root-marker check is read-only and makes no Git-state judgment.
+- Treat its Git-common-directory lock as cooperative exclusion: stop on contention or invalid metadata, never auto-expire it, and use the protocol's explicit stale-lock recovery only after proving no owner remains. The lock cannot stop uncooperative external writers, so retain one-root/single-writer discipline.
+- Treat `STOP REASON=INTERRUPTED` as final: handled HUP/INT/TERM signals terminate active Git, forbid `READY`/`UPDATED`, clean only the owned lock, and require a fresh preflight run.
 - Trust classifier-emitted streak/pause fields; do not reconstruct them from old automation narratives. Verify any requested host-native pause before claiming it succeeded.
 - Treat classifier-emitted claimed and active-QA records as capacity usage and per-target locks; do not inspect their packet/task history on ordinary polls.
 - Trust `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED`; at zero available capacity the classifier machine-enforces `WORK_IN_PROGRESS`. Below capacity, continue routing unrelated targets.
@@ -37,7 +40,7 @@ Use this skill when asked to run, configure, or explain a Workboard local orches
 - Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
 - Structurally reject duplicate source frontmatter keys, then validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status`. Only exact callback status `pending` with canonical creation can return `ROUTABLE` and authorize one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs is logged but cannot route.
 - Never periodically inspect, monitor, heartbeat, or babysit active workers.
-- Rename the root task only after the cycle's final outcome is known. Use `[idle|claimed|qa|review|blocked|done] <useful project or task label>`, never final `[poll]`, `WB`, or generic `Workboard` naming, and require exact app-native title readback before claiming success.
+- Rename the root task only after the cycle's final outcome is known. Use `[idle|claimed|qa|review|blocked|done] <useful project or task label>` and require exact app-native title readback before claiming success. Final `[poll]` titles are invalid. Match whole tokens/phrases: reject leading `WB`, `Workboard`, `poll`/`polling`, `queue check`, and `manual Workboard`, plus generic-only closeout/check labels, while allowing those character sequences inside larger real names.
 - On callback unavailability/failure, require `ROOT_RECONCILIATION_REQUIRED` with the identical envelope and error; do not replace it with monitoring.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.

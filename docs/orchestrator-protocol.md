@@ -24,6 +24,67 @@ One person/agent can play multiple roles, but keep the responsibilities separate
 
 State changes are file moves plus packet status-log updates. Commit/push each meaningful transition so everyone sees the same board.
 
+## Root Git synchronization preflight
+
+Before queue classification or broad reads, run:
+
+```bash
+node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>
+```
+
+The preflight is root-owned and ordered deliberately:
+
+1. Canonicalize the requested path, obtain `git rev-parse --show-toplevel`, canonicalize that result, and require exact equality before queue or checkout inspection. Symlink and `..` aliases are accepted only when they resolve to the same canonical root; nested directories are rejected with `REASON=repo_path_not_top_level`.
+2. Discover the Git common directory without inspecting queue or checkout state.
+3. Atomically create `<git-common-dir>/workboard-root-preflight.lock/` and write `owner.json` containing only version, random lock ID, host name, process ID, and start time; it contains no repository or private filesystem path.
+4. Verify the checkout is on `main`, has no unresolved conflict, and is clean.
+5. Fetch `main` from the intended remote with terminal prompting disabled.
+6. Compare `HEAD` with the fetched commit.
+7. Fast-forward with `git merge --ff-only` only when clean `main` is strictly behind.
+8. Revalidate branch, conflicts, exact `HEAD` and `FETCH_HEAD`, and full tracked/untracked status immediately before success; repeat this gate immediately before a fast-forward.
+9. Run every Git operation as an interruptible child process group and process pending interruption state after every child exit.
+10. Emit `READY`, `UPDATED`, or `STOP` synchronously while still owning the lock, then remove the owned lock on normal and failure paths.
+11. Continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`.
+
+Stop on `GIT_PREFLIGHT_STATUS=STOP`. Its `REASON` distinguishes dirty,
+conflicted, non-main, ahead, diverged, fetch/auth/network failure, and failed
+fast-forward states. Do not run the classifier after a stop. The preflight
+defaults to remote `origin`; pass `--remote <name>` when the intended remote has
+a different name. The synchronized branch is always `main`.
+
+### Cooperative lock and recovery
+
+Atomic directory creation makes one compliant root the owner. Another root that
+finds the lock returns `GIT_PREFLIGHT_STATUS=STOP REASON=preflight_lock_held`
+before branch/status/fetch inspection. Missing, malformed, oversized, symlinked,
+or otherwise invalid lock metadata also stops. Lock output contains no repository
+path or host-private path.
+
+Locks have no automatic expiry. `LOCK_AGE_SECONDS` is diagnostic only and never
+proves staleness. To recover an abandoned lock, the operator must first verify
+that the recorded PID is not an active preflight on the recorded host and that no
+root on any other host sharing the Git common directory can still own it. Preserve
+the `owner.json` evidence, remove only
+`<git-common-dir>/workboard-root-preflight.lock/`, and rerun the preflight. Never
+remove or replace a lock merely because it is old, and never recover it while its
+owner may still run.
+
+The lock coordinates compliant root preflights only. It does not provide
+compare-and-swap for the checkout and cannot stop an uncooperative external
+process from changing a ref or file after the final observation but before output.
+Single-root/single-writer discipline remains required. Final revalidation is
+retained to detect changes that occur before that last observation.
+
+### Interruption semantics
+
+The first `SIGHUP`, `SIGINT`, or `SIGTERM` is latched. If Git is active, the
+preflight terminates its process group, escalates to `SIGKILL` after a short
+grace period when needed, drains pending signal delivery after child exit, and
+checks the latched state again before any success emission. An interrupted run
+must emit `GIT_PREFLIGHT_STATUS=STOP REASON=INTERRUPTED SIGNAL=<signal>`, remove
+only its owned cooperative lock, and exit nonzero. It must never emit `READY` or
+`UPDATED`, even when the interrupted Git command later exits successfully.
+
 ## Queue-first classifier
 
 Run the read-only classifier before reading `projects.yaml`, packet bodies,
@@ -37,10 +98,14 @@ node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_A
 limit, pass that configured value directly; do not read packet bodies or worker
 history to compute it.
 
-The classifier inspects only Git state and the queue metadata needed for counts,
-QA state, and target locks. It never fetches, merges, rebases, pushes, moves
-packets, or creates task directories. Its default mode writes nothing. A
-scheduled poll may opt into one strict memory record outside the repository:
+The classifier inspects only local queue metadata needed for counts, QA state,
+and target locks. It never invokes Git, moves packets, or creates task
+directories. Before classification it canonicalizes `--repo` and requires a
+real `.git` directory or regular `.git` file at that exact root. This independent
+identity guard accepts aliases resolving to the root and rejects nested paths;
+it does not discover or judge Git state. Git synchronization and judgment belong
+exclusively to the root preflight. Its default mode writes nothing. A scheduled
+poll may opt into one strict memory record outside the repository:
 
 ```bash
 node scripts/check-workboard-queue.mjs \
@@ -67,8 +132,7 @@ Use the result to open the smallest required lane:
 - `QA_WORK_AVAILABLE`: read the registry and only the pending QA packets needed for routing. Pending QA takes precedence when ready implementation work also exists; rerun the classifier after routing QA to expose the remaining ready lane.
 - `QA_RESULT_AVAILABLE`: read only the emitted completed-QA packets, verify the recorded evidence, and route `PASS` to review, `FAIL` to ready, or `BLOCKED` to blocked. Do not launch another QA task.
 - `PROMOTION_REVIEW_NEEDED`: follow `docs/dependency-promotion.md`; open only emitted review candidates, never the whole backlog or blocked lane.
-- `WORKBOARD_SYNC_NEEDED`: stop until a clean checkout is safely fast-forwarded.
-- `WORKBOARD_REQUIRES_JUDGMENT`: stop for dirty, ahead, diverged, non-main, malformed packet metadata, or unrecognized QA state/result.
+- `WORKBOARD_REQUIRES_JUDGMENT`: stop for malformed packet metadata or unrecognized QA state/result.
 - `CHECK_FAILED`: report the exact classifier failure and stop.
 
 Every successful lane emits `NO_ACTION_STREAK`, `IDLE_PAUSE_RECOMMENDED`,
@@ -169,9 +233,9 @@ not infer model policy from private memory or unrelated task history.
 ## Polling loop
 
 1. `cd` into the Workboard repo.
-2. Inspect and synchronize Git using the environment's explicit safe preflight.
+2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` and stop unless it returns `READY` or `UPDATED`.
 3. Run `node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>`; a scheduled poll may add the external memory, threshold, and pause-action flags above.
-4. Stop immediately on synchronization, judgment, or classifier failure statuses.
+4. Stop immediately on preflight, judgment, or classifier failure statuses.
 5. Read `projects.yaml` if the returned lane requires routing; otherwise avoid broad context. On an idle/claimed-only lane, use only the classifier line and strict run-memory record, never old automation narratives.
 6. Treat claimed and active-QA packets only as capacity usage and per-target locks. Never inspect, monitor, heartbeat, or babysit their task history during an ordinary poll.
 7. Trust the classifier's `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED` fields. `WORK_IN_PROGRESS` machine-enforces a stop when available capacity is zero.
@@ -410,6 +474,10 @@ title. Choose `[idle|claimed|qa|review|blocked|done] <useful project or task
 label>`; `[poll]`, `WB`, a `Workboard` prefix, or a generic `Workboard` label is
 not a valid final title. Apply the exact title through the running host's
 app-native mutation tool, then read the task back and compare the title exactly.
+Label validation is token/phrase-aware: reject leading `WB`, `Workboard`,
+`poll`/`polling`, `queue check`, and `manual Workboard`, and labels made only of
+generic closeout/check words, while allowing those character sequences inside
+a larger real project/task name.
 
 Do not treat a mutation return, local/session metadata, or a best-effort call as
 verification. If the title tool is absent, returns an error, times out, or the

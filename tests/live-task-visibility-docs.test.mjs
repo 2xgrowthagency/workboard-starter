@@ -205,6 +205,10 @@ test('operator surfaces enforce state-first closeout ordering and verification',
       `${path} must require a useful label`);
     assert.match(contents, /\[poll\][\s\S]{0,100}(?:WB|Workboard)|(?:WB|Workboard)[\s\S]{0,100}\[poll\]/i,
       `${path} must reject generic legacy titles`);
+    assert.match(contents, /queue check[\s\S]{0,100}manual Workboard/i,
+      `${path} must enumerate token-aware generic label prefixes`);
+    assert.match(contents, /(?:inside|within)[\s\S]{0,80}larger real[\s\S]{0,40}name/i,
+      `${path} must permit generic substrings inside real names`);
     assert.match(contents, /app-native[\s\S]{0,180}read\s*back|read(?: it| the task)?\s+back[\s\S]{0,120}app-native/i,
       `${path} must require app-native title readback`);
     assert.match(contents, /unavailable[\s\S]{0,180}(?:timeout|error|mismatch)|(?:timeout|error|mismatch)[\s\S]{0,180}unavailable/i,

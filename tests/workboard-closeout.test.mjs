@@ -37,15 +37,49 @@ test('rejects title mutation before the final outcome is known', () => {
 });
 
 test('rejects generic and legacy final titles adversarially', () => {
-  for (const [state, label, title] of [
-    ['idle', 'poll', '[poll] no work'],
-    ['blocked', 'WB', '[blocked] WB'],
-    ['review', 'Workboard', 'Workboard review'],
+  for (const label of [
+    'poll',
+    'POLLING queue',
+    'WB',
+    'wB Starter closeout',
+    'Workboard',
+    'workBOARD: Starter closeout',
+    'queue check',
+    'Queue-Check Starter',
+    'manual Workboard',
+    'MANUAL: WORKBOARD Starter',
+    'closeout',
+    'Final closeout',
+    'check',
+    'status CHECK',
+    'root task closeout',
+    'Starter closeout',
   ]) {
+    const title = `[review] ${label}`;
     assert.match(run([
-      '--state', state, '--label', label, '--outcome-known', 'true',
+      '--state', 'review', '--label', label, '--outcome-known', 'true',
       '--title-status', 'verified', '--title', title, '--title-readback', title,
+      '--title-task-id', ROOT_TASK_ID,
     ], 1), /label must identify a useful task or project/);
+  }
+});
+
+test('accepts useful names containing generic substrings inside larger tokens', () => {
+  for (const label of [
+    'Starter closeout links',
+    'Workboarder API migration',
+    'Pollinator analytics',
+    'Pollingworth launch',
+    'Workbench checkout fixes',
+    'Queue checker hardening',
+    'WB2 reporting migration',
+  ]) {
+    const title = `[review] ${label}`;
+    assert.match(run([
+      '--state', 'review', '--label', label, '--outcome-known', 'true',
+      '--title-status', 'verified', '--title', title, '--title-readback', title,
+      '--title-task-id', ROOT_TASK_ID,
+    ]), /^CLOSEOUT_STATUS=VALID /);
   }
 });
 

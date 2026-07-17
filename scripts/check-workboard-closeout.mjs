@@ -12,6 +12,19 @@ const OPTIONS = new Set([
   'title-task-id', 'task-id', 'task-link', 'task-readback',
 ]);
 const CODEX_TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GENERIC_LABEL_PREFIXES = [
+  ['wb'],
+  ['workboard'],
+  ['poll'],
+  ['polling'],
+  ['queue', 'check'],
+  ['manual', 'workboard'],
+];
+const GENERIC_CLOSEOUT_WORDS = new Set([
+  'check', 'closeout', 'complete', 'completed', 'cycle', 'done', 'final',
+  'generic', 'manual', 'poll', 'polling', 'project', 'queue', 'root', 'run',
+  'starter', 'status', 'task', 'title', 'wb', 'workboard',
+]);
 
 function parseArgs(argv) {
   const values = {};
@@ -37,8 +50,14 @@ function boolean(values, name, fallback = false) {
 }
 
 function usefulLabel(label) {
-  const normalized = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  return normalized.length > 1 && !['poll', 'wb', 'workboard', 'workboard poll'].includes(normalized);
+  const tokens = label.toLowerCase().match(/[a-z0-9]+/g) || [];
+  if (tokens.join('').length <= 1) return false;
+  if (GENERIC_LABEL_PREFIXES.some((prefix) =>
+    prefix.every((token, index) => tokens[index] === token))) return false;
+
+  const containsCloseoutOrCheck = tokens.some((token) =>
+    token === 'closeout' || token === 'check');
+  return !containsCloseoutOrCheck || !tokens.every((token) => GENERIC_CLOSEOUT_WORDS.has(token));
 }
 
 export function validateCloseout(values, environment = process.env) {
@@ -65,7 +84,9 @@ export function validateCloseout(values, environment = process.env) {
   }
 
   if (!STATES.has(state)) errors.push(`state must be one of ${[...STATES].join(', ')}`);
-  if (!usefulLabel(label)) errors.push('label must identify a useful task or project and cannot be poll, WB, or Workboard');
+  if (!usefulLabel(label)) {
+    errors.push('label must identify a useful task or project; generic WB, Workboard, poll/polling, queue check, manual Workboard, and closeout/check labels are invalid');
+  }
   if (!TITLE_STATUSES.has(titleStatus)) errors.push(`title status must be one of ${[...TITLE_STATUSES].join(', ')}`);
   if (!outcomeKnown) errors.push('title closeout is invalid before the final outcome is known');
 
