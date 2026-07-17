@@ -91,7 +91,9 @@
         "model_routing",
         "git_preflight",
         "known_issues_recovery",
-        "closeout_links"
+        "closeout_links",
+        "task_packet_schema",
+        "upstream_synchronization"
       ],
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9_]*$"

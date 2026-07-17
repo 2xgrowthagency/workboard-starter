@@ -9,7 +9,7 @@
   },
   "starter_sync": {
     "release": null,
-    "commit": "11b54b41611a429eea406400e5a62f9487fdc360",
+    "commit": "fcd586c7108c6536d1ab46aee1c841f37d9f0605",
     "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/14",
     "adoption_record": "docs/releases/st-014-capability-manifest.md"
   },
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "81c51b6cf35a9472eef06c695fa543146d886e771e8820d3189af76cf5ff8d6e"
+      "evidence_sha256": "316403c7cecbf21d43a1715c8e703388a49dda1abfeeaec88a998225cda2830d"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "3abd529ba1873fb70b71627c43f03502d87f855b313bd9454dc3d61b384d6396"
+      "evidence_sha256": "78c5c230a0f48105f5506a7816feb6581c84e9ce2b83f0cbafe8221fa297dae0"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +59,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "f9c3cfa1ac7178326d93a9a1f47b37eb885d5674ec7b02e7f9709e6324d4ffb6"
+      "evidence_sha256": "174f0f7ae31a15785945b86a07b537fc9260a852be1ee19eb04ef38a9fd9017f"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "d87715febb69896008293fcc7a4b026dc598b75b10d6bcedca845376b05c14c5"
+      "evidence_sha256": "9b5b775996a9af25d5c6770e93c2cfd702c41b72bd7bf417c029faab717e464a"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "9609f5108fea94008d6f97c96bce49d4961e0bbaf8c350292889de3db46d9ab0"
+      "evidence_sha256": "339a9c90e7dc82c826f560da38da7b9f54f2d7786d1d22dd0dcc888e44cf81a2"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -140,7 +140,7 @@
           "tests/task-creation-recovery.test.mjs"
         ]
       },
-      "evidence_sha256": "bbf9c34e32bb88afbed0da574bce67df8a2854f697e3b8f0246cac4a70f967cc"
+      "evidence_sha256": "1f8dc743be92a109ef0c608a66b815ea94a6e68be4f2084062a7b10910b94896"
     },
     "model_routing": {
       "status": "supported",
@@ -155,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "8f16c2d4e3c0296e68a25e573b915d97eab0e71f49a583b979025b1f647bf99c"
+      "evidence_sha256": "0fed7a08f764ba83179f9dedc512a17ec0cff64ce6e41f84dc0d41bcab88b21a"
     },
     "git_preflight": {
       "status": "supported",
@@ -171,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "999e3757bbf945cb33277d595f4ed9532843b63af2fbf2e74e93c6e4fdb6b3bc"
+      "evidence_sha256": "efaba6c58405c1d83f8828fa8845193dce23018a74045ee29475a0d700b29115"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -202,7 +202,38 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "9ea14e672c7cf356259848307b93c20476b8dff68cb53bd74395e2051758a89d"
+      "evidence_sha256": "d0e47d7947d14c8b12fc8e0cffbf40720e9613b6a18f4226c05024b4877b7c64"
+    },
+    "task_packet_schema": {
+      "status": "supported",
+      "version": "2.0.0",
+      "summary": "Strict packet schema validation enforces lifecycle metadata and canonical GitHub repository identity.",
+      "evidence": {
+        "files": [
+          "scripts/check-task-packet.mjs",
+          "docs/task-packet-schema.md",
+          "templates/task-packet.md"
+        ],
+        "tests": [
+          "tests/check-task-packet.test.mjs"
+        ]
+      },
+      "evidence_sha256": "67f97b6191794ecb7ae90d4802dcfb026ab1fbbb9e1be7afbe71e2519298d165"
+    },
+    "upstream_synchronization": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Production-derived upgrades require synchronized portable surfaces, release metadata, and manifest validation.",
+      "evidence": {
+        "files": [
+          "scripts/check-upstream-sync.mjs",
+          "docs/upstream-synchronization.md"
+        ],
+        "tests": [
+          "tests/upstream-sync.test.mjs"
+        ]
+      },
+      "evidence_sha256": "9b70a21b26264b20d622860b66bdf6aeea840e5a7f4ccfcf8ba928dbde5d302c"
     }
   }
 }

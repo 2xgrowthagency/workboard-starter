@@ -25,6 +25,8 @@ export const CORE_CAPABILITIES = [
   'git_preflight',
   'known_issues_recovery',
   'closeout_links',
+  'task_packet_schema',
+  'upstream_synchronization',
 ];
 
 const MANIFEST_NAME = 'workboard-capabilities.json';

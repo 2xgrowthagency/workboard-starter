@@ -36,6 +36,12 @@ content in manifest order. A changed, missing, duplicated, escaped, symlinked,
 or nonregular evidence file makes validation fail. No capability evidence can
 therefore change without an explicit manifest refresh in the reviewed diff.
 
+The starter's core inventory covers every merged ST-001 through ST-013
+contract. In particular, `task_packet_schema` is supported only when the strict
+v2 packet validator, schema guide, canonical template, and focused validator
+tests are present. `upstream_synchronization` is supported only when the ST-013
+validator, synchronization guide, and focused gate tests are present.
+
 Validate without mutation:
 
 ```bash

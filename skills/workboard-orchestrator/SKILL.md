@@ -49,14 +49,14 @@ a refreshed, valid capability manifest whenever synchronized evidence changes.
 - Trust `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED`; at zero available capacity the classifier machine-enforces `WORK_IN_PROGRESS`. Below capacity, continue routing unrelated targets.
 - Decode every lock and reject a ready packet when both its canonical `target_project_id` and `target_path` exactly match a lock. Use `scripts/check-workboard-target-lock.mjs`; malformed lock input blocks routing.
 - Claim only independent ready packets with clear routing and acceptance criteria.
-- Move claimed packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, commit, and push.
+- Move claimed packets to `tasks/claimed/`, fill claimant, immutable target, exact lock ownership, and resolved root/worker route, append `STATE: active`, validate the v2 packet, commit, and push.
 - Delegate one worker per packet in the correct target project/path.
 - Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.
-- Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
+- Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: record exact `worker_creation_surface: app-native task tools` and verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
 - Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
 - In every verified builder, QA, or canonical recovery response, print the raw canonical task ID plus exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID. Verify the task with app-native readback first; reject every other directive/link form.
 - On a stalled, timed-out, or partially returned create, keep the source claim and target lock, assign one stable recovery incident ID, open `templates/task-creation-recovery.md`, and do not authorize replacement until live app-native list/read conclusively proves the original absent or unusable.
-- Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, immutable proof, and exact next lane.
+- Require exactly one final callback containing packet ID, result, host-current task ID as callback `worker_task_id`, unchanged `worker_creation_attempt_id`, exact structured proof equal to the applicable pinned packet target, and exact next lane. Commit proof uses `type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>`; artifact, URL, or path proof uses the same exact type/value with `source=immutable_target` for workers or `source=qa_prior_head` for QA.
 - Structurally reject duplicate source frontmatter keys, then validate callbacks with `scripts/check-workboard-callback.mjs`, canonical handoff kind, packet `qa_required`, source `worker_creation_status`, and source `completion_callback_status`. Only exact callback status `pending` with canonical creation can return `ROUTABLE` and authorize one bounded read of canonical `worker_thread_id` and a lane move. `RECOVERY_EVIDENCE` from replayed/non-pending callbacks or mismatched/delayed task or attempt IDs is logged but cannot route.
 - Never periodically inspect, monitor, heartbeat, or babysit active workers.
 - Task finalization is read-only classification: require exact configured automation ID/name pairs and explicit rollout inputs, bound candidates, strictly parse `codex-task-finalizer/v1` JSONL, apply only raw parsed task IDs/titles/actions (never encoded or serialized text), preserve every later non-heartbeat user message plus useful errors/blockers/review/delegation/canonical proof, stop on duplicates, verify app-native rename/archive mutations, and never hard-delete SQLite rows.
@@ -65,11 +65,30 @@ a refreshed, valid capability manifest whenever synchronized evidence changes.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
 - Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
 - Pass packet-linked PR/issue URLs, `builder_thread_id`, and publication policies to QA; verify publication receipts or perform a root fallback. Never expose absolute local paths or local-only artifacts in GitHub comments.
+- Preserve the portable QA artifact root and exact `<root>/<packet-id>` directory, copied immutable target type/value, active/completed `qa_thread_id`, and paired full-SHA prior QA head plus exact prior result for bounded continuations. Record GitHub issue/PR receipts with exact lowercase `owner/repo#positive-id` destinations and matching public comment URLs, bound to packet repository and numeric issue/PR fields; keep QA and generic receipts separate from the product verdict.
 - Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
 - Move QA-not-required completions directly to `tasks/review/`.
 - Move blocked packets to `tasks/blocked/` with exact blocker and next decision needed.
 - Run dependency promotion as a root-owned transition: `auto` requires `ready_when: dependencies_satisfied` and reciprocal `depends_on`/`unblocks` edges, `review` permits one bounded `ready_when` check, and manual or human/external blockers require new proof. Never make workers promote downstream packets.
 - Commit and push every transition.
+
+## Packet validation
+
+New packets use `packet_schema_version: 2`. Before each move, append the exact
+`backlog`, `ready`, `active`, `qa`, `blocked`, `review`, `done`, or `archive`
+transition and run `node scripts/check-task-packet.mjs <packet> --lane <lane>
+--previous-status <from-state>`. Folder, frontmatter, latest log, target lock,
+state-specific metadata, callback provenance, immutable targets, and publication
+receipts must agree. Reject unknown or duplicate keys, noncanonical packet or
+dependency IDs, abbreviated/malformed commit SHAs, unsupported model routes,
+incomplete canonical visibility, inconsistent recovery/QA state, user-specific
+absolute paths anywhere, malformed typed HTTPS receipts, and any unknown,
+duplicate, reordered, misplaced, or partial state-log field.
+
+`--allow-legacy` is an explicit read-only compatibility check, not permission to
+mutate an old packet. Migrate legacy `orchestrator_*` fields to canonical
+`root_*`, add evidence-backed v2 metadata and transition history, and validate
+without the flag before routing. See `docs/task-packet-schema.md`.
 
 ## Ambiguous creation hard stop
 

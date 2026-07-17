@@ -54,13 +54,13 @@ function fixture() {
   return { root: target, manifest };
 }
 
-test('current manifest validates every required capability and supported finalization evidence', () => {
+test('current manifest validates every merged ST-001 through ST-013 capability', () => {
   const manifest = current();
   const result = validateCapabilityManifest({ repo: root, manifest });
   assert.equal(result.valid, true, result.errors.join('\n'));
   assert.deepEqual(CORE_CAPABILITIES.filter((id) => !Object.hasOwn(manifest.capabilities, id)), []);
   assert.equal(manifest.starter_sync.release, null);
-  assert.equal(manifest.starter_sync.commit, '11b54b41611a429eea406400e5a62f9487fdc360');
+  assert.equal(manifest.starter_sync.commit, 'fcd586c7108c6536d1ab46aee1c841f37d9f0605');
   assert.deepEqual(manifest.capabilities.task_finalization_hygiene, {
     status: 'supported',
     version: '1.0.0',
@@ -76,6 +76,33 @@ test('current manifest validates every required capability and supported finaliz
       ],
     },
     evidence_sha256: manifest.capabilities.task_finalization_hygiene.evidence_sha256,
+  });
+  assert.deepEqual(manifest.capabilities.task_packet_schema, {
+    status: 'supported',
+    version: '2.0.0',
+    summary: 'Strict packet schema validation enforces lifecycle metadata and canonical GitHub repository identity.',
+    evidence: {
+      files: [
+        'scripts/check-task-packet.mjs',
+        'docs/task-packet-schema.md',
+        'templates/task-packet.md',
+      ],
+      tests: ['tests/check-task-packet.test.mjs'],
+    },
+    evidence_sha256: manifest.capabilities.task_packet_schema.evidence_sha256,
+  });
+  assert.deepEqual(manifest.capabilities.upstream_synchronization, {
+    status: 'supported',
+    version: '1.0.0',
+    summary: 'Production-derived upgrades require synchronized portable surfaces, release metadata, and manifest validation.',
+    evidence: {
+      files: [
+        'scripts/check-upstream-sync.mjs',
+        'docs/upstream-synchronization.md',
+      ],
+      tests: ['tests/upstream-sync.test.mjs'],
+    },
+    evidence_sha256: manifest.capabilities.upstream_synchronization.evidence_sha256,
   });
 });
 

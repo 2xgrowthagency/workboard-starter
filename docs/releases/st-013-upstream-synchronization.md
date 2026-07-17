@@ -25,3 +25,14 @@ improvement must use the synchronized change set and release record.
 Customized clones can adopt this gate directly and retain the public ST-013
 issue link as their adoption backlink. No fork relationship or remote naming
 convention is required.
+
+## Current Manifest Integration
+
+ST-014 extends this gate without rewriting ST-013 history: the synchronized
+change set must now include a changed, valid `workboard-capabilities.json`.
+`scripts/check-upstream-sync.mjs` invokes the capability validator, so evidence
+hash drift, unsupported claims, noncanonical evidence paths, or incomplete core
+capability coverage fails the same release check. The manifest currently pins
+starter synchronization to commit
+`fcd586c7108c6536d1ab46aee1c841f37d9f0605`, which includes the strict ST-011
+packet validator and all earlier merged starter capabilities.

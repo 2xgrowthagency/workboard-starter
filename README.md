@@ -139,6 +139,7 @@ Do not turn the root orchestrator into a roaming implementation agent. That is h
 docs/
   orchestrator-protocol.md  # standing instructions for the root loop
   dependency-promotion.md   # promotion metadata and bounded root workflow
+  task-packet-schema.md     # v2 metadata, transitions, validation, migration
   intake-guide.md           # how to write packets
   automation-examples.md    # Codex/Claude/OpenClaw patterns
   live-task-visibility.md   # app-native proof and portable fallback
@@ -156,6 +157,7 @@ scripts/
   classify-codex-task-finalizer.mjs # read-only task-hygiene candidates
   check-workboard-target-lock.mjs # exact decoded target-lock check
   check-workboard-callback.mjs # canonical callback status/identity/role/lane check
+  check-task-packet.mjs # fail-closed packet schema and lifecycle validator
   check-task-creation-recovery.mjs # validate recovery state and proof
   check-workboard-closeout.mjs # validate state-first title and task-link proof
   reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
@@ -167,15 +169,18 @@ templates/
   task-creation-recovery.md # reconcile ambiguous app-native creation
   upstream-sync-record.md # compatibility/migration/adoption record
 tasks/
+  backlog/                  # valid work not yet eligible to claim
   ready/                    # ready to claim
   claimed/                  # active work
   qa/                       # implementation-complete, independent QA pending/active
   blocked/                  # blocked with reason/proof
   review/                   # QA-passed or QA-not-required, final review pending
   done/                     # verified complete
+  archive/                  # terminal archived packets with reason/proof
 projects.example.yaml       # copy to projects.yaml and customize
 tests/
   check-workboard-callback.test.mjs
+  check-task-packet.test.mjs
   check-workboard-queue.test.mjs
   check-workboard-target-lock.test.mjs
   codex-task-finalizer.test.mjs
@@ -318,6 +323,32 @@ node scripts/check-workboard-target-lock.mjs \
 ```
 
 
+## Packet metadata and validation
+
+New packets use the normalized `packet_schema_version: 2` contract in
+`templates/task-packet.md`. It carries dependency and promotion metadata, exact
+target lock ownership, immutable execution and QA targets, resolved root/worker/
+QA routing, dispatch and callback provenance, creation/visibility/recovery
+state, durable QA artifact locations, prior QA continuation proof, publication
+receipts, and archive reason.
+
+Every move appends an explicit `backlog`, `ready`, `active`, `qa`, `blocked`,
+`review`, `done`, or `archive` transition record. Validate before intake and
+before each move:
+
+```bash
+node scripts/check-task-packet.mjs <PACKET> \
+  --lane <DESTINATION_LANE> --previous-status <CURRENT_LOG_STATE>
+```
+
+The check rejects missing, unknown, duplicate, or incompatible state metadata;
+malformed or partial transition logs; noncanonical IDs and commit SHAs;
+unsupported routes; invalid callbacks, QA paths, or typed receipts;
+secret-shaped content; and user-specific absolute paths anywhere in the packet.
+Legacy packets are read-only compatible only through an
+explicit `--allow-legacy` run; migrate them to v2 before mutation. See
+`docs/task-packet-schema.md`.
+
 ## Tool requirements in task packets
 
 When a task needs browser automation, computer use, Google Drive/Docs, screenshots, or another plugin/skill, declare it in the packet metadata instead of hoping the worker remembers.
@@ -332,6 +363,9 @@ Supported fields in `templates/task-packet.md` include:
 - `required_skills`
 - `qa_required`
 - `qa_status`
+- `backlog_reason`, dependency/promotion fields, and exact target-lock fields
+- `target_commit`, generic and QA immutable targets, and prior QA head/result
+- `dispatch_mode`, exact live creation surface, callback source/handoff and typed pinned-target proof fields, and repository-associated publication receipts
 - `github_pr`, `github_issue`, `root_task_id`, and canonical `worker_thread_id`
 - worker task title, creation surface/attempt ID, portable session ID, link, host identity, visibility status/proof, recovery status/pending, callback envelope, and routing blocker fields
 - `qa_publish_to_github`, `qa_worker_notification_policy`, and publication receipt fields
@@ -432,6 +466,7 @@ Start here:
 - `ORCHESTRATOR.md` — first-read instructions for the local root orchestrator
 - `docs/orchestrator-protocol.md`
 - `docs/dependency-promotion.md`
+- `docs/task-packet-schema.md`
 - `docs/intake-guide.md`
 - `docs/automation-examples.md`
 - `docs/live-task-visibility.md`

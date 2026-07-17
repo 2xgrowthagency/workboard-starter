@@ -453,6 +453,8 @@ export function validateRecoveryPacket(source) {
     requireReceipt(errors, reconciliation, 'LIST_RESULT');
 
     if (isPlaceholder(metadata.canonical_task_id)) errors.push('reconciled recovery requires canonical_task_id');
+    if (isPlaceholder(metadata.canonical_task_title)) errors.push('reconciled recovery requires canonical_task_title');
+    if (isPlaceholder(metadata.canonical_host_identity)) errors.push('reconciled recovery requires canonical_host_identity');
     if (!isSupportedTaskDirective(metadata.canonical_task_link, metadata.canonical_task_id)) {
       errors.push('canonical_task_link must be the exact supported ::created-thread directive for canonical_task_id');
     }
@@ -463,6 +465,12 @@ export function validateRecoveryPacket(source) {
     const canonical = sections['Canonical selection'] || '';
     const canonicalId = requireValue(errors, canonical, 'CANONICAL_TASK_ID');
     const canonicalLink = requireValue(errors, canonical, 'CANONICAL_TASK_LINK');
+    const canonicalTitle = requireValue(errors, canonical, 'CANONICAL_TASK_TITLE');
+    const canonicalHostIdentity = requireValue(errors, canonical, 'CANONICAL_HOST_IDENTITY');
+    requireMatch(errors, canonical, 'CANONICAL_TASK_TITLE', metadata.canonical_task_title,
+      'CANONICAL_TASK_TITLE must match canonical_task_title');
+    requireMatch(errors, canonical, 'CANONICAL_HOST_IDENTITY', metadata.canonical_host_identity,
+      'CANONICAL_HOST_IDENTITY must match canonical_host_identity');
     requireMatch(errors, canonical, 'CANONICAL_ROOT_TASK_ID', metadata.root_task_id,
       'CANONICAL_ROOT_TASK_ID must match root_task_id');
     requireMatch(errors, canonical, 'CANONICAL_WORKER_CREATION_ATTEMPT_ID',
