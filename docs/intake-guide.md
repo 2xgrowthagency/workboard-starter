@@ -11,6 +11,7 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 - Acceptance criteria the worker can verify.
 - Required proof.
 - Whether independent QA is required and what it must verify.
+- Any model/reasoning override and its task-local routing reason.
 - Stop conditions.
 - Links or pasted task-local context.
 
@@ -33,8 +34,9 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 1. Copy `templates/task-packet.md` into `tasks/ready/YYYY-MM-DD-001-short-slug.md`.
 2. Fill metadata and all acceptance/proof sections.
 3. Check that `target_project_id` exists in `projects.yaml`.
-4. Commit and push.
-5. Let the root orchestrator claim it during the next loop.
+4. Leave role model/reasoning fields blank unless the packet intentionally overrides project/default routing. Record a task-local reason for high reasoning; mark Luna only for bounded exploration with independent verification.
+5. Commit and push.
+6. Let the root orchestrator claim it during the next loop.
 
 ## When to require independent QA
 

@@ -165,6 +165,15 @@ test('packet captures routing identity, proof, and blockers', () => {
     'completion_callback_worker_creation_attempt_id',
     'target_project_id',
     'target_path',
+    'orchestrator_model',
+    'orchestrator_reasoning',
+    'orchestrator_model_routing_reason',
+    'worker_model',
+    'worker_reasoning',
+    'worker_model_routing_reason',
+    'qa_model',
+    'qa_reasoning',
+    'qa_model_routing_reason',
   ]) {
     assert.ok(fields.has(field), `missing ${field}`);
   }

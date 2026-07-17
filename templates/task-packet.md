@@ -46,6 +46,8 @@ qa_required: false
 qa_status: not_required
 qa_codex_project:
 qa_model:
+qa_reasoning:
+qa_model_routing_reason:
 qa_requires_browser: false
 qa_requires_computer_use: false
 qa_artifact_policy: local_paths_only
@@ -65,8 +67,15 @@ github_pr:
 target_project_id: workboard
 target_project_name: Workboard
 target_path: /Users/YOU/dev/workboard
-orchestrator_reasoning: high
-worker_reasoning: medium
+orchestrator_model:
+orchestrator_reasoning:
+orchestrator_model_routing_reason:
+worker_model:
+worker_reasoning:
+worker_model_routing_reason:
+worker_work_kind: implementation
+worker_bounded_exploration: false
+worker_independent_verification: false
 branch_policy: create_branch
 allowed_actions: [inspect, edit, test]
 forbidden_actions: [merge, publish, deploy, destructive_data_change, secrets]
@@ -154,7 +163,9 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Root appends every reconciled callback envelope and receipt/error to the status log before resetting `completion_callback_*` for a later builder or QA handoff.
 - If this packet declares required tools/capabilities, root must preflight availability and include tool instructions in the worker handoff.
 - Worker must not create subworkers unless this packet explicitly authorizes a bounded read-only swarm.
-- Use medium worker reasoning unless this task explicitly justifies escalation.
+- Resolve each role's routing packet override first, then project override, then the portable `gpt-5.6-sol` medium default.
+- Record the reason in the matching `*_model_routing_reason` field before escalating any role to high reasoning.
+- Use `gpt-5.6-luna` only at medium reasoning for `worker_work_kind: exploration` when the scope is bounded and `worker_independent_verification: true`; the independent verifier must inspect the result before completion.
 - Keep all context task-local. No private memory dumps and no secrets.
 
 ## Status log
