@@ -92,7 +92,7 @@ complete only when the manifest truthfully describes the clone and validates.
 
 ## Upgrade Compatibility
 
-Schema version `1` and protocol version `1.0.0` are backward-compatible metadata
+Schema version `1` and protocol version `1.0.1` are backward-compatible metadata
 over the existing Workboard contracts. Operators and packets do not need to
 change. Future releases must update the manifest whenever a listed evidence
 file changes, and production-derived upgrades must pass the ST-013 upstream

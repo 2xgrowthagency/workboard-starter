@@ -340,3 +340,79 @@ delegation, or conflict handling could act on stale or unsafe state.
 
 Use the [root Git synchronization preflight](orchestrator-protocol.md#root-git-synchronization-preflight)
 and [`check-workboard-git-preflight.mjs`](../scripts/check-workboard-git-preflight.mjs).
+
+## RTK-Wrapped Command Fails Before Execution
+
+Related known issue: [#38](https://github.com/2xgrowthagency/workboard-starter/issues/38).
+Related upstream Codex reports:
+[#32655](https://github.com/openai/codex/issues/32655),
+[#30856](https://github.com/openai/codex/issues/30856), and
+[#30732](https://github.com/openai/codex/issues/30732).
+
+### Symptoms
+
+- A command displayed with an `rtk` prefix fails with
+  `CreateProcessWithLogonW failed: 2` before producing command output.
+- `codex --version` or another nonsandboxed diagnostic may pass while an actual
+  sandboxed command still fails.
+- The same underlying command can work in an interactive shell whose profile
+  modifies `PATH`, then fail in unattended automation.
+
+### Impact
+
+The visible wrapper makes an executor bootstrap failure look like an RTK
+failure. A root may lose worker evidence, strand a claimed packet, or retry a
+mutation whose outcome is unknown. RTK compression is optional; Workboard
+correctness must not depend on it.
+
+### Safe Response
+
+1. Before the first RTK-wrapped command in a run, execute one plain-shell smoke:
+   `pwd` on POSIX or
+   `powershell.exe -NoProfile -NonInteractive -Command "Get-Location"` on
+   Windows.
+2. If the plain smoke fails, stop and report the exact executor error. Classify
+   `CreateProcessWithLogonW failed: 2` as a Codex Windows sandbox bootstrap or
+   helper-path failure; RTK has not started and is not the cause.
+3. If the plain smoke passes, run `rtk true`. If RTK is absent or that smoke
+   fails, use plain commands for the whole run and record
+   `RTK_FALLBACK=plain` once.
+4. Retry at most one failed read-only or idempotent RTK command without RTK.
+   Never automatically retry a mutating command after an ambiguous result.
+5. On an affected Codex standalone Windows installation, invoke the rolling
+   package executable and prove sandbox execution, not only version output:
+
+   ```powershell
+   $CodexExe = Join-Path $env:USERPROFILE '.codex\packages\standalone\current\bin\codex.exe'
+   & $CodexExe --version
+   & $CodexExe sandbox -- cmd.exe /d /c exit 0
+   ```
+
+6. Repeat the smoke only after an RTK or Codex update, a path/environment
+   change, or a new wrapper/bootstrap failure.
+
+### Forbidden Shortcuts
+
+- Do not diagnose RTK from the visible prefix when the plain executor smoke
+  also fails.
+- Do not make RTK a safety, approval, sandbox, destructive-command, or lifecycle
+  boundary.
+- Do not rely on an interactive PowerShell profile for unattended command
+  discovery.
+- Do not copy helper executables across versions without proving that their
+  versions match and rerunning an actual sandbox command.
+- Never blindly retry a mutation whose first attempt may have run.
+
+### Evidence To Capture
+
+- Operating system, Codex and RTK versions, invocation path, and whether the
+  shell used a profile.
+- Plain-shell smoke result, `rtk true` result, exact failing command category
+  (`read-only`, `idempotent`, or `mutating`), and whether a plain retry occurred.
+- Exact executor error, sanitized path-resolution evidence, sandbox smoke
+  result, `RTK_FALLBACK=plain` marker when selected, and packet/callback state.
+
+### Portable Mitigation
+
+Apply the [optional RTK runtime preflight and fallback](orchestrator-protocol.md#optional-rtk-runtime-preflight-and-fallback)
+and use the [host-neutral automation example](automation-examples.md#optional-rtk-runtime-wrapper).

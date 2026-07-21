@@ -54,13 +54,15 @@ function fixture() {
   return { root: target, manifest };
 }
 
-test('current manifest validates every merged ST-001 through ST-013 capability', () => {
+test('current manifest validates the merged core and ST-015 RTK capability', () => {
   const manifest = current();
   const result = validateCapabilityManifest({ repo: root, manifest });
   assert.equal(result.valid, true, result.errors.join('\n'));
   assert.deepEqual(CORE_CAPABILITIES.filter((id) => !Object.hasOwn(manifest.capabilities, id)), []);
-  assert.equal(manifest.starter_sync.release, null);
-  assert.equal(manifest.starter_sync.commit, 'fcd586c7108c6536d1ab46aee1c841f37d9f0605');
+  assert.equal(manifest.protocol_version, '1.0.1');
+  assert.equal(manifest.starter_sync.release, 'ST-015');
+  assert.equal(manifest.starter_sync.commit, null);
+  assert.equal(manifest.starter_sync.source_reference, 'https://github.com/2xgrowthagency/workboard-starter/issues/38');
   assert.deepEqual(manifest.capabilities.task_finalization_hygiene, {
     status: 'supported',
     version: '1.0.0',
@@ -104,14 +106,30 @@ test('current manifest validates every merged ST-001 through ST-013 capability',
     },
     evidence_sha256: manifest.capabilities.upstream_synchronization.evidence_sha256,
   });
+  assert.deepEqual(manifest.capabilities.optional_rtk_fallback, {
+    status: 'supported',
+    version: '1.0.0',
+    summary: 'Executor-first smoke testing and one-run plain fallback keep optional RTK compression from blocking Workboard execution.',
+    evidence: {
+      files: [
+        'docs/orchestrator-protocol.md',
+        'skills/workboard-orchestrator/SKILL.md',
+        'templates/task-packet.md',
+        'docs/automation-examples.md',
+        'docs/known-issues-and-recovery.md',
+      ],
+      tests: ['tests/rtk-runtime-fallback-docs.test.mjs'],
+    },
+    evidence_sha256: manifest.capabilities.optional_rtk_fallback.evidence_sha256,
+  });
 });
 
 test('rejects duplicate JSON keys at top level and every nested object depth', () => {
   const input = fixture();
   const source = readFileSync(join(input.root, 'workboard-capabilities.json'), 'utf8');
   const duplicateTop = source.replace(
-    '  "protocol_version": "1.0.0",',
-    '  "protocol_version": "1.0.0",\n  "protocol_version": "9.9.9",',
+    '  "protocol_version": "1.0.1",',
+    '  "protocol_version": "1.0.1",\n  "protocol_version": "9.9.9",',
   );
   writeFileSync(join(input.root, 'workboard-capabilities.json'), duplicateTop);
   assert.throws(
@@ -263,7 +281,7 @@ test('rejects aliased and non-directory evidence path components', () => {
 test('CLI emits one machine-readable status and rejects unsupported options', () => {
   const valid = spawnSync(process.execPath, [script, '--repo', root], { encoding: 'utf8' });
   assert.equal(valid.status, 0, valid.stderr);
-  assert.match(valid.stdout, /^CAPABILITY_MANIFEST_STATUS=VALID SCHEMA_VERSION=1 PROTOCOL_VERSION=1\.0\.0 /);
+  assert.match(valid.stdout, /^CAPABILITY_MANIFEST_STATUS=VALID SCHEMA_VERSION=1 PROTOCOL_VERSION=1\.0\.1 /);
 
   const rejected = spawnSync(process.execPath, [script, '--repo', root, '--unknown', 'value'], { encoding: 'utf8' });
   assert.equal(rejected.status, 1);

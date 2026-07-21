@@ -1,6 +1,6 @@
 # Workboard Orchestrator Protocol
 
-Protocol version: `1.0.0`. Before routing, a clone or automation may validate
+Protocol version: `1.0.1`. Before routing, a clone or automation may validate
 its machine-readable capability inventory with
 `node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>`. Treat a
 missing, rejected, or stale manifest as unknown capability state, not permission
@@ -60,6 +60,33 @@ Canonical app-native visibility requires exact creation surface
 exact `method=app_native_list_read|receipt=<receipt>` proof plus its UTC
 verification timestamp. Ambiguous creation keeps those verified fields empty
 and remains tied to investigating recovery evidence.
+
+## Optional RTK runtime preflight and fallback
+
+RTK is an optional output-compression wrapper. It is not a Workboard
+correctness, safety, approval, sandbox, destructive-command, or lifecycle
+boundary. A run that does not use RTK skips this section.
+
+Before the first RTK-wrapped command in a run:
+
+1. Execute one plain executor smoke without RTK: `pwd` on POSIX or
+   `powershell.exe -NoProfile -NonInteractive -Command "Get-Location"` on
+   Windows.
+2. If that plain command fails, stop before RTK and report the exact executor
+   error. `CreateProcessWithLogonW failed: 2` is a Windows sandbox bootstrap or
+   helper-path failure, not proof that RTK failed.
+3. If the plain command passes, run `rtk true`. When RTK is absent or that smoke
+   fails, use plain commands for the entire run and emit
+   `RTK_FALLBACK=plain` once.
+4. A failed read-only or idempotent RTK command may be retried once without RTK.
+   Never automatically retry a mutating command after an ambiguous result.
+5. Carry the chosen wrapper mode and preflight evidence into every builder or QA
+   handoff created during that run.
+
+Do not repeat the smoke before every command. Repeat it only after an RTK or
+executor update, a path/environment change, or a new wrapper/bootstrap failure.
+Use the complete diagnosis and Windows standalone recovery procedure in
+`docs/known-issues-and-recovery.md#rtk-wrapped-command-fails-before-execution`.
 
 ## Root Git synchronization preflight
 
@@ -604,6 +631,8 @@ Handoff identity:
 - model_routing_reason_note: <descriptive-note-or-none>
 - luna_eligibility: <bounded_high_volume-or-none>
 - independent_verification: <true-or-false>
+- command_wrapper_mode: <rtk-or-plain>
+- command_wrapper_preflight: <plain-smoke-and-rtk-smoke-receipt-or-not-used>
 
 Rules:
 - Work only inside the task target_path, except you may append proof/status to the Workboard packet.
@@ -611,6 +640,7 @@ Rules:
 - Do not deploy, publish, merge, change billing/account settings, touch production data, or perform destructive actions unless the packet explicitly allows it and the human has approved it.
 - Do not create subworkers unless the packet explicitly authorizes a bounded read-only swarm.
 - Keep context task-local. Do not import private memory or unrelated chat history.
+- Use exactly the command wrapper mode selected by root. Do not re-enable RTK after a plain fallback or retry an ambiguous mutation.
 - Stop and ask if acceptance criteria are ambiguous or verification is impossible.
 - Send exactly one final callback to the supplied root_task_id. At callback time, report this task's host-current ID as `worker_task_id` with the exact `worker_creation_attempt_id`. Root routes only if complete live readback already wrote that task ID and attempt ID as the source packet's current canonical pair. A superseded task or attempt reports to recovery and must not request packet routing. If callback delivery is unavailable or fails, emit `ROOT_RECONCILIATION_REQUIRED` with the identical packet ID, result, host-current task ID, creation attempt ID, immutable proof, and next lane. Do not request periodic monitoring.
 
@@ -653,9 +683,12 @@ Handoff identity:
 - model_routing_reason_note: <descriptive-note-or-none>
 - luna_eligibility: <bounded_high_volume-or-none>
 - independent_verification: <true-or-false>
+- command_wrapper_mode: <rtk-or-plain>
+- command_wrapper_preflight: <plain-smoke-and-rtk-smoke-receipt-or-not-used>
 
 Rules:
 - Treat the builder's summary as a claim, not evidence.
+- Use exactly the command wrapper mode selected by root. Do not re-enable RTK after a plain fallback or retry an ambiguous mutation.
 - Verify the pinned commit or immutable artifact named by the packet.
 - Keep the product target read-only. Do not fix code, merge, deploy, publish product/release changes, or mutate production data. Packet-authorized QA result comments and informational task notices are the only closeout-write exception.
 - When `qa_publish_to_github` is `auto` or `required`, add or update one idempotent marker-bearing verdict comment on verified packet-linked PR/issue targets without uploading local-only evidence or exposing absolute local paths.
