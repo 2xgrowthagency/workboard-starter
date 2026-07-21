@@ -7,7 +7,7 @@ description: Run a Workboard root orchestrator loop: classify queue state, enfor
 
 Use this skill when asked to run, configure, or explain a Workboard local orchestrator.
 
-This skill implements Workboard protocol `1.0.0`. Read
+This skill implements Workboard protocol `1.0.1`. Read
 `workboard-capabilities.json` for machine-readable capability status and run
 `node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>` before
 relying on that metadata in a customized clone. A rejected manifest means the
@@ -105,6 +105,24 @@ others are recovery evidence. Completion requires validator success, promotion
 rerun, and queue-classification rerun. If conclusive live proof finds no usable
 worker, validate `recovery_outcome: no_usable_worker`, move the source to blocked
 with the exact next action, and release the lock without calling canonicalize.
+
+## Optional RTK wrapper
+
+RTK is optional output compression, never a safety or lifecycle boundary. A run
+that intends to use RTK must first execute one plain-shell smoke: `pwd` on POSIX
+or `powershell.exe -NoProfile -NonInteractive -Command "Get-Location"` on
+Windows. If the plain smoke fails, stop and report the exact executor failure;
+`CreateProcessWithLogonW failed: 2` means the Windows sandbox/helper bootstrap
+failed before RTK started.
+
+After a successful plain smoke, run `rtk true`. If RTK is absent or its smoke
+fails, select plain commands for the whole run and report
+`RTK_FALLBACK=plain` once. Retry at most one failed read-only or idempotent RTK
+command without the wrapper. Never automatically retry a mutating command after
+an ambiguous result. Include the selected mode and smoke evidence in every
+builder or QA handoff. Repeat the preflight only after an RTK/executor update,
+environment change, or a new wrapper/bootstrap failure. Apply the complete
+recovery record in `docs/known-issues-and-recovery.md`.
 
 ## Tool enforcement
 

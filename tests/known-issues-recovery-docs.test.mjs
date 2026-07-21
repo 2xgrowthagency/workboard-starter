@@ -31,6 +31,7 @@ const records = [
   'Saved Project Is Missing But Local Path Exists',
   'Browser Preview Or Specialist Tool Is Unavailable',
   'Git Authentication Or Synchronization Fails',
+  'RTK-Wrapped Command Fails Before Execution',
 ];
 const requiredFields = [
   'Symptoms',
@@ -60,7 +61,7 @@ test('every record has the complete operator schema and mitigation links', () =>
 });
 
 test('guide maps known issues and preserves core contracts', () => {
-  for (const issue of [15, 16, 17, 18, 19, 20]) {
+  for (const issue of [15, 16, 17, 18, 19, 20, 38]) {
     assert.match(guide, new RegExp(`workboard-starter/issues/${issue}\\b`));
   }
   assert.match(guide, /`gpt-5\.6-sol` medium default/);

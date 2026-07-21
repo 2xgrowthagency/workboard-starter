@@ -26,7 +26,7 @@ default. High reasoning requires one of four machine-recognized task categories:
 `unusually_complex`. `gpt-5.6-luna` requires exact `bounded_high_volume`
 eligibility and independent verification.
 
-This release declares Workboard protocol `1.0.0`. The portable capability
+This release declares Workboard protocol `1.0.1`. The portable capability
 inventory is `workboard-capabilities.json`; validate it with
 `node scripts/check-workboard-capabilities.mjs --repo "$PWD"`. It records the
 last synchronized starter release or commit and distinguishes supported
@@ -421,7 +421,9 @@ latter permits a blocked transition and lock release without canonicalization.
 For external platform and environment failures beyond creation ambiguity, use
 `docs/known-issues-and-recovery.md`. Each record maps symptoms and impact to a
 bounded safe response, forbidden shortcuts, evidence, and the existing portable
-mitigation contract.
+mitigation contract. This includes the optional RTK wrapper contract: prove the
+plain executor first, fall back for the run when RTK is unavailable, and never
+retry an ambiguous mutation automatically.
 
 Dependency promotion uses the bundled read-only frontmatter scanner:
 

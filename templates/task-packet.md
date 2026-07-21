@@ -153,6 +153,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 ## Required proof
 
 - [ ] Tool/capability proof if `requires_*` or `required_skills` is set
+- [ ] If RTK is used: plain executor smoke, `rtk true` result, and the selected `rtk|plain` wrapper mode
 - [ ] Live task readback proof, retained-lock recovery proof, or an explicit `portable_only` visibility status
 - [ ] Current working directory and git branch/HEAD captured
 - [ ] Commands/tests run, with result
@@ -177,7 +178,8 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 
 ## Orchestration notes
 
-- This template is compatible with Workboard protocol `1.0.0`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
+- This template is compatible with Workboard protocol `1.0.1`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
+- RTK is optional output compression. Before the first RTK-wrapped command, root runs one plain executor smoke and then `rtk true`; if RTK is absent or fails, root selects plain commands for the whole run and reports `RTK_FALLBACK=plain` once. Retry at most one failed read-only or idempotent RTK command without the wrapper. Never automatically retry a mutating command after an ambiguous wrapper result.
 - Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.
 - `packet_schema_version: 2` is fail-closed. Every frontmatter key must belong to the v2 schema, packet/dependency IDs use `YYYYMMDD-NNN-lowercase-slug`, commit values use the full lowercase 40-character SHA, and every state-log line must belong to one complete seven-field block. Legacy packets require an explicit, one-run `--allow-legacy` validation and should be migrated before mutation; do not mix legacy `orchestrator_*` aliases with v2 `root_*` fields.
 - Root owns dependency promotion. Workers report completion proof but do not move downstream packets.

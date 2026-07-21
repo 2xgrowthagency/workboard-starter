@@ -1,17 +1,17 @@
 {
   "$schema": "schemas/workboard-capabilities.schema.json",
   "manifest_schema_version": 1,
-  "protocol_version": "1.0.0",
+  "protocol_version": "1.0.1",
   "compatibility": {
     "classification": "backward-compatible",
     "minimum_reader_schema_version": 1,
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": null,
-    "commit": "fcd586c7108c6536d1ab46aee1c841f37d9f0605",
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/14",
-    "adoption_record": "docs/releases/st-014-capability-manifest.md"
+    "release": "ST-015",
+    "commit": null,
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/38",
+    "adoption_record": "docs/releases/st-015-rtk-runtime-fallback.md"
   },
   "capabilities": {
     "queue_classifier": {
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "c22466ebd554f074394fd5a118fe46d0af7346eb1f4f739c51c1bb23869182aa"
+      "evidence_sha256": "4660d3d77c0c0db6ef0f18ad63062df4aba7b767eeda32289dcc92b7fc388510"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "5dda3a82c57c1ea9b3334e9cf336fd87bd5681c4a3fac7353986c898407e1403"
+      "evidence_sha256": "88f46cfc5bd8e4a989cae061d75f93af8fa1ce2967c371f01fcc41209039f4e2"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +59,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "7450b36a618e661b0ea0993c4de6ebf73b6aa6b2682d81668a371bcff08df885"
+      "evidence_sha256": "2c9c2d18a4becac4e60d9d1878a742b882524ee73e2215169b076e13eee6dffd"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "229c0a8ddf71be93dbefc5e571ffe79b7f44563a47725ad525f595821c01902a"
+      "evidence_sha256": "ec9aa4a9734542fd4607caa296fe86edb74b04c2298f8fa3323bd897e651cca0"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "9d5f6537a12ef46328175e589008ce8e977046914144f8caaaa3e99abb646883"
+      "evidence_sha256": "1ff738b75017df0b516a45441174738e96063a4f9e81415906e7ba3e99feab85"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -171,12 +171,12 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "735832b6a2cf8c3238ddb345d9e8b554a31d15253357b254db6156714f28bb06"
+      "evidence_sha256": "09d7e6395f8b659d2e3b043ea11253507028721a71ef9351d7fb407ef427dbe7"
     },
     "known_issues_recovery": {
       "status": "supported",
-      "version": "1.0.0",
-      "summary": "Portable symptom, impact, stop, evidence, and recovery records cover known failures.",
+      "version": "1.1.0",
+      "summary": "Portable symptom, impact, stop, evidence, and recovery records cover known failures including RTK-wrapped executor failures.",
       "evidence": {
         "files": [
           "docs/known-issues-and-recovery.md"
@@ -185,7 +185,25 @@
           "tests/known-issues-recovery-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "fb9d3842f0b5f9957b3512027037a358762a17f1760e6bab5027780116db1739"
+      "evidence_sha256": "f6e6faa93f86d32b4a766e351a6a5498fb48a8afa01115f397263bab39da9cf1"
+    },
+    "optional_rtk_fallback": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Executor-first smoke testing and one-run plain fallback keep optional RTK compression from blocking Workboard execution.",
+      "evidence": {
+        "files": [
+          "docs/orchestrator-protocol.md",
+          "skills/workboard-orchestrator/SKILL.md",
+          "templates/task-packet.md",
+          "docs/automation-examples.md",
+          "docs/known-issues-and-recovery.md"
+        ],
+        "tests": [
+          "tests/rtk-runtime-fallback-docs.test.mjs"
+        ]
+      },
+      "evidence_sha256": "9f3df944a3f4bef857687bbbab07a08d1f44cc2bff6b2f2338dc49198a10d580"
     },
     "closeout_links": {
       "status": "supported",
@@ -218,7 +236,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "11d57879817d45d2cde763423d90a1086ba64fba1f5a603811abb75545341e56"
+      "evidence_sha256": "5007f0aa107d47741970bb85e165b590ef6baa3bc2f390df42b089e67deabd4c"
     },
     "upstream_synchronization": {
       "status": "supported",

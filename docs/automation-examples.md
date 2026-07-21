@@ -47,6 +47,55 @@ For read-only clone inventory, run only the capability validator without
 protocol, supported, and total capability counts. `REJECTED` or `CHECK_FAILED`
 must stop any automation that depends on a declared optional capability.
 
+## Optional RTK runtime wrapper
+
+Use RTK only as optional output compression. Select one wrapper mode per run
+before queue preflight or delegation, then carry that mode into every worker and
+QA handoff.
+
+POSIX shape:
+
+```bash
+if ! pwd; then
+  echo 'plain executor smoke failed before RTK' >&2
+  exit 1
+fi
+if command -v rtk >/dev/null 2>&1 && rtk true; then
+  RTK_MODE=rtk
+else
+  RTK_MODE=plain
+  echo RTK_FALLBACK=plain
+fi
+```
+
+Windows PowerShell shape:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -Command "Get-Location"
+if ($LASTEXITCODE -ne 0) { throw 'plain executor smoke failed before RTK' }
+
+$RtkAvailable = $null -ne (Get-Command rtk -ErrorAction SilentlyContinue)
+$RtkSmokePassed = $false
+if ($RtkAvailable) {
+  & rtk true
+  $RtkSmokePassed = $LASTEXITCODE -eq 0
+}
+
+if ($RtkSmokePassed) {
+  $RtkMode = 'rtk'
+} else {
+  $RtkMode = 'plain'
+  Write-Output 'RTK_FALLBACK=plain'
+}
+```
+
+If the first plain command fails with `CreateProcessWithLogonW failed: 2`, stop
+and use the Windows sandbox recovery in
+`docs/known-issues-and-recovery.md#rtk-wrapped-command-fails-before-execution`.
+RTK did not run. After a successful plain smoke and failed RTK command, retry
+only one read-only or idempotent command without RTK. Never automatically retry
+a mutating command after an ambiguous result.
+
 ## Generic root-orchestrator prompt
 
 ```text
