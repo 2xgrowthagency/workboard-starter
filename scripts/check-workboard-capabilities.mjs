@@ -26,6 +26,7 @@ export const CORE_CAPABILITIES = [
   'known_issues_recovery',
   'closeout_links',
   'task_packet_schema',
+  'execution_environment_routing',
   'upstream_synchronization',
 ];
 

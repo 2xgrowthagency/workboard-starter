@@ -131,7 +131,7 @@ blocked/backlog narratives, task history, or old automation memory:
 node scripts/check-workboard-queue.mjs --repo <WORKBOARD_PATH> --capacity <MAX_ACTIVE_TASKS>
 ```
 
-`--capacity` defaults to `3` when omitted. If the local automation uses another
+`--capacity` defaults to `8` when omitted. If the local automation uses another
 limit, pass that configured value directly; do not read packet bodies or worker
 history to compute it.
 
@@ -312,18 +312,19 @@ not infer model policy from private memory or unrelated task history.
 8. If the classifier returns a routable lane and capacity remains, inspect `tasks/ready/` by priority and age even when another target is active.
 9. Decode the emitted locks and reject every ready packet whose exact `target_project_id` and `target_path` tuple is locked. `parallel_safe` does not override a target lock.
 10. Claim only independent eligible packets for unlocked targets, up to remaining capacity.
-11. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, pin `target_commit` or another immutable target, set the exact target lock fields, append `STATE: active`, validate the packet, then commit/push before delegating.
-12. Persist a new `worker_creation_attempt_id` before every actual create call, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write canonical identity only after complete app-native proof. Keep one stable `recovery_id` for an ambiguous incident; an authorized replacement receives a new attempt ID. Preserve the original canonical builder as `builder_thread_id` before creating QA.
-13. Resolve and validate the role's model/reasoning route, then give the worker the full task packet plus the exact worker handoff prompt below.
-14. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, lane, and exact structured immutable proof all match the source packet's applicable pinned target. Commit targets use `type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>`; artifact, URL, or path targets use `type=<artifact|url|path>|source=<immutable_target|qa_prior_head>|value=<exact-value>`.
-15. Inspect `tasks/qa/`. For each pending packet, verify its relative or `${WORKBOARD_ROOT}` artifact root, exact `<root>/<packet-id>` directory, copied immutable target type/value, and full-SHA prior head plus exact prior result for continuations; record `qa_thread_id` when QA becomes active, then launch one separate `[qa] <short label>` task inside the existing target project.
-16. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record exact `type=<github_issue|github_pr>|destination=<lowercase-owner/repo>#<positive-id>|url=https://github.com/<same-owner>/<same-repo>/<issues|pull>/<same-id>#issuecomment-<positive-id>` `qa_publication_receipts` associated with packet `repo` and numeric issue/PR fields, or exact fallback status separately from the verdict.
-17. Before leaving QA, copy the completed immutable target/result into `qa_prior_head`/`qa_prior_result` and retain durable artifacts. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
-18. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
-19. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
-20. If `IDLE_PAUSE_REQUESTED=1`, call and verify the host-native pause operation. If only `IDLE_PAUSE_RECOMMENDED=1`, report the recommendation without claiming a pause.
-21. On `PROMOTION_REVIEW_NEEDED`, run the metadata-only scanner workflow. Root may move `auto` candidates after dependency-state verification; `review` candidates permit one bounded `ready_when` check. Omitted/manual and non-dependency blockers require new human/external proof.
-22. Commit/push every queue state transition and rerun classification after promotion.
+11. Resume a canonical task first and preserve its execution environment. Otherwise resolve packet `execution_environment`, then project `default_execution_environment`, then the portable fallback: Git implementation and independent QA use Worktree; non-Git, host/runtime, and Workboard root/queue work use Local. Explicit or resolved Local requires `execution_environment_reason`.
+12. Move selected packets to `tasks/claimed/`, fill `claimed_by` and `claimed_at`, persist `resolved_execution_environment`, pin `target_commit` or another immutable target, set the exact target lock fields, append `STATE: active`, validate the packet, then commit/push before delegating.
+13. Persist a new `worker_creation_attempt_id` before every actual create call, then delegate through the live task visibility gate below. Create at most one worker for that attempt, preserve partial IDs/results as recovery evidence, and write canonical identity only after complete app-native proof. Keep one stable `recovery_id` for an ambiguous incident; an authorized replacement receives a new attempt ID. Preserve the original canonical builder as `builder_thread_id` before creating QA.
+14. Resolve and validate the role's model/reasoning route, then give the worker the full task packet plus the exact worker handoff prompt below.
+15. Do not monitor the worker. Reconcile its one final callback only when verified visibility is current, recovery is not pending, and its packet, worker task, creation attempt, role, QA requirement, result, lane, and exact structured immutable proof all match the source packet's applicable pinned target. Commit targets use `type=commit|source=<target_commit|qa_prior_head>|sha=<lowercase-40-character-sha>`; artifact, URL, or path targets use `type=<artifact|url|path>|source=<immutable_target|qa_prior_head>|value=<exact-value>`.
+16. Inspect `tasks/qa/`. For each pending packet, verify its relative or `${WORKBOARD_ROOT}` artifact root, exact `<root>/<packet-id>` directory, copied immutable target type/value, and full-SHA prior head plus exact prior result for continuations; record `qa_thread_id` when QA becomes active, then launch one separate `[qa] <short label>` task inside the existing target project. Git QA defaults to a fresh managed Worktree unless it resumes a canonical QA task or records a justified Local reason.
+17. Before routing the verdict, publish a concise idempotent QA summary to verified packet-linked PRs/issues when policy enables it, notify the original worker according to policy, and record exact `type=<github_issue|github_pr>|destination=<lowercase-owner/repo>#<positive-id>|url=https://github.com/<same-owner>/<same-repo>/<issues|pull>/<same-id>#issuecomment-<positive-id>` `qa_publication_receipts` associated with packet `repo` and numeric issue/PR fields, or exact fallback status separately from the verdict.
+18. Before leaving QA, copy the completed immutable target/result into `qa_prior_head`/`qa_prior_result` and retain durable artifacts. Route QA `PASS` to `tasks/review/`, `FAIL` to `tasks/ready/` with rework guidance, and `BLOCKED` to `tasks/blocked/` with the missing input/capability.
+19. Move QA-not-required packets to `tasks/review/` when builder proof is ready.
+20. Validate the callback with `scripts/check-workboard-callback.mjs`, including source `completion_callback_status`. Only exact source status `pending` can return `CALLBACK_STATUS=ROUTABLE` and authorize one bounded read of the canonical `worker_thread_id` and exact packet to reconcile immutable proof and requested next lane. It does not authorize later or periodic reads.
+21. If `IDLE_PAUSE_REQUESTED=1`, call and verify the host-native pause operation. If only `IDLE_PAUSE_RECOMMENDED=1`, report the recommendation without claiming a pause.
+22. On `PROMOTION_REVIEW_NEEDED`, run the metadata-only scanner workflow. Root may move `auto` candidates after dependency-state verification; `review` candidates permit one bounded `ready_when` check. Omitted/manual and non-dependency blockers require new human/external proof.
+23. Commit/push every queue state transition and rerun classification after promotion.
 
 ## Dependency promotion
 
@@ -492,7 +493,7 @@ forbidden until the packet satisfies the replacement gate.
 ## Concurrency policy
 
 - One root orchestrator loop at a time.
-- Up to 3 active workers by default.
+- Up to 8 active workers by default.
 - Prefer parallelism across different repos/projects.
 - One worker per packet.
 - One separate QA task per QA packet; the builder does not self-verify.
@@ -505,17 +506,32 @@ forbidden until the packet satisfies the replacement gate.
 
 Read `projects.yaml` before routing. If the target project/path is missing or unclear, block and ask. Do not guess.
 
-For Codex Desktop or Claude Desktop projects, create the worker inside the saved project/workspace that maps to the packet target path. Do not manually reparent old threads into projects; start a new correctly-rooted thread instead.
+Resume the canonical task before creating anything and preserve its Local or
+Worktree environment. Otherwise resolve packet intent, project default, then the
+portable fallback. Git implementation and independent QA default to Worktree;
+non-Git, host/runtime, and Workboard root/queue work default to Local. Explicit
+or resolved Local requires `execution_environment_reason`.
 
-For Claude Code or Codex CLI, start the worker from the packet `target_path` and include the full packet in the prompt.
+For Codex Desktop or Claude Desktop projects, create the worker inside the saved project/workspace that maps to the packet target path and in the resolved environment. Do not manually reparent old threads into projects; start one new correctly-routed canonical task instead.
+
+For Claude Code or Codex CLI, start the worker from an explicitly prepared
+checkout matching the resolved environment and include the full packet in the
+prompt. A fallback launcher that cannot create and prove a managed Worktree must
+reject Worktree instead of silently using Local.
+
+Projectless routing and `dispatch_mode` are separate decisions. Worktrees
+isolate file state only; retain external-resource locks for Ads, Shopify Admin,
+DNS, deployments, shared databases, browser sessions, and similar surfaces.
 
 ## Live task visibility gate
 
 Follow [`docs/live-task-visibility.md`](live-task-visibility.md) for every
 delegation. When the host exposes app-native project selection and task
 create/list/read tools, use them and require live readback of one candidate's
-task ID, exact `worker_task_title`, `target_project_id`, `target_path` cwd,
-host/local identity, and worker handoff. Only then write that ID to canonical
+task ID, exact `worker_task_title`, saved-project binding, target project root,
+resolved Local/Worktree mode, execution cwd kind, host/local identity, and
+worker handoff. A managed worktree cwd normally differs from `target_path`; it
+is valid only when app-native proof binds it to the target project. Only then write that ID to canonical
 `worker_thread_id` and set `worker_visibility_status: verified`.
 
 A helper, separate app server, session index, or database proves persistence at

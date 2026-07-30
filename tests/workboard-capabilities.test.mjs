@@ -54,13 +54,13 @@ function fixture() {
   return { root: target, manifest };
 }
 
-test('current manifest validates every merged ST-001 through ST-013 capability', () => {
+test('current manifest validates every merged capability through ST-016', () => {
   const manifest = current();
   const result = validateCapabilityManifest({ repo: root, manifest });
   assert.equal(result.valid, true, result.errors.join('\n'));
   assert.deepEqual(CORE_CAPABILITIES.filter((id) => !Object.hasOwn(manifest.capabilities, id)), []);
-  assert.equal(manifest.starter_sync.release, null);
-  assert.equal(manifest.starter_sync.commit, 'fcd586c7108c6536d1ab46aee1c841f37d9f0605');
+  assert.equal(manifest.starter_sync.release, 'ST-016');
+  assert.equal(manifest.starter_sync.commit, null);
   assert.deepEqual(manifest.capabilities.task_finalization_hygiene, {
     status: 'supported',
     version: '1.0.0',
@@ -79,8 +79,8 @@ test('current manifest validates every merged ST-001 through ST-013 capability',
   });
   assert.deepEqual(manifest.capabilities.task_packet_schema, {
     status: 'supported',
-    version: '2.0.0',
-    summary: 'Strict packet schema validation enforces lifecycle metadata and canonical GitHub repository identity.',
+    version: '2.1.0',
+    summary: 'Strict packet schema validation includes explicit Local-versus-Worktree intent and resolution.',
     evidence: {
       files: [
         'scripts/check-task-packet.mjs',
@@ -90,6 +90,24 @@ test('current manifest validates every merged ST-001 through ST-013 capability',
       tests: ['tests/check-task-packet.test.mjs'],
     },
     evidence_sha256: manifest.capabilities.task_packet_schema.evidence_sha256,
+  });
+  assert.deepEqual(manifest.capabilities.execution_environment_routing, {
+    status: 'supported',
+    version: '1.0.0',
+    summary: 'Packet intent, project defaults, canonical reuse, and app-native proof resolve Local or Worktree execution.',
+    evidence: {
+      files: [
+        'docs/orchestrator-protocol.md',
+        'skills/workboard-orchestrator/SKILL.md',
+        'templates/task-packet.md',
+        'projects.example.yaml',
+      ],
+      tests: [
+        'tests/execution-environment-routing.test.mjs',
+        'tests/check-task-packet.test.mjs',
+      ],
+    },
+    evidence_sha256: manifest.capabilities.execution_environment_routing.evidence_sha256,
   });
   assert.deepEqual(manifest.capabilities.upstream_synchronization, {
     status: 'supported',
@@ -110,8 +128,8 @@ test('rejects duplicate JSON keys at top level and every nested object depth', (
   const input = fixture();
   const source = readFileSync(join(input.root, 'workboard-capabilities.json'), 'utf8');
   const duplicateTop = source.replace(
-    '  "protocol_version": "1.0.0",',
-    '  "protocol_version": "1.0.0",\n  "protocol_version": "9.9.9",',
+    '  "protocol_version": "1.1.0",',
+    '  "protocol_version": "1.1.0",\n  "protocol_version": "9.9.9",',
   );
   writeFileSync(join(input.root, 'workboard-capabilities.json'), duplicateTop);
   assert.throws(
@@ -263,7 +281,7 @@ test('rejects aliased and non-directory evidence path components', () => {
 test('CLI emits one machine-readable status and rejects unsupported options', () => {
   const valid = spawnSync(process.execPath, [script, '--repo', root], { encoding: 'utf8' });
   assert.equal(valid.status, 0, valid.stderr);
-  assert.match(valid.stdout, /^CAPABILITY_MANIFEST_STATUS=VALID SCHEMA_VERSION=1 PROTOCOL_VERSION=1\.0\.0 /);
+  assert.match(valid.stdout, /^CAPABILITY_MANIFEST_STATUS=VALID SCHEMA_VERSION=1 PROTOCOL_VERSION=1\.1\.0 /);
 
   const rejected = spawnSync(process.execPath, [script, '--repo', root, '--unknown', 'value'], { encoding: 'utf8' });
   assert.equal(rejected.status, 1);

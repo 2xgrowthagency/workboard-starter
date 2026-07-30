@@ -17,6 +17,8 @@ function fields(overrides = {}) {
     backlog_reason: '', promotion_policy: 'manual', dependency_ready_state: 'done',
     blocker_type: '', depends_on: '[]', unblocks: '[]', ready_when: '',
     target_project_id: 'example', target_path: '/workspace/example', target_commit: '',
+    execution_environment: 'auto', resolved_execution_environment: 'worktree',
+    execution_environment_reason: '',
     immutable_target_type: 'none', immutable_target: '', target_lock_status: 'unlocked',
     target_lock_project_id: '', target_lock_path: '', target_lock_acquired_at: '',
     target_lock_released_at: '', claimed_by: '', claimed_at: '', root_task_id: '',
@@ -135,6 +137,39 @@ test('accepts a normalized ready packet', () => {
   assert.deepEqual(validateTaskPacket(packet(), { lane: 'ready' }), []);
 });
 
+test('resolves Local versus Worktree before active execution', () => {
+  assert.deepEqual(validateTaskPacket(packet({
+    resolved_execution_environment: 'pending',
+  }), { lane: 'ready' }), []);
+
+  assert.ok(validateTaskPacket(activePacket({
+    resolved_execution_environment: 'pending',
+  }), { lane: 'claimed' }).includes(
+    'claimed requires a resolved execution environment',
+  ));
+
+  assert.ok(validateTaskPacket(packet({
+    execution_environment: 'local',
+    resolved_execution_environment: 'pending',
+  }), { lane: 'ready' }).includes(
+    'execution_environment_reason is required for this state',
+  ));
+
+  assert.deepEqual(validateTaskPacket(packet({
+    execution_environment: 'local',
+    resolved_execution_environment: 'local',
+    execution_environment_reason: 'Continue an existing Local task with uncommitted state.',
+  }), { lane: 'ready' }), []);
+
+  assert.ok(validateTaskPacket(packet({
+    execution_environment: 'worktree',
+    resolved_execution_environment: 'local',
+    execution_environment_reason: 'invalid mismatch',
+  }), { lane: 'ready' }).includes(
+    'resolved_execution_environment must match the explicit execution_environment',
+  ));
+});
+
 test('portable-only creation requires the persisted creation attempt ID', () => {
   const portable = packet({
     dispatch_mode: 'portable_only', worker_creation_surface: 'portable_only',
@@ -165,7 +200,8 @@ test('template exposes the complete normalized metadata and pending intake route
   const template = readFileSync(fileURLToPath(new URL('../templates/task-packet.md', import.meta.url)), 'utf8');
   for (const field of [
     'packet_schema_version', 'backlog_reason', 'depends_on', 'unblocks', 'ready_when',
-    'target_commit', 'immutable_target', 'target_lock_status', 'root_model',
+    'target_commit', 'immutable_target', 'target_lock_status', 'execution_environment',
+    'resolved_execution_environment', 'execution_environment_reason', 'root_model',
     'root_reasoning', 'worker_model', 'worker_reasoning', 'dispatch_mode',
     'callback_source_task_id', 'callback_handoff_required', 'worker_creation_attempt_id',
     'worker_visibility_status', 'recovery_status', 'qa_artifacts_root', 'qa_artifacts_dir',
@@ -173,6 +209,8 @@ test('template exposes the complete normalized metadata and pending intake route
     'qa_publication_receipts', 'publication_receipts', 'archive_reason',
   ]) assert.match(template, new RegExp(`^${field}:`, 'm'), `missing ${field}`);
   assert.match(template, /^dispatch_mode: pending$/m);
+  assert.match(template, /^execution_environment: auto$/m);
+  assert.match(template, /^resolved_execution_environment: pending$/m);
   assert.match(template, /^root_model:$/m);
   assert.match(template, /^worker_model:$/m);
 });

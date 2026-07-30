@@ -1,21 +1,21 @@
 ---
 name: workboard-orchestrator
-description: Run a Workboard root orchestrator loop: classify queue state, enforce per-target locks, delegate local worker and independent QA tasks, reconcile one-shot callbacks, and move packets through QA, review, rework, or blocker states.
+description: Run a Workboard root orchestrator loop: classify queue state, enforce per-target locks, resolve Local or Worktree execution, delegate local worker and independent QA tasks, reconcile one-shot callbacks, and move packets through QA, review, rework, or blocker states.
 ---
 
 # Workboard Orchestrator Skill
 
 Use this skill when asked to run, configure, or explain a Workboard local orchestrator.
 
-This skill implements Workboard protocol `1.0.0`. Read
+This skill implements Workboard protocol `1.1.0`. Read
 `workboard-capabilities.json` for machine-readable capability status and run
 `node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>` before
 relying on that metadata in a customized clone. A rejected manifest means the
 clone's capability state is unknown until its evidence is reconciled.
 
 Use `docs/known-issues-and-recovery.md` to classify host, tool, callback,
-saved-project/path, and Git failures. Its bounded responses preserve the
-normative routing gates in this skill.
+saved-project/path, execution-environment, and Git failures. Its bounded
+responses preserve the normative routing gates in this skill.
 
 When generalizing a production-derived change to this skill, follow
 `docs/upstream-synchronization.md`: update the protocol, this portable skill,
@@ -49,10 +49,12 @@ a refreshed, valid capability manifest whenever synchronized evidence changes.
 - Trust `CAPACITY`, `AVAILABLE_CAPACITY`, and `CAPACITY_REACHED`; at zero available capacity the classifier machine-enforces `WORK_IN_PROGRESS`. Below capacity, continue routing unrelated targets.
 - Decode every lock and reject a ready packet when both its canonical `target_project_id` and `target_path` exactly match a lock. Use `scripts/check-workboard-target-lock.mjs`; malformed lock input blocks routing.
 - Claim only independent ready packets with clear routing and acceptance criteria.
-- Move claimed packets to `tasks/claimed/`, fill claimant, immutable target, exact lock ownership, and resolved root/worker route, append `STATE: active`, validate the v2 packet, commit, and push.
-- Delegate one worker per packet in the correct target project/path.
+- Resume a canonical task first and preserve its Local or Worktree environment. Otherwise resolve packet `execution_environment`, then project `default_execution_environment`, then the portable fallback: Git implementation and independent QA use Worktree; non-Git, host/runtime, and Workboard root/queue work use Local.
+- Explicit or resolved Local requires `execution_environment_reason`. Projectless routing and `dispatch_mode` are separate decisions.
+- Move claimed packets to `tasks/claimed/`, fill claimant, immutable target, exact lock ownership, resolved execution environment, and resolved root/worker route, append `STATE: active`, validate the v2 packet, commit, and push.
+- Delegate one worker per packet in the correct target project/path and resolved execution environment.
 - Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.
-- Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: record exact `worker_creation_surface: app-native task tools` and verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state.
+- Mint and persist a new `worker_creation_attempt_id` before every actual create call, including an authorized replacement, then apply `docs/live-task-visibility.md`: record exact `worker_creation_surface: app-native task tools` and verify one candidate's exact title, saved-project binding, target project root, resolved Local/Worktree mode, execution cwd kind, host/local identity, and handoff through app-native saved-project and task create/list/read tools before atomically writing canonical identity and visibility state. A managed worktree cwd normally differs from `target_path`.
 - Record worker thread/session identity, creation surface, visibility status, link/directive, and proof in the packet. Helper, separate app-server, session-index, or database persistence cannot prove live Desktop visibility; `portable_only` completion is reconciliation evidence and leaves canonical `worker_thread_id` empty.
 - In every verified builder, QA, or canonical recovery response, print the raw canonical task ID plus exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with the same ID. Verify the task with app-native readback first; reject every other directive/link form.
 - On a stalled, timed-out, or partially returned create, keep the source claim and target lock, assign one stable recovery incident ID, open `templates/task-creation-recovery.md`, and do not authorize replacement until live app-native list/read conclusively proves the original absent or unusable.
@@ -63,7 +65,7 @@ a refreshed, valid capability manifest whenever synchronized evidence changes.
 - Rename the root task only after the cycle's final outcome is known. Use `[idle|claimed|qa|review|blocked|done] <useful project or task label>` and require exact app-native title readback before claiming success. Final `[poll]` titles are invalid. Match whole tokens/phrases: reject leading `WB`, `Workboard`, `poll`/`polling`, `queue check`, and `manual Workboard`, plus generic-only closeout/check/status labels, while allowing those character sequences inside larger real names.
 - On callback unavailability/failure, require `ROOT_RECONCILIATION_REQUIRED` with the identical envelope and error; do not replace it with monitoring.
 - Move implementation-complete packets with required QA still missing to `tasks/qa/`.
-- Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact.
+- Launch one separate, product-read-only `[qa] <short label>` companion per pending QA packet inside the existing target project against a pinned commit or immutable artifact. Git QA defaults to a fresh managed Worktree unless it resumes a canonical QA task or records a justified Local reason.
 - Pass packet-linked PR/issue URLs, `builder_thread_id`, and publication policies to QA; verify publication receipts or perform a root fallback. Never expose absolute local paths or local-only artifacts in GitHub comments.
 - Preserve the portable QA artifact root and exact `<root>/<packet-id>` directory, copied immutable target type/value, active/completed `qa_thread_id`, and paired full-SHA prior QA head plus exact prior result for bounded continuations. Record GitHub issue/PR receipts with exact lowercase `owner/repo#positive-id` destinations and matching public comment URLs, bound to packet repository and numeric issue/PR fields; keep QA and generic receipts separate from the product verdict.
 - When the linked repository runs GitHub-hosted Codex review, apply `docs/github-codex-review-gate.md` on the exact current PR head before merge readiness. Validate every finding; route valid findings back to the builder and record evidence for invalid findings. QA stays read-only. Any fixing commit invalidates prior QA and hosted-review clearance, so rerun both against the new head.
@@ -79,12 +81,20 @@ New packets use `packet_schema_version: 2`. Before each move, append the exact
 `backlog`, `ready`, `active`, `qa`, `blocked`, `review`, `done`, or `archive`
 transition and run `node scripts/check-task-packet.mjs <packet> --lane <lane>
 --previous-status <from-state>`. Folder, frontmatter, latest log, target lock,
-state-specific metadata, callback provenance, immutable targets, and publication
-receipts must agree. Reject unknown or duplicate keys, noncanonical packet or
-dependency IDs, abbreviated/malformed commit SHAs, unsupported model routes,
-incomplete canonical visibility, inconsistent recovery/QA state, user-specific
-absolute paths anywhere, malformed typed HTTPS receipts, and any unknown,
-duplicate, reordered, misplaced, or partial state-log field.
+execution environment, state-specific metadata, callback provenance, immutable
+targets, and publication receipts must agree. Reject unknown or duplicate keys,
+noncanonical packet or dependency IDs, abbreviated/malformed commit SHAs,
+unsupported environment or model routes, incomplete canonical visibility,
+inconsistent recovery/QA state, user-specific absolute paths anywhere,
+malformed typed HTTPS receipts, and any unknown, duplicate, reordered,
+misplaced, or partial state-log field.
+
+Ready and backlog packets may keep `resolved_execution_environment: pending`.
+Claimed and QA packets may not. Explicit or resolved Local requires
+`execution_environment_reason`. New and currently ready packets adopt the
+environment fields. Do not retroactively rewrite historical claimed, QA,
+review, done, blocked, or archived packets solely for environment-only
+retrofits.
 
 `--allow-legacy` is an explicit read-only compatibility check, not permission to
 mutate an old packet. Migrate legacy `orchestrator_*` fields to canonical
@@ -95,16 +105,17 @@ without the flag before routing. See `docs/task-packet-schema.md`.
 
 Task creation timeout is an ambiguous outcome, not proof of failure. Keep the
 source packet claimed with capacity and target lock retained. Preserve its
-`root_task_id`, target tuple, `worker_creation_surface`, persistent
-`worker_creation_attempt_id`, full request, exact calls, timestamps, partial
-evidence, and raw task ID in a recovery packet. Select one canonical task only
-through structured live app-native list/read, write it back to source
-`worker_thread_id` with proof, and archive or stand down only proven duplicates.
-Callbacks route only when canonical task and creation-attempt IDs both match;
-others are recovery evidence. Completion requires validator success, promotion
-rerun, and queue-classification rerun. If conclusive live proof finds no usable
-worker, validate `recovery_outcome: no_usable_worker`, move the source to blocked
-with the exact next action, and release the lock without calling canonicalize.
+`root_task_id`, target tuple, resolved execution environment,
+`worker_creation_surface`, persistent `worker_creation_attempt_id`, full
+request, exact calls, timestamps, partial evidence, and raw task ID in a
+recovery packet. Select one canonical task only through structured live
+app-native list/read, write it back to source `worker_thread_id` with proof, and
+archive or stand down only proven duplicates. Callbacks route only when
+canonical task and creation-attempt IDs both match; others are recovery
+evidence. Completion requires validator success, promotion rerun, and
+queue-classification rerun. If conclusive live proof finds no usable worker,
+validate `recovery_outcome: no_usable_worker`, move the source to blocked with
+the exact next action, and release the lock without calling canonicalize.
 
 ## Tool enforcement
 
@@ -119,7 +130,9 @@ If a packet declares `qa_required: true`, the orchestrator must also preflight t
 
 ## Hard stops
 
-Stop before secrets, production data, billing/account settings, deployment, publishing, destructive actions, ambiguous acceptance criteria, or unknown project paths.
+Stop before secrets, production data, billing/account settings, deployment,
+publishing, destructive actions, ambiguous acceptance criteria, unknown project
+paths, or an execution environment that cannot be verified.
 
 An app-native project/task stall, timeout, ambiguous result, or readback mismatch
 is also a routing hard stop. Preserve the raw task ID and partial result, record
@@ -131,13 +144,14 @@ remains, with an exact next action. Helper, separate app-server, session-index,
 or database persistence is not live Desktop proof.
 
 If the host genuinely lacks app-native task APIs, use the `portable_only`
-fallback from the exact target path and explicitly report that live Desktop
-visibility was not verified. Record `worker_portable_session_id`, leave
-canonical `worker_thread_id` empty, and treat completion as root reconciliation
-evidence. Verified builder, QA, and canonical recovery output includes the raw
-canonical task ID plus exactly `::created-thread{threadId="<RAW_TASK_ID>"}` with
-the same ID. Reject `::codex-thread`, URLs, malformed/extended directives, extra
-text/IDs, and multiple directives.
+fallback from an explicitly prepared checkout matching the resolved environment
+and explicitly report that live Desktop visibility was not verified. Record
+`worker_portable_session_id`, leave canonical `worker_thread_id` empty, and
+treat completion as root reconciliation evidence. Verified builder, QA, and
+canonical recovery output includes the raw canonical task ID plus exactly
+`::created-thread{threadId="<RAW_TASK_ID>"}` with the same ID. Reject
+`::codex-thread`, URLs, malformed/extended directives, extra text/IDs, and
+multiple directives.
 
 ## Closeout gate
 
@@ -162,13 +176,18 @@ worker heartbeat polling, or retention after a changed outcome.
 
 Run `node scripts/check-workboard-closeout.mjs` for structural closeout proof.
 A delegated or canonically recovered task must pass its raw task ID, exact
-same-ID `::created-thread` directive, and verified app-native task readback. An unavailable or
-unverified title passes the exact `--title-call`, `--title-failure`, and a
-`--title-blocker` record containing the requested title and those details.
+same-ID `::created-thread` directive, and verified app-native task readback. An
+unavailable or unverified title passes the exact `--title-call`,
+`--title-failure`, and a `--title-blocker` record containing the requested title
+and those details.
 
 ## Defaults
 
-- Max active claimed or active-QA tasks: 3.
+- Max active claimed or active-QA tasks: 8. Packet, project, or operator limits may lower this ceiling.
+- Git implementation and independent QA default to managed Worktree.
+- Workboard root/queue mutation, non-Git work, and host/runtime work default to Local.
+- Continue an existing canonical task in its existing environment.
+- Explicit or resolved Local requires a reason.
 - Root orchestration, implementation, documentation, tests, and routine QA: `gpt-5.6-sol` with medium reasoning.
 - Packet model/reasoning overrides take precedence over project overrides; portable defaults apply only when neither is set.
 - Any high-reasoning escalation requires a task-local reason category of exactly `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`; optional prose is a separate note.
@@ -177,3 +196,5 @@ unverified title passes the exact `--title-call`, `--title-failure`, and a
 - QA runs as a separate task, keeps the product target read-only, and does not quietly fix the implementation.
 - Claimed and active-QA packets lock only their exact target tuple; `parallel_safe` does not override a lock.
 - Projectless tasks run in the Workboard project only.
+- Worktrees isolate files, not external systems; external-resource locks remain mandatory.
+- Current target locks remain repo/path-wide. Same-repo parallelism needs an explicit narrower lock contract with non-overlapping scope and merge ownership.

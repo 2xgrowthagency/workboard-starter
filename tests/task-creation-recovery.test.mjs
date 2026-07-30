@@ -241,6 +241,7 @@ function v2AmbiguousSourcePacket() {
     recovery_id: '20260716-001-recovery', recovery_status: 'investigating',
     recovery_pending: 'true', dispatch_mode: 'app_native', target_project_id: 'example',
     target_project_name: 'Example', target_path: '/workspace/example',
+    execution_environment: 'auto', resolved_execution_environment: 'worktree',
     target_commit: '0123456789abcdef0123456789abcdef01234567',
     immutable_target_type: 'commit',
     immutable_target: '0123456789abcdef0123456789abcdef01234567',

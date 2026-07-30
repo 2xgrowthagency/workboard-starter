@@ -97,6 +97,9 @@ github_pr:
 target_project_id: workboard
 target_project_name: Workboard
 target_path: ${WORKBOARD_ROOT}
+execution_environment: auto
+resolved_execution_environment: pending
+execution_environment_reason:
 root_model:
 root_reasoning:
 root_model_routing_reason_category:
@@ -155,6 +158,7 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - [ ] Tool/capability proof if `requires_*` or `required_skills` is set
 - [ ] Live task readback proof, retained-lock recovery proof, or an explicit `portable_only` visibility status
 - [ ] Current working directory and git branch/HEAD captured
+- [ ] Execution environment resolution and app-native Local/Worktree readback captured
 - [ ] Commands/tests run, with result
 - [ ] Diff/PR/commit link, if code changed
 - [ ] Screenshot/browser proof, if UI-facing
@@ -186,6 +190,9 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Root/orchestrator claims and reconciles one-shot completion callbacks; workers execute without periodic monitoring or heartbeats.
 - Root assigns one stable `recovery_id` per ambiguous incident and persists a new immutable `worker_creation_attempt_id` before every actual create call, including an authorized replacement.
 - When app-native task APIs are exposed, root verifies one candidate's exact title, `target_project_id`, `target_path` cwd, `worker_host_identity`, and handoff through live list/read tools. Only then does it write the candidate ID to canonical `worker_thread_id` and mark visibility `verified`.
+- `execution_environment` records packet intent (`auto`, `worktree`, or `local`). Root resolves `auto` from the project default, then the portable fallback: Git implementation and independent QA use `worktree`; non-Git, host/runtime, and Workboard queue/control-plane work use `local`.
+- Explicit or resolved `local` requires `execution_environment_reason`. Continuing a canonical task preserves its existing environment. Projectless routing and `dispatch_mode` are separate decisions.
+- Before delegation, root persists `resolved_execution_environment`, then verifies saved-project binding, canonical task identity, project root, and Local/Worktree execution cwd through the app-native readback. A managed worktree cwd is valid and must not be rejected merely because it differs from `target_path`.
 - Helper, separate app-server, session-index, or database persistence is not proof that the running Desktop UI refreshed.
 - On app-native stall/timeout/ambiguous readback, preserve raw/replacement IDs as recovery evidence, set `worker_visibility_status: ambiguous`, `recovery_status: investigating`, and `recovery_pending: true`, create no duplicate, and keep this source packet in `tasks/claimed/` so its exact target lock and capacity slot remain active.
 - Move this source packet to `tasks/blocked/` and release its lock only after recovery proves ambiguity resolved and no usable/canonical worker remains; record the exact next action.

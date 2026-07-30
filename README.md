@@ -243,13 +243,13 @@ Before loading project registries, packet bodies, or task history, run the
 dependency-free classifier:
 
 ```bash
-node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
+node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 8
 ```
 
 It does not invoke Git, move packets, create directories, or write inside the
 Workboard repository. It reports local queue counts, claimed and active-QA
 target locks, completed QA results, configured/available capacity, and one
-routing status. Capacity defaults to 3; at capacity it reports
+routing status. Capacity defaults to 8; at capacity it reports
 `WORK_IN_PROGRESS` even when ready work is waiting. As an independent path
 identity guard, it canonicalizes `--repo` and requires a real root `.git` file or
 directory; this rejects nested paths while keeping Git synchronization and
@@ -437,7 +437,7 @@ portable packet metadata, policy semantics, output encoding, and bounded review.
 - No secrets in this repo.
 - No raw private memory dumps.
 - One root orchestrator loop at a time.
-- Default max active claimed or active-QA tasks: 3.
+- Default max active claimed or active-QA tasks: 8.
 - One worker per packet.
 - Claimed and active-QA packets lock only their exact target tuple; unrelated targets continue up to capacity.
 - Active workers are event-driven: no periodic history reads, monitoring, or heartbeats.

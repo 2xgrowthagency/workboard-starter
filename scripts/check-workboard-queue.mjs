@@ -40,7 +40,7 @@ function parseArgs(argv) {
     runMemory: null,
     idlePauseThreshold: 0,
     idlePauseAction: 'recommend',
-    capacity: 3,
+    capacity: 8,
   };
 
   for (let index = 0; index < argv.length; index += 1) {

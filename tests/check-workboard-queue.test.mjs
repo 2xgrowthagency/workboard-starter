@@ -685,14 +685,14 @@ test('ready work remains routable while an unrelated target is claimed', () => {
     assert.match(output, /^QUEUE_STATUS=READY_WORK_AVAILABLE /);
     assert.match(output, /CLAIMED=1/);
     assert.match(output, /READY=1/);
-    assert.match(output, /CAPACITY=3 AVAILABLE_CAPACITY=2 CAPACITY_REACHED=0/);
+    assert.match(output, /CAPACITY=8 AVAILABLE_CAPACITY=7 CAPACITY_REACHED=0/);
     assert.match(output, /CLAIMED_LOCKS=active-docs\|docs\|%2Fwork%2Fdocs/);
   });
 });
 
 test('default full capacity is machine-enforced before ready routing', () => {
   withRepo((root) => {
-    for (let index = 1; index <= 3; index += 1) {
+    for (let index = 1; index <= 8; index += 1) {
       writeFileSync(
         join(root, 'tasks', 'claimed', `active-${index}.md`),
         packet({
@@ -712,9 +712,9 @@ test('default full capacity is machine-enforced before ready routing', () => {
 
     const output = classify(root);
     assert.match(output, /^QUEUE_STATUS=WORK_IN_PROGRESS /);
-    assert.match(output, /CLAIMED=3/);
+    assert.match(output, /CLAIMED=8/);
     assert.match(output, /READY=1/);
-    assert.match(output, /CAPACITY=3 AVAILABLE_CAPACITY=0 CAPACITY_REACHED=1/);
+    assert.match(output, /CAPACITY=8 AVAILABLE_CAPACITY=0 CAPACITY_REACHED=1/);
   });
 });
 
