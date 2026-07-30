@@ -1,17 +1,17 @@
 {
   "$schema": "schemas/workboard-capabilities.schema.json",
   "manifest_schema_version": 1,
-  "protocol_version": "1.0.0",
+  "protocol_version": "1.1.0",
   "compatibility": {
     "classification": "backward-compatible",
     "minimum_reader_schema_version": 1,
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": null,
-    "commit": "fcd586c7108c6536d1ab46aee1c841f37d9f0605",
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/14",
-    "adoption_record": "docs/releases/st-014-capability-manifest.md"
+    "release": "ST-016",
+    "commit": null,
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/40",
+    "adoption_record": "docs/releases/st-016-execution-environment-routing.md"
   },
   "capabilities": {
     "queue_classifier": {
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "c22466ebd554f074394fd5a118fe46d0af7346eb1f4f739c51c1bb23869182aa"
+      "evidence_sha256": "bb677e57dbece4a3200834a9464fb817e99d1ae6cb41588aaf444f0be2c64c14"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "5dda3a82c57c1ea9b3334e9cf336fd87bd5681c4a3fac7353986c898407e1403"
+      "evidence_sha256": "dfe7368f1a36b32c6fa7ab182063953a99b4a869b408d4fdde7603b27ead5167"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +59,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "7450b36a618e661b0ea0993c4de6ebf73b6aa6b2682d81668a371bcff08df885"
+      "evidence_sha256": "f3cc9b43720f74304afbec8c456fba18d32d605980f9edb5aad542c8f6c4d8df"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "229c0a8ddf71be93dbefc5e571ffe79b7f44563a47725ad525f595821c01902a"
+      "evidence_sha256": "91552f066ed45c6c017c58375e10331810fd609ce7e5ee902209cafc6cd8dbeb"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "9d5f6537a12ef46328175e589008ce8e977046914144f8caaaa3e99abb646883"
+      "evidence_sha256": "45700bfed201b1d5628e0ce77a49673cd41260073b561d05ecf5dc89e78a1a57"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -140,7 +140,7 @@
           "tests/task-creation-recovery.test.mjs"
         ]
       },
-      "evidence_sha256": "1f8dc743be92a109ef0c608a66b815ea94a6e68be4f2084062a7b10910b94896"
+      "evidence_sha256": "1aa6ada5bbad89bf19be3ec57c1901887acf1f385ef93fecfe75e3f45d2c9604"
     },
     "model_routing": {
       "status": "supported",
@@ -155,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "e50336ab7144eaf4552ba4ff094da636261cba0105540eca224e6855122cf901"
+      "evidence_sha256": "6eeaff20a9f2643058998d2379fcebfdffecc19e2d1fd6a9af197fc9a1a78381"
     },
     "git_preflight": {
       "status": "supported",
@@ -171,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "735832b6a2cf8c3238ddb345d9e8b554a31d15253357b254db6156714f28bb06"
+      "evidence_sha256": "6c49fa952ca7c8c7dc89b12ed51336862772cd67de06de40844e42c9222d01d7"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -202,12 +202,12 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "d0e47d7947d14c8b12fc8e0cffbf40720e9613b6a18f4226c05024b4877b7c64"
+      "evidence_sha256": "8069f45d3d4d8657bbfa651cb45b49bbdc3ac08a022b1de72f348f29578cc5b7"
     },
     "task_packet_schema": {
       "status": "supported",
-      "version": "2.0.0",
-      "summary": "Strict packet schema validation enforces lifecycle metadata and canonical GitHub repository identity.",
+      "version": "2.1.0",
+      "summary": "Strict packet schema validation includes explicit Local-versus-Worktree intent and resolution.",
       "evidence": {
         "files": [
           "scripts/check-task-packet.mjs",
@@ -218,7 +218,25 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "11d57879817d45d2cde763423d90a1086ba64fba1f5a603811abb75545341e56"
+      "evidence_sha256": "0ed5c0cb0ab11f66da6d6bdb6e7e4d2d347a6be6598f8dd7b1e76a34329822a6"
+    },
+    "execution_environment_routing": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Packet intent, project defaults, canonical reuse, and app-native proof resolve Local or Worktree execution.",
+      "evidence": {
+        "files": [
+          "docs/orchestrator-protocol.md",
+          "skills/workboard-orchestrator/SKILL.md",
+          "templates/task-packet.md",
+          "projects.example.yaml"
+        ],
+        "tests": [
+          "tests/execution-environment-routing.test.mjs",
+          "tests/check-task-packet.test.mjs"
+        ]
+      },
+      "evidence_sha256": "8d788247947f9730358028fa8283f424b510aa738484be4eb59c25022b793e12"
     },
     "upstream_synchronization": {
       "status": "supported",

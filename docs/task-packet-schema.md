@@ -22,8 +22,10 @@ section. It does not mutate packets.
   `ready_when`, `promotion_policy`, `dependency_ready_state`, and
   `blocker_type`. Packet IDs and every dependency entry use the exact
   `YYYYMMDD-NNN-lowercase-slug` format.
-- **Target and lock:** `target_project_id`, `target_path`, `target_commit`,
-  `immutable_target_type`, `immutable_target`, and the exact
+- **Target, environment, and lock:** `target_project_id`, `target_path`,
+  `execution_environment`, `resolved_execution_environment`,
+  `execution_environment_reason`, `target_commit`, `immutable_target_type`,
+  `immutable_target`, and the exact
   `target_lock_status`, `target_lock_project_id`, `target_lock_path`, acquired,
   and released timestamps. A lock tuple must exactly match the target tuple.
 - **Routing:** resolved `root_*`, `worker_*`, and `qa_*` model/reasoning fields
@@ -36,6 +38,22 @@ Ready/backlog packets may leave role routing blank and dispatch pending so they
 do not mask project overrides or assume host capability. Root must resolve and
 persist root/worker routing plus dispatch mode before `claimed`; QA routing is
 resolved before the QA companion is created.
+
+`execution_environment` is packet intent: `auto`, `worktree`, or `local`.
+`resolved_execution_environment` is `pending`, `worktree`, or `local`. Root
+resumes an existing canonical task in its current environment; otherwise it
+resolves packet intent, project default, then the portable fallback. Git
+implementation and independent QA default to managed Worktree. Non-Git,
+host/runtime, and Workboard root/queue work default to Local. Explicit or
+resolved Local requires `execution_environment_reason`. Claimed and QA packets
+cannot remain pending.
+
+Projectless routing and `dispatch_mode` are independent of the environment
+choice. A managed worktree cwd normally differs from `target_path`; app-native
+proof must bind it to the saved project's root instead of requiring cwd
+equality. Adopt these fields for new and currently ready packets. Historical
+claimed, QA, review, done, blocked, and archived packets do not need
+environment-only retrofits.
 - **Creation and recovery:** creation attempt, surface, canonical task,
   visibility, proof, blocker, portable session, stable recovery incident, and
   recovery-pending fields. Ambiguous creation remains active and locked.

@@ -13,7 +13,12 @@ Use the source packet's existing names throughout the visibility flow:
 - `id`: packet identity;
 - `root_task_id`: persistent root callback destination;
 - `target_project_id`: saved project/target identity;
-- `target_path`: requested cwd;
+- `target_path`: saved project root;
+- `execution_environment`: packet intent (`auto`, `worktree`, or `local`);
+- `resolved_execution_environment`: current `pending`, `worktree`, or `local`
+  decision;
+- `execution_environment_reason`: required rationale for explicit or resolved
+  Local;
 - `worker_task_title`: exact state-first task title;
 - `worker_creation_surface`: exact `app-native task tools` for live app-native creation/readback, or exact `portable_only` for portable creation;
 - `worker_creation_attempt_id`: immutable ID generated before the current
@@ -57,12 +62,14 @@ recovery attempt evidence. They are not canonical and must not overwrite
 
 ## Capability modes
 
-Choose one mode before delegation:
+Choose one dispatch mode before delegation. This is separate from Local versus
+Worktree:
 
 - `app_native`: the current host exposes saved-project selection plus live task
   create, list, and read tools.
 - `portable_only`: the host does not expose those app-native tools. Start the
-  worker from the packet `target_path` with the exact handoff, record the
+  worker from an explicitly prepared checkout matching the resolved environment
+  with the exact handoff, record the
   process/session evidence the host supports, and state that Desktop visibility
   is not verified.
 
@@ -73,6 +80,12 @@ is needed.
 Write the selected mode to `dispatch_mode` before creation. Claimed and QA
 packets cannot retain `pending` dispatch metadata.
 
+Resume an existing canonical task in its current environment. Otherwise resolve
+`execution_environment` from packet intent, project default, then the portable
+fallback. Git implementation and independent QA default to managed Worktree;
+non-Git, host/runtime, and Workboard root/queue work default to Local. Persist
+the result before creation.
+
 ## App-native proof gate
 
 For `app_native` delegation:
@@ -82,15 +95,17 @@ For `app_native` delegation:
    lookup.
 2. List existing tasks before creation when the host supports that lookup. Reuse
    the canonical matching task when live readback proves it is usable.
-3. Generate and persist one immutable `worker_creation_attempt_id` before the
+3. Resolve and persist Local or Worktree. Generate and persist one immutable `worker_creation_attempt_id` before the
    create call. Create at most one task for that attempt with the exact
-   `worker_task_title`, `target_project_id`, `target_path`, host/local identity,
-   and complete worker handoff.
+   `worker_task_title`, `target_project_id`, resolved environment, host/local
+   identity, and complete worker handoff.
 4. Preserve every partial result immediately in recovery evidence. A returned
    raw task ID does not populate `worker_thread_id` by itself.
 5. Through the running host's live list and read tools, verify the same candidate
-   task ID and exact values for title, saved project/target, cwd, host/local
-   identity, and worker handoff.
+   task ID and exact values for title, saved-project binding, target project
+   root, Local/Worktree mode, execution cwd kind, host/local identity, and
+   worker handoff. A managed worktree cwd normally differs from `target_path`;
+   accept it only when the host proves it is managed for the target project.
 6. Perform one canonical writeback atomically only after every value matches,
    using absolute, lexically canonical repo-root, source-packet, and recovery-
    packet paths. The supplied repo-root entry cannot itself be a symlink, and the
@@ -109,7 +124,8 @@ For `app_native` delegation:
    write the proven candidate ID to `worker_thread_id`, write that creation call's
    `worker_creation_attempt_id`, set `worker_creation_status: canonical`, set
    `worker_visibility_status: verified`, set `worker_visibility_verified_at`
-   and both creation/visibility proof fields, and set `recovery_pending: false`.
+   and both creation/visibility proof fields, preserve
+   `resolved_execution_environment`, and set `recovery_pending: false`.
 7. Return the canonical `worker_thread_id` as the raw ID and exactly
    `::created-thread{threadId="<RAW_TASK_ID>"}`. The directive must occupy the
    complete directive value and contain that same ID. `::codex-thread`, URLs,

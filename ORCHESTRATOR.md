@@ -22,9 +22,9 @@ You should:
 5. Treat classifier-emitted claimed and active-QA records as capacity usage and exact per-target locks. Do not read their packet or task history during ordinary polls.
 6. When ready work exists and capacity remains, inspect ready packets and continue routing unrelated targets.
 7. Decode locks and reject a ready packet when both canonical `target_project_id` and `target_path` exactly match; use `scripts/check-workboard-target-lock.mjs` and fail closed on malformed input.
-8. Move claimed packets to `tasks/claimed/`, fill claim metadata, immutable target and exact lock fields, append the `active` transition, validate with `scripts/check-task-packet.mjs`, commit, and push.
+8. Resolve `execution_environment` from canonical-task reuse, packet intent, project default, then portable fallback. Persist `resolved_execution_environment`; explicit or resolved Local requires a reason. Move claimed packets to `tasks/claimed/`, fill claim metadata, immutable target and exact lock fields, append the `active` transition, validate with `scripts/check-task-packet.mjs`, commit, and push.
 9. Persist a new `worker_creation_attempt_id` before every actual creation call, then delegate at most one correctly scoped worker through `docs/live-task-visibility.md`; write canonical identity only after complete app-native list/read proof. On ambiguity, keep one stable recovery incident ID and use `templates/task-creation-recovery.md`; an authorized replacement gets a new attempt ID.
-10. Keep workers inside the packet `target_path`.
+10. Keep Local workers inside `target_path`. A managed Worktree worker may use a different app-native cwd only after readback proves it belongs to the exact saved project and resolved environment.
 11. Route worker-complete packets that still require independent QA to `tasks/qa/`.
 12. Start a separate, product-read-only `[qa] <short label>` companion inside the existing target project with the acceptance criteria and pinned target evidence.
 13. Give every builder and QA create handoff the persistent source `root_task_id`, packet ID, current `worker_creation_attempt_id`, `target_project_id`, `target_path`, associated PR/issue URLs, and publication policy. Do not include a future worker task ID; app-native readback writes canonical `worker_thread_id` afterward.
@@ -111,10 +111,14 @@ SQLite rows.
 
 ## Capacity
 
-Default max active claimed or active-QA tasks: 3. Pass a positive `--capacity`
+Default max active claimed or active-QA tasks: 8. Pass a positive `--capacity`
 to the classifier to configure another limit.
 
-Count classifier-emitted claimed and active-QA tasks before claiming more. They own worker slots and lock only their exact target tuples. Unrelated ready work remains eligible up to capacity.
+Count classifier-emitted claimed and active-QA tasks before claiming more. They
+own worker slots and lock only their exact target tuples. Unrelated ready work
+remains eligible up to capacity. Keep external-resource locks for Ads, Shopify
+Admin, DNS, deployments, shared databases, browser sessions, and similar
+surfaces; Worktrees do not isolate them.
 
 ## Model routing
 
@@ -152,12 +156,18 @@ Tool-required work cannot move to `tasks/qa/` or `tasks/review/` unless the pack
 
 Use `projects.yaml` as the routing source of truth.
 
-- Codex Desktop: use app-native project selection and task creation when exposed, then verify one candidate's exact title, `target_project_id`, `target_path`, host/local identity, and handoff through live list/read tools before writing canonical `worker_thread_id`.
+- Resume the canonical task first and preserve its Local/Worktree environment. Otherwise resolve packet intent, project default, then portable fallback. Git implementation and independent QA default to Worktree; non-Git, host/runtime, and root queue/control-plane work default to Local.
+- Codex Desktop: use app-native project selection and task creation when exposed, then verify one candidate's exact title, saved-project binding, target project root, resolved Local/Worktree mode, execution cwd kind, host/local identity, and handoff through live list/read tools before writing canonical `worker_thread_id`.
 - Claude Desktop: create/open a worker chat in the project matching the packet target path.
-- Claude Code or Codex CLI: launch from the packet `target_path`, paste the packet plus worker handoff, record `worker_portable_session_id`, leave canonical `worker_thread_id` empty, and mark the visibility status `portable_only`.
+- Claude Code or Codex CLI: launch from an explicitly prepared checkout matching the resolved environment, paste the packet plus worker handoff, record `worker_portable_session_id`, leave canonical `worker_thread_id` empty, and mark the visibility status `portable_only`.
 - OpenClaw or other agents: start a bounded sub-agent/session with the packet target path, packet text, and proof requirements.
 
 If the target project/path is missing, block and ask. Do not improvise.
+
+Projectless routing and `dispatch_mode` are separate from Local versus
+Worktree. Explicit or resolved Local requires `execution_environment_reason`.
+Worktrees isolate files, not external systems; retain resource locks for Ads,
+Shopify Admin, DNS, deployments, shared databases, and other external state.
 
 App-native creation is not successful delegation until live readback passes.
 Helper, separate app-server, session-index, or database persistence does not

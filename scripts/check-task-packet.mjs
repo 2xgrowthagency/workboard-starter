@@ -45,6 +45,8 @@ const REQUIRED_V2_FIELDS = [
   'packet_schema_version', 'id', 'status', 'priority', 'created_by', 'created_at',
   'backlog_reason', 'promotion_policy', 'dependency_ready_state', 'blocker_type',
   'depends_on', 'unblocks', 'ready_when', 'target_project_id', 'target_path',
+  'execution_environment', 'resolved_execution_environment',
+  'execution_environment_reason',
   'target_commit', 'immutable_target_type', 'immutable_target', 'target_lock_status',
   'target_lock_project_id', 'target_lock_path', 'target_lock_acquired_at',
   'target_lock_released_at', 'claimed_by', 'claimed_at', 'root_task_id',
@@ -617,6 +619,13 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   requireEnum(fields, 'promotion_policy', ['auto', 'review', 'manual'], errors);
   requireEnum(fields, 'dependency_ready_state', ['review', 'done'], errors);
   requireEnum(fields, 'target_lock_status', ['unlocked', 'held', 'released'], errors);
+  requireEnum(fields, 'execution_environment', ['auto', 'worktree', 'local'], errors);
+  requireEnum(
+    fields,
+    'resolved_execution_environment',
+    ['pending', 'worktree', 'local'],
+    errors,
+  );
   requireEnum(fields, 'dispatch_mode', ['app_native', 'portable_only', 'pending'], errors);
   requireEnum(fields, 'callback_handoff_required', ['true', 'false'], errors);
   requireEnum(fields, 'worker_creation_status', ['pending', 'ambiguous', 'canonical', 'portable_only', 'completed'], errors);
@@ -672,6 +681,15 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     listValues.publication_receipts, 'publication_receipts', fields, errors,
   );
   validateRouting(fields, errors);
+  if (fields.execution_environment === 'local' ||
+      fields.resolved_execution_environment === 'local') {
+    requireValue(fields, 'execution_environment_reason', errors);
+  }
+  if (fields.execution_environment !== 'auto' &&
+      fields.resolved_execution_environment !== 'pending' &&
+      fields.execution_environment !== fields.resolved_execution_environment) {
+    errors.push('resolved_execution_environment must match the explicit execution_environment');
+  }
   const events = parseStateLogs(body, errors);
   if (fields.root_closeout_title_status === 'pending') {
     for (const field of [
@@ -870,6 +888,13 @@ function validateV2(fields, body, lane, previousStatus, errors) {
       errors.push('portable_only creation cannot retain recovery state');
     }
   }
+  if (['ambiguous', 'canonical', 'completed', 'portable_only'].includes(
+    fields.worker_creation_status,
+  ) && fields.resolved_execution_environment === 'pending') {
+    errors.push(
+      `${fields.worker_creation_status} creation requires a resolved execution environment`,
+    );
+  }
 
   const lockHeld = ['claimed', 'qa'].includes(fields.status);
   if (lockHeld) {
@@ -894,6 +919,9 @@ function validateV2(fields, body, lane, previousStatus, errors) {
       errors.push(`${fields.status} requires target_commit or immutable_target`);
     }
     if (fields.dispatch_mode === 'pending') errors.push(`${fields.status} requires a resolved dispatch_mode`);
+    if (fields.resolved_execution_environment === 'pending') {
+      errors.push(`${fields.status} requires a resolved execution environment`);
+    }
   } else if (fields.target_lock_status === 'unlocked') {
     requireEmpty(fields, 'target_lock_project_id', errors);
     requireEmpty(fields, 'target_lock_path', errors);

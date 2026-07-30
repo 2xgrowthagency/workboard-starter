@@ -57,7 +57,7 @@ Workboard repo: <LOCAL_PATH_TO_WORKBOARD>
 Instructions:
 1. Run: node scripts/check-workboard-git-preflight.mjs --repo <LOCAL_PATH_TO_WORKBOARD>. The path must resolve to the exact repository root; symlink and .. aliases resolving to that root are accepted, while nested directories are rejected.
 2. Continue only on GIT_PREFLIGHT_STATUS=READY or GIT_PREFLIGHT_STATUS=UPDATED; stop and report the exact REASON/DETAIL for GIT_PREFLIGHT_STATUS=STOP. STOP REASON=INTERRUPTED is final and requires a fresh run. The preflight lock coordinates compliant roots only: never auto-expire it, use explicit verified recovery for an abandoned lock, and retain one-root/single-writer discipline against external writers.
-3. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. The classifier independently requires that canonical root identity without invoking Git. Omit capacity only for the default of 3; omit all idle-control flags for a stateless manual poll.
+3. Before broad reads, run: node scripts/check-workboard-queue.mjs --repo <LOCAL_PATH_TO_WORKBOARD> --capacity <MAX_ACTIVE_TASKS> --run-memory <EXTERNAL_STATE_PATH>/poll.json --idle-pause-threshold <NO_ACTION_RUNS> --idle-pause-action <recommend|pause>. The classifier independently requires that canonical root identity without invoking Git. Omit capacity only for the default of 8; omit all idle-control flags for a stateless manual poll.
 4. Stop on WORKBOARD_REQUIRES_JUDGMENT or CHECK_FAILED.
 5. Stop on NOTHING_TO_CLAIM after reporting the preflight HEAD and classifier line. Do not read packet bodies, project registries, non-routable lanes, thread history, or old automation narratives.
 6. On WORK_IN_PROGRESS, report the preflight HEAD and classifier line, then stop without reading active packets or worker history. This includes ready work waiting at full capacity.
@@ -65,8 +65,8 @@ Instructions:
 8. Trust the classifier's machine-enforced capacity result; do not route when AVAILABLE_CAPACITY=0.
 9. If ready work exists and capacity remains, decode the emitted locks and use scripts/check-workboard-target-lock.mjs for every candidate. Reject exact target_project_id + target_path matches; continue routing unrelated targets.
 10. For every v2 move, update only known schema fields, append one complete exact state transition block, and run scripts/check-task-packet.mjs against the destination lane and previous log state. Reject unknown/duplicate keys or log fields, partial trailing logs, noncanonical packet/dependency IDs, abbreviated commit SHAs, user-specific absolute paths, and malformed state metadata. On claim, pin the immutable target and exact lock tuple. Legacy --allow-legacy is read-only migration evidence, not permission to move an old packet. Commit/push validated claim transitions before delegation.
-11. Resolve model routing from packet override, then project override, then the portable gpt-5.6-sol medium default. Run scripts/check-model-routing.mjs for overrides or escalation. High requires a task-local category of exactly high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex. Luna Medium requires exact bounded_high_volume eligibility plus independent_verification=true. Unknown or malformed checker options fail closed.
-12. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed and record the exact `app-native task tools` creation surface; otherwise use the explicit portable_only fallback. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
+11. Resume an existing canonical task in its current environment. Otherwise resolve execution_environment from packet intent, then project default, then the portable fallback: Git implementation and independent QA use Worktree; non-Git, host/runtime, and Workboard root/queue work use Local. Explicit or resolved Local requires execution_environment_reason. Persist resolved_execution_environment before claim. Separately resolve model routing from packet override, project override, then the portable gpt-5.6-sol medium default. Run scripts/check-model-routing.mjs for overrides or escalation. High requires exactly high_stakes, security_sensitive, repeatedly_blocked, or unusually_complex. Luna Medium requires bounded_high_volume plus independent_verification=true.
+12. Before every actual creation call, mint and persist a new worker_creation_attempt_id, then follow docs/live-task-visibility.md: use app-native project/task create, list, and read tools when exposed and record the exact `app-native task tools` creation surface; otherwise use the explicit portable_only fallback. Verify saved-project binding, target project root, resolved Local/Worktree mode, execution cwd kind, and canonical task identity. A managed worktree cwd may differ from target_path. Write canonical identity only after complete live proof; keep recovery_id stable across an incident while replacement gets a new attempt ID.
 13. Never periodically inspect, monitor, heartbeat, or babysit active workers or QA tasks. Reconcile only callbacks whose worker task ID and creation attempt ID match the source packet's current canonical pair after verified visibility.
 14. Route QA-required completions to tasks/qa, QA-not-required completions to tasks/review, and exact blockers to tasks/blocked. Preserve a relative or `${WORKBOARD_ROOT}` QA artifact root, exact `<root>/<packet-id>` directory, immutable target type/value, active/completed qa_thread_id, paired full-SHA prior QA head and exact result, callback source/handoff, and GitHub receipts bound to packet repo plus positive numeric issue/PR ID.
 15. On QA_RESULT_AVAILABLE, reconcile the recorded verdict without launching duplicate QA.
@@ -132,7 +132,7 @@ Recommendation-only example:
 ```bash
 node scripts/check-workboard-queue.mjs \
   --repo <LOCAL_PATH_TO_WORKBOARD> \
-  --capacity 3 \
+  --capacity 8 \
   --run-memory <EXTERNAL_STATE_PATH>/poll.json \
   --idle-pause-threshold 4 \
   --idle-pause-action recommend
@@ -143,7 +143,7 @@ Automatic-pause example:
 ```bash
 node scripts/check-workboard-queue.mjs \
   --repo <LOCAL_PATH_TO_WORKBOARD> \
-  --capacity 3 \
+  --capacity 8 \
   --run-memory <EXTERNAL_STATE_PATH>/poll.json \
   --idle-pause-threshold 4 \
   --idle-pause-action pause
@@ -192,11 +192,14 @@ Create a saved Codex project for the Workboard repo and saved projects for each
 target repo. Schedule or manually run the generic root-orchestrator prompt in
 the Workboard project. Worker tasks belong in the exact target project, not the
 Workboard project, unless the packet is explicitly Workboard/control-plane work.
+Projectless routing remains separate from Local versus Worktree.
 
 When the host exposes app-native APIs, list projects and select the exact saved
-target, persist `worker_creation_attempt_id`, create at most one task for that
-attempt, then use the live list/read tools to verify one candidate's exact title,
-saved project/target, cwd, host/local identity, and complete handoff. Only then
+target, resolve Local versus Worktree, persist `worker_creation_attempt_id`,
+create at most one task for that attempt, then use the live list/read tools to
+verify one candidate's exact title, saved project/target root, resolved mode,
+execution cwd kind, host/local identity, and complete handoff. A managed
+worktree cwd normally differs from the project root. Only then
 write the candidate ID to canonical `worker_thread_id`, mark visibility
 `verified`, and report that raw ID plus exactly
 `::created-thread{threadId="<RAW_TASK_ID>"}` with the same ID. Reject
@@ -266,7 +269,7 @@ Example shell shape:
 cd /path/to/workboard
 node scripts/check-workboard-git-preflight.mjs --repo "$PWD"
 # stop unless GIT_PREFLIGHT_STATUS is READY or UPDATED
-node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 3
+node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 8
 # root agent opens only the lane required by the classifier
 
 cd /path/to/target-project

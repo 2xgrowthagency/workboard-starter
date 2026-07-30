@@ -19,7 +19,9 @@ rules:
   luna_requires_independent_verification: true
   no_thread_reparenting: true
   no_subworkers_by_default: true
-  max_active_tasks: 3
+  default_execution_environment_for_git: worktree
+  default_execution_environment_for_non_git: local
+  max_active_tasks: 8
   qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
   qa_read_only_by_default: true
   qa_uses_existing_target_project: true
@@ -32,6 +34,7 @@ projects:
     local_path: /Users/YOU/dev/workboard
     repo: git@github.com:YOUR-ORG/YOUR-WORKBOARD.git
     codex_project_name: Workboard
+    default_execution_environment: local
     orchestrator_surface: "Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another local agent"
     default_model: gpt-5.6-sol
     default_reasoning: medium
@@ -51,6 +54,7 @@ projects:
     repo: git@github.com:YOUR-ORG/example-app.git
     codex_project_name: Example App
     claude_project_name: Example App
+    default_execution_environment: worktree
     default_model: gpt-5.6-sol
     default_reasoning: medium
     escalation_reasoning: high
