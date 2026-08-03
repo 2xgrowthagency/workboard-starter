@@ -8,10 +8,10 @@
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": "ST-016",
+    "release": "ST-017",
     "commit": null,
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/40",
-    "adoption_record": "docs/releases/st-016-execution-environment-routing.md"
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/42",
+    "adoption_record": "docs/releases/st-017-task-execution-profile.md"
   },
   "capabilities": {
     "queue_classifier": {
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "bb677e57dbece4a3200834a9464fb817e99d1ae6cb41588aaf444f0be2c64c14"
+      "evidence_sha256": "657ac504671eb703e11fda08bba6cac5e84bff0e22372d291b07f37188b1dea9"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "dfe7368f1a36b32c6fa7ab182063953a99b4a869b408d4fdde7603b27ead5167"
+      "evidence_sha256": "70cce5cc538e45b3b956a24f5bc20c6f2511548c52a990026da42fd93e3091eb"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +59,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "f3cc9b43720f74304afbec8c456fba18d32d605980f9edb5aad542c8f6c4d8df"
+      "evidence_sha256": "3a13148bdd41a56e5c30c303c0541b01578b28368ca3b2277fd1337aaf8a9a02"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "91552f066ed45c6c017c58375e10331810fd609ce7e5ee902209cafc6cd8dbeb"
+      "evidence_sha256": "b9a25143a957b40e97cf23df57dfa86cfd4536dc78199dc4f4947ff5c2e18d85"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "45700bfed201b1d5628e0ce77a49673cd41260073b561d05ecf5dc89e78a1a57"
+      "evidence_sha256": "8994aa59eef8cb7b53b3fd44a40c60ca225df4df09ff51af4a29206da71da382"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -155,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "6eeaff20a9f2643058998d2379fcebfdffecc19e2d1fd6a9af197fc9a1a78381"
+      "evidence_sha256": "2d5a41595571aeb81b9ea19dbf33554ea2d4fd5e9a9d79adf1645ab61965620a"
     },
     "git_preflight": {
       "status": "supported",
@@ -171,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "6c49fa952ca7c8c7dc89b12ed51336862772cd67de06de40844e42c9222d01d7"
+      "evidence_sha256": "73f8178c7e47ad10986f5cacaf0db4e85950c6a5cffca979ad20c34a8b4a4214"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -218,7 +218,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "0ed5c0cb0ab11f66da6d6bdb6e7e4d2d347a6be6598f8dd7b1e76a34329822a6"
+      "evidence_sha256": "fb1109a5bd0601b90d0f6bdfbe7c98f24fef1a4f8bb565ba80ea51c11011452e"
     },
     "execution_environment_routing": {
       "status": "supported",
@@ -236,7 +236,25 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "8d788247947f9730358028fa8283f424b510aa738484be4eb59c25022b793e12"
+      "evidence_sha256": "0942bca5b0cd7bc11737785bfc216bc517b223dfddd8e24406afc731e05e9f93"
+    },
+    "task_execution_profile": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Model, execution-environment, cloud-readiness, and single-writer state metadata form one task profile.",
+      "evidence": {
+        "files": [
+          "scripts/check-task-execution-profile.mjs",
+          "scripts/check-task-packet.mjs",
+          "templates/task-packet.md",
+          "docs/task-packet-schema.md"
+        ],
+        "tests": [
+          "tests/task-execution-profile.test.mjs",
+          "tests/check-task-packet.test.mjs"
+        ]
+      },
+      "evidence_sha256": "f235b3c5c95f2ff363c226dfe094b4bf533bfd8f400c096917ca1f9029af2e5c"
     },
     "upstream_synchronization": {
       "status": "supported",
