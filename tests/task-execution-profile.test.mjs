@@ -56,6 +56,40 @@ test('cloud dispatch requires a resolved cloud route and durable receipt fields'
   assert.deepEqual(validateCloudDispatchProfile(base), []);
   assert.match(validateCloudDispatchProfile({ ...base, resolved_execution_environment: 'worktree' }).join(' '), /resolved_execution_environment=cloud/);
   assert.match(validateCloudDispatchProfile({ ...base, cloud_dispatch_status: 'completed', cloud_dispatch_result: '' }).join(' '), /requires cloud_dispatch_result/);
+  assert.match(validateCloudDispatchProfile({ ...base, cloud_task_url: '' }).join(' '), /requires cloud_task_url/);
+  assert.match(validateCloudDispatchProfile({ ...base, cloud_task_commit: '' }).join(' '), /requires cloud_task_commit/);
+  assert.deepEqual(validateCloudDispatchProfile({
+    ...base,
+    cloud_dispatch_status: 'preflight',
+    cloud_task_id: '',
+    cloud_task_url: '',
+    cloud_dispatch_result: 'Pushed branch and Cloud environment verified.',
+  }), []);
+  assert.match(validateCloudDispatchProfile({
+    ...base,
+    cloud_dispatch_status: 'preflight',
+    cloud_task_id: '',
+    cloud_task_url: '',
+    cloud_task_last_checked_at: '',
+    cloud_dispatch_result: '',
+  }).join(' '), /requires cloud_task_last_checked_at.*requires cloud_dispatch_result/);
+  assert.deepEqual(validateCloudDispatchProfile({
+    ...base,
+    cloud_dispatch_status: 'blocked',
+    cloud_task_id: '',
+    cloud_task_url: '',
+    cloud_dispatch_result: 'The configured environment is not ready.',
+  }), []);
+  assert.match(validateCloudDispatchProfile({
+    ...base,
+    cloud_dispatch_status: 'blocked',
+    cloud_task_url: '',
+    cloud_dispatch_result: 'Cloud task became blocked.',
+  }).join(' '), /both cloud_task_id and cloud_task_url/);
+  assert.match(validateCloudDispatchProfile({
+    ...base,
+    cloud_task_url: 'https://operator:secret@chatgpt.com/codex/tasks/task-123',
+  }).join(' '), /without embedded credentials/);
   assert.deepEqual(validateCloudDispatchProfile({ resolved_execution_environment: 'cloud', cloud_dispatch_status: 'not_requested', cloud_task_id: '' }), []);
 });
 
