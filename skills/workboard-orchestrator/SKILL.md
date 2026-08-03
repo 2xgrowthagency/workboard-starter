@@ -51,6 +51,8 @@ a refreshed, valid capability manifest whenever synchronized evidence changes.
 - Claim only independent ready packets with clear routing and acceptance criteria.
 - Resume a canonical task first and preserve its Local or Worktree environment. Otherwise resolve packet `execution_environment`, then project `default_execution_environment`, then the portable fallback: Git implementation and independent QA use Worktree; non-Git, host/runtime, and Workboard root/queue work use Local.
 - Explicit or resolved Local requires `execution_environment_reason`. Projectless routing and `dispatch_mode` are separate decisions.
+- Cloud dispatch is a separate receipt workflow: require a pushed branch, persist `cloud_dispatch_status`, `cloud_task_id`, URL, branch, commit, last-check time, and result, and keep the Cloud transcript separate from the local Workboard thread.
+- Only the root/control plane mutates packet state. Workers may return Cloud status/diff/apply proof, but must not edit or transition the packet themselves.
 - Move claimed packets to `tasks/claimed/`, fill claimant, immutable target, exact lock ownership, resolved execution environment, and resolved root/worker route, append `STATE: active`, validate the v2 packet, commit, and push.
 - Delegate one worker per packet in the correct target project/path and resolved execution environment.
 - Resolve model routing with packet overrides first, project overrides second, and the portable `gpt-5.6-sol` medium default last. Run `scripts/check-model-routing.mjs` before delegation when an override or escalation is present.

@@ -275,3 +275,23 @@ node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 8
 cd /path/to/target-project
 # start Claude Code, Codex CLI, or another local worker with the packet prompt
 ```
+
+## Cloud worker dispatch
+
+After the root has claimed a packet, resolved `resolved_execution_environment:
+cloud`, and committed/pushed the target branch, run the local Workboard Cloud
+adapter. It emits a machine-readable receipt rather than pretending the Cloud
+transcript is the local worker thread:
+
+```bash
+node scripts/codex-cloud-dispatch.mjs submit \
+  --packet tasks/claimed/<packet>.md \
+  --target-path <TARGET_REPO> \
+  --environment-id <CODEX_ENVIRONMENT_ID> \
+  --prompt-file /tmp/<packet>-cloud-prompt.txt
+```
+
+Record the returned task ID, URL, branch, commit, and dispatch status in the
+packet, then use the same adapter for `status`, `diff`, or `apply`. The
+environment ID is an account/runtime input, not a secret; environment-variable
+and secret values stay in Codex settings and never enter the packet or prompt.

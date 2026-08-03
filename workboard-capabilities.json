@@ -8,10 +8,10 @@
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": "ST-017",
+    "release": "ST-018",
     "commit": null,
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/42",
-    "adoption_record": "docs/releases/st-017-task-execution-profile.md"
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/44",
+    "adoption_record": "docs/releases/st-018-cloud-dispatch.md"
   },
   "capabilities": {
     "queue_classifier": {
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "657ac504671eb703e11fda08bba6cac5e84bff0e22372d291b07f37188b1dea9"
+      "evidence_sha256": "78b3ba05c6751a0963850bf839005527e0186b6604121a46b5ca5ec0d7e740a8"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "70cce5cc538e45b3b956a24f5bc20c6f2511548c52a990026da42fd93e3091eb"
+      "evidence_sha256": "bc328d5122282e684f9198fc24985d9491467e277816c8fb02b1bbf633ffea22"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +59,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "3a13148bdd41a56e5c30c303c0541b01578b28368ca3b2277fd1337aaf8a9a02"
+      "evidence_sha256": "70727b81b5dd2fb2d670a47379adeff19c330e9d0b112ba1dde63d80f42d6f70"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "b9a25143a957b40e97cf23df57dfa86cfd4536dc78199dc4f4947ff5c2e18d85"
+      "evidence_sha256": "89ed0b03896f39a667b33d0eb93d4d1f91717e6d2c3b872321a8d3983d92b9b5"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "8994aa59eef8cb7b53b3fd44a40c60ca225df4df09ff51af4a29206da71da382"
+      "evidence_sha256": "72139fae9b9ed6b0297d2cd98c8e53320341fe3757dc9eaa4128ef03d942b033"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -171,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "73f8178c7e47ad10986f5cacaf0db4e85950c6a5cffca979ad20c34a8b4a4214"
+      "evidence_sha256": "596c3ee7441ff4df603f5def7b87908d86c2c680f3d7b8df54d0c37902b80a93"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -218,7 +218,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "fb1109a5bd0601b90d0f6bdfbe7c98f24fef1a4f8bb565ba80ea51c11011452e"
+      "evidence_sha256": "e3901af54f8b39f4ab2205c698e8bfdbfd3d8d2ccd7ae3e252c3586162fe0f4a"
     },
     "execution_environment_routing": {
       "status": "supported",
@@ -236,7 +236,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "0942bca5b0cd7bc11737785bfc216bc517b223dfddd8e24406afc731e05e9f93"
+      "evidence_sha256": "c8e8df225efe51fadcfe2382116d0b000783759a9bd979fa7290a62a32504bef"
     },
     "task_execution_profile": {
       "status": "supported",
@@ -254,7 +254,26 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "f235b3c5c95f2ff363c226dfe094b4bf533bfd8f400c096917ca1f9029af2e5c"
+      "evidence_sha256": "3cc31bf63899a989aaa26e10a8755866cc23b3eb1bad9c08f8dbf6186cf03d45"
+    },
+    "cloud_dispatch_receipts": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Cloud worker dispatch records a durable local receipt without making Cloud a second task-state authority.",
+      "evidence": {
+        "files": [
+          "scripts/check-task-execution-profile.mjs",
+          "scripts/check-task-packet.mjs",
+          "templates/task-packet.md",
+          "docs/orchestrator-protocol.md",
+          "docs/task-packet-schema.md"
+        ],
+        "tests": [
+          "tests/task-execution-profile.test.mjs",
+          "tests/check-task-packet.test.mjs"
+        ]
+      },
+      "evidence_sha256": "d2580e4992df6beef2b53aeb3be17eb8a07f0409cceebb4be5ee90f6a0922417"
     },
     "upstream_synchronization": {
       "status": "supported",

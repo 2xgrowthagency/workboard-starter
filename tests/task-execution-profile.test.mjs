@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  validateCloudDispatchProfile,
   resolveExecutionEnvironment,
   resolveTaskProfile,
   validateTaskExecutionProfile,
@@ -43,6 +44,19 @@ test('Linear authority requires an issue key and never enables dual write', () =
   assert.match(validateTaskExecutionProfile(base).join(' '), /linear_issue_key/);
   assert.deepEqual(validateTaskExecutionProfile({ ...base, linear_issue_key: 'OPS-123' }), []);
   assert.match(validateTaskExecutionProfile({ ...base, task_state_authority: 'workboard', linear_issue_key: 'OPS-123' }).join(' '), /only valid/);
+});
+
+test('cloud dispatch requires a resolved cloud route and durable receipt fields', () => {
+  const base = {
+    resolved_execution_environment: 'cloud', cloud_dispatch_status: 'submitted',
+    cloud_task_id: 'task-123', cloud_task_url: 'https://chatgpt.com/codex/tasks/task-123',
+    cloud_task_branch: 'codex/example', cloud_task_commit: '0123456789abcdef0123456789abcdef01234567',
+    cloud_task_last_checked_at: '2026-08-03T03:00:00Z', cloud_dispatch_result: '',
+  };
+  assert.deepEqual(validateCloudDispatchProfile(base), []);
+  assert.match(validateCloudDispatchProfile({ ...base, resolved_execution_environment: 'worktree' }).join(' '), /resolved_execution_environment=cloud/);
+  assert.match(validateCloudDispatchProfile({ ...base, cloud_dispatch_status: 'completed', cloud_dispatch_result: '' }).join(' '), /requires cloud_dispatch_result/);
+  assert.deepEqual(validateCloudDispatchProfile({ resolved_execution_environment: 'cloud', cloud_dispatch_status: 'not_requested', cloud_task_id: '' }), []);
 });
 
 test('cloud metadata records names, never values, and requires readiness', () => {

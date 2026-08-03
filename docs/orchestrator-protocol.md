@@ -19,6 +19,21 @@ Use this document as the standing instruction for your local orchestrator, wheth
 - **QA companion** independently verifies QA-required work from raw evidence and returns `PASS`, `FAIL`, or `BLOCKED` without quietly fixing it.
 - **Human/context-owner verifier** reviews the verified outcome and moves packets from `tasks/review/` to `tasks/done/` or back to `tasks/ready/`/`tasks/blocked`.
 
+## Cloud workers and local receipts
+
+The Workboard root remains the local control plane even when an implementation
+or QA worker runs in Codex Cloud. A Cloud dispatch must start from a pushed
+branch and a verified ready environment, then record the Cloud task ID, URL,
+branch, target commit, last checked time, and a concise result in the packet.
+The Cloud transcript remains a separate Codex surface; the Workboard packet and
+local thread hold the durable receipt and control state.
+
+`cloud_dispatch_status` is one of `not_requested`, `preflight`, `submitted`,
+`running`, `completed`, `failed`, `blocked`, or `applied`. The dispatcher may
+submit, inspect status, show a diff, or apply a selected Cloud diff, but only
+the Workboard root writes packet transitions. Never put environment-variable or
+secret values in the packet or Cloud prompt; record names and readiness only.
+
 One person/agent can play multiple roles, but keep the responsibilities separate. The root orchestrator should not become a free-roaming implementation agent unless the packet explicitly says the work is a Workboard/control-plane task.
 
 When a host, tool, callback, saved project, or Git failure interrupts this
