@@ -12,6 +12,9 @@ blocker_type:
 depends_on: []
 unblocks: []
 ready_when:
+task_state_authority: workboard
+linear_issue_key:
+state_update_policy: single_writer
 claimed_by:
 claimed_at:
 root_task_id:
@@ -100,6 +103,13 @@ target_path: ${WORKBOARD_ROOT}
 execution_environment: auto
 resolved_execution_environment: pending
 execution_environment_reason:
+cloud_environment_name:
+cloud_readiness: not_required
+cloud_setup_contract: unknown
+cloud_network_access: off
+cloud_env_vars: []
+cloud_secret_names: []
+cloud_blocker:
 root_model:
 root_reasoning:
 root_model_routing_reason_category:
@@ -180,6 +190,22 @@ Include task-local context only: links to issues, docs, screenshots, examples, a
 - Acceptance criteria cannot be verified with the available tools.
 
 ## Orchestration notes
+
+### Execution profile
+
+Every new packet declares one execution profile alongside its model route:
+
+- `execution_environment` is intent: `auto`, `cloud`, `worktree`, or `local`.
+- `resolved_execution_environment` is persisted before claim. `auto` prefers a
+  verified Codex Cloud environment when the project allows it, then falls back
+  to Worktree-for-Git or Local-for-host/auth/GUI work.
+- Cloud packets record the environment name, readiness, network policy, and
+  names of required variables/secrets only. Values belong in Codex Cloud
+  settings; secrets are available to setup but are removed before the agent
+  phase.
+- `task_state_authority` is `workboard` until the Linear pilot is approved. A
+  Linear packet must carry a `linear_issue_key`; state is single-writer and
+  Workboard/Linear dual-write is never valid.
 
 - This template is compatible with Workboard protocol `1.0.0`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
 - Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.

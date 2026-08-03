@@ -16,9 +16,12 @@ function fields(overrides = {}) {
     priority: 'P1', created_by: 'operator', created_at: '2026-07-17T10:00:00Z',
     backlog_reason: '', promotion_policy: 'manual', dependency_ready_state: 'done',
     blocker_type: '', depends_on: '[]', unblocks: '[]', ready_when: '',
+    task_state_authority: 'workboard', linear_issue_key: '', state_update_policy: 'single_writer',
     target_project_id: 'example', target_path: '/workspace/example', target_commit: '',
     execution_environment: 'auto', resolved_execution_environment: 'worktree',
-    execution_environment_reason: '',
+    execution_environment_reason: '', cloud_environment_name: '', cloud_readiness: 'not_required',
+    cloud_setup_contract: 'unknown', cloud_network_access: 'off', cloud_env_vars: '[]',
+    cloud_secret_names: '[]', cloud_blocker: '',
     immutable_target_type: 'none', immutable_target: '', target_lock_status: 'unlocked',
     target_lock_project_id: '', target_lock_path: '', target_lock_acquired_at: '',
     target_lock_released_at: '', claimed_by: '', claimed_at: '', root_task_id: '',
@@ -142,9 +145,10 @@ test('resolves Local versus Worktree before active execution', () => {
     resolved_execution_environment: 'pending',
   }), { lane: 'ready' }), []);
 
-  assert.ok(validateTaskPacket(activePacket({
+  const activeErrors = validateTaskPacket(activePacket({
     resolved_execution_environment: 'pending',
-  }), { lane: 'claimed' }).includes(
+  }), { lane: 'claimed' });
+  assert.ok(activeErrors.includes(
     'claimed requires a resolved execution environment',
   ));
 
@@ -207,6 +211,9 @@ test('template exposes the complete normalized metadata and pending intake route
     'worker_visibility_status', 'recovery_status', 'qa_artifacts_root', 'qa_artifacts_dir',
     'qa_immutable_target', 'qa_prior_head', 'qa_prior_result', 'qa_thread_id',
     'qa_publication_receipts', 'publication_receipts', 'archive_reason',
+    'execution_environment', 'resolved_execution_environment', 'cloud_readiness',
+    'cloud_setup_contract', 'cloud_network_access', 'cloud_env_vars', 'cloud_secret_names',
+    'task_state_authority', 'state_update_policy',
   ]) assert.match(template, new RegExp(`^${field}:`, 'm'), `missing ${field}`);
   assert.match(template, /^dispatch_mode: pending$/m);
   assert.match(template, /^execution_environment: auto$/m);

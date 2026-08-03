@@ -386,6 +386,12 @@ Supported fields in `templates/task-packet.md` include:
 - `qa_artifacts_dir`
 - `qa_thread_id`
 - `qa_result`
+- `execution_environment`, `resolved_execution_environment`, and
+  `execution_environment_reason`
+- `cloud_environment_name`, `cloud_readiness`, `cloud_setup_contract`,
+  `cloud_network_access`, `cloud_env_vars`, `cloud_secret_names`, and
+  `cloud_blocker` (names only; never secret values)
+- `task_state_authority`, `linear_issue_key`, and `state_update_policy`
 - persistent `root_task_id`, canonical `worker_thread_id`, and per-creation `worker_creation_attempt_id`
 - completion callback task/attempt identity, receipt, and error fields
 
@@ -396,6 +402,26 @@ Validate packet/project routing overrides with
 sources in order, rejects unreasoned high escalation, and rejects Luna routes
 without exact `bounded_high_volume` eligibility and independent verification.
 Unknown, duplicate, missing-value, and misspelled CLI options fail closed.
+
+## Execution environment and state authority
+
+New packets declare model routing and execution intent together. Set
+`execution_environment: auto` for normal intake. The resolver prefers a
+verified Codex Cloud environment when the project and task allow it, then
+falls back to a managed Worktree for Git implementation/QA or Local for host,
+GUI, and account-bound work. Explicit or resolved Local requires a reason;
+Cloud requires a named environment with `cloud_readiness: ready`.
+
+Repository bootstrap is not hosted-environment proof. The companion
+`codex-cloud-ready` plugin creates and verifies repository-owned setup files and
+records variable/secret names, while Codex settings still own the hosted
+environment, network policy, and secret values.
+
+`task_state_authority` defaults to `workboard`. The Linear-ready value is
+`linear`, which requires a `linear_issue_key` and keeps state single-writer;
+there is no valid Workboard/Linear dual-write mode. The future Linear adapter
+maps this execution profile to issue metadata without changing the worker's
+model or environment contract.
 
 ## Ambiguous task creation
 

@@ -22,6 +22,7 @@ export const CORE_CAPABILITIES = [
   'task_finalization_hygiene',
   'app_native_codex_routing',
   'model_routing',
+  'task_execution_profile',
   'git_preflight',
   'known_issues_recovery',
   'closeout_links',

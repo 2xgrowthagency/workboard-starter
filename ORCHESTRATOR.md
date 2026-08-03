@@ -137,6 +137,25 @@ standing project default. Use `gpt-5.6-luna` only with medium reasoning when
 `node scripts/check-model-routing.mjs` before dispatching an override,
 high-reasoning route, or Luna route; a rejected route is a hard stop.
 
+### Execution environment and state authority
+
+Resolve the task execution environment after model routing and before claim.
+Use `execution_environment: auto` unless the packet has a deliberate
+environment requirement. Auto prefers a project-approved Codex Cloud
+environment only when `cloud_environment_name` is present and
+`cloud_readiness` is `ready`; otherwise use Worktree for Git implementation or
+QA and Local for host, GUI, or account-bound work. Persist the result in
+`resolved_execution_environment`. Cloud must not be claimed when its hosted
+environment is only pending or blocked.
+
+Cloud packets may record required environment-variable and secret names, but
+never values. Codex Cloud secrets are available during setup and removed before
+the agent phase; do not assume an agent can read a secret after bootstrap.
+
+Use `task_state_authority: workboard` until the Linear pilot is explicitly
+approved. A Linear task must carry its `linear_issue_key`; updates have one
+canonical writer. Never mirror status into both systems.
+
 ## Tool preflight
 
 Packets may declare required tools/capabilities, for example:

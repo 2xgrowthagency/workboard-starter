@@ -12,6 +12,11 @@ A Workboard task packet is a contract. If it is vague, the worker will either st
 - Required proof.
 - Whether independent QA is required and what it must verify.
 - Any model/reasoning override, its machine-recognized task-local reason category, and optional descriptive note.
+- Execution intent (`auto`, `cloud`, `worktree`, or `local`) plus the named
+  Codex Cloud environment, readiness, network policy, and variable/secret
+  names when Cloud is requested. Never include secret values.
+- The state authority (`workboard` now, `linear` only after the Linear pilot)
+  and a single-writer update policy. Linear tasks include their issue key.
 - Stop conditions.
 - Links or pasted task-local context.
 - `packet_schema_version: 2` metadata from the current template, including the

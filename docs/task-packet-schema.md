@@ -33,21 +33,31 @@ section. It does not mutate packets.
   `dispatch_mode` is `app_native`, `portable_only`, or `pending`. Models are
   exactly `gpt-5.6-sol` or `gpt-5.6-luna`; reasoning, escalation metadata,
   Luna eligibility, and independent verification must form one valid route.
+- **Execution profile:** `execution_environment` records intent as `auto`,
+  `cloud`, `worktree`, or `local`; `resolved_execution_environment` is
+  persisted before claim. Cloud intent requires `cloud_environment_name` and a
+  ready Codex Cloud environment plus network policy and variable/secret names
+  (never values).
+  `task_state_authority` is `workboard` or `linear`, with a single-writer
+  policy; a Linear issue key is required when Linear is authoritative.
 
 Ready/backlog packets may leave role routing blank and dispatch pending so they
 do not mask project overrides or assume host capability. Root must resolve and
 persist root/worker routing plus dispatch mode before `claimed`; QA routing is
 resolved before the QA companion is created.
+`execution_environment` is packet intent: `auto`, `cloud`, `worktree`, or
+`local`. `resolved_execution_environment` is `pending`, `cloud`, `worktree`, or
+`local`. Root resumes an existing canonical task in its current environment;
+otherwise it resolves packet intent, verified Cloud preference, project default,
+then the portable fallback. Cloud is valid only after the named hosted
+environment passes the repository readiness check. Git implementation and
+independent QA default to managed Worktree. Non-Git, host/runtime, and
+Workboard root/queue work default to Local. Explicit or resolved Local requires
+`execution_environment_reason`.
 
-`execution_environment` is packet intent: `auto`, `worktree`, or `local`.
-`resolved_execution_environment` is `pending`, `worktree`, or `local`. Root
-resumes an existing canonical task in its current environment; otherwise it
-resolves packet intent, project default, then the portable fallback. Git
-implementation and independent QA default to managed Worktree. Non-Git,
-host/runtime, and Workboard root/queue work default to Local. Explicit or
-resolved Local requires `execution_environment_reason`. Claimed and QA packets
-cannot remain pending.
-
+Ready/backlog packets may leave execution resolution pending. Root normally
+resolves and persists it before claim, but an ambiguous creation-recovery packet
+may retain pending resolution until the next poll-time routing decision.
 Projectless routing and `dispatch_mode` are independent of the environment
 choice. A managed worktree cwd normally differs from `target_path`; app-native
 proof must bind it to the saved project's root instead of requiring cwd
@@ -88,6 +98,10 @@ receipt values.
 | `review` | immutable proof; required QA must have `qa_result: pass` |
 | `done` | review contract retained with final proof and receipts |
 | `archive` | `archive_reason`, archive log, no held lock |
+
+Cloud setup is repository-owned, but hosted environment identity, environment
+variables, and secret values are account settings. Packets may record names and
+readiness evidence only. Never commit or transmit secret values.
 
 `worker_creation_status: ambiguous` is valid only in `claimed`, with ambiguous
 visibility, one attempt ID, one recovery ID, investigating recovery,

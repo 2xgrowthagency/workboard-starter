@@ -300,6 +300,32 @@ and verification requirement in the create handoff and recovery record. Unknown,
 duplicate, missing-value, and misspelled CLI options return `CHECK_FAILED`. Do
 not infer model policy from private memory or unrelated task history.
 
+### Execution profile and cloud handoff
+
+Every packet carries a task execution profile in addition to its per-role model
+route. `execution_environment` is intent (`auto`, `cloud`, `worktree`, or
+`local`); `resolved_execution_environment` is the persisted pre-claim result.
+When a project declares Cloud as preferred, `auto` may resolve to Cloud only
+after `cloud_environment_name` is known and `cloud_readiness` is `ready`.
+Otherwise the portable fallback is Worktree for Git implementation/QA or Local
+for host, GUI, and account-bound work. Explicit or resolved Local requires
+`execution_environment_reason`.
+
+Cloud metadata records setup contract, network policy, and names of required
+environment variables and secrets. It must never contain values. Repository
+bootstrap proof from the cloud-ready setup files is separate from hosted Codex
+settings proof; a missing hosted environment is a routing blocker, not a
+successful Cloud run.
+
+### Linear-ready state authority
+
+`task_state_authority: workboard` is the current default. A future Linear task
+uses `task_state_authority: linear` plus a `linear_issue_key`. The state update
+policy remains `single_writer`: Workboard and Linear are not dual-write peers.
+The Linear adapter may project this packet's execution profile into issue
+metadata, but it must not invent a second model, environment, or secret
+contract.
+
 ## Polling loop
 
 1. `cd` into the Workboard repo.

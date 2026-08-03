@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isSupportedTaskDirective } from './task-link.mjs';
+import { validateTaskExecutionProfile } from './check-task-execution-profile.mjs';
 
 const SCHEMA_VERSION = '2';
 const LANES = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
@@ -45,8 +46,10 @@ const REQUIRED_V2_FIELDS = [
   'packet_schema_version', 'id', 'status', 'priority', 'created_by', 'created_at',
   'backlog_reason', 'promotion_policy', 'dependency_ready_state', 'blocker_type',
   'depends_on', 'unblocks', 'ready_when', 'target_project_id', 'target_path',
-  'execution_environment', 'resolved_execution_environment',
-  'execution_environment_reason',
+  'execution_environment', 'resolved_execution_environment', 'execution_environment_reason',
+  'cloud_environment_name', 'cloud_readiness', 'cloud_setup_contract', 'cloud_network_access',
+  'cloud_env_vars', 'cloud_secret_names', 'cloud_blocker',
+  'task_state_authority', 'linear_issue_key', 'state_update_policy',
   'target_commit', 'immutable_target_type', 'immutable_target', 'target_lock_status',
   'target_lock_project_id', 'target_lock_path', 'target_lock_acquired_at',
   'target_lock_released_at', 'claimed_by', 'claimed_at', 'root_task_id',
@@ -690,6 +693,7 @@ function validateV2(fields, body, lane, previousStatus, errors) {
       fields.execution_environment !== fields.resolved_execution_environment) {
     errors.push('resolved_execution_environment must match the explicit execution_environment');
   }
+  errors.push(...validateTaskExecutionProfile(fields));
   const events = parseStateLogs(body, errors);
   if (fields.root_closeout_title_status === 'pending') {
     for (const field of [
@@ -919,7 +923,9 @@ function validateV2(fields, body, lane, previousStatus, errors) {
       errors.push(`${fields.status} requires target_commit or immutable_target`);
     }
     if (fields.dispatch_mode === 'pending') errors.push(`${fields.status} requires a resolved dispatch_mode`);
-    if (fields.resolved_execution_environment === 'pending') {
+    const pendingRecovery = fields.recovery_id &&
+      ['investigating', 'reconciled'].includes(fields.recovery_status);
+    if (fields.resolved_execution_environment === 'pending' && !pendingRecovery) {
       errors.push(`${fields.status} requires a resolved execution environment`);
     }
   } else if (fields.target_lock_status === 'unlocked') {

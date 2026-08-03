@@ -25,6 +25,12 @@ rules:
   qa_artifacts_root: /Users/YOU/dev/workboard-qa-runs
   qa_read_only_by_default: true
   qa_uses_existing_target_project: true
+  preferred_execution_environment_for_git: cloud
+  default_execution_environment_for_git: worktree
+  default_execution_environment_for_non_git: local
+  cloud_execution_requires_ready_environment: true
+  task_state_authority: workboard
+  state_update_policy: single_writer
 
 projects:
   workboard:
@@ -38,6 +44,11 @@ projects:
     orchestrator_surface: "Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another local agent"
     default_model: gpt-5.6-sol
     default_reasoning: medium
+    preferred_execution_environment: cloud
+    default_execution_environment: local
+    cloud_environment_name:
+    cloud_readiness: pending
+    cloud_network_access: off
     qa_default_model: gpt-5.6-sol
     qa_default_reasoning: medium
     qa_requires_browser: true
@@ -57,6 +68,11 @@ projects:
     default_execution_environment: worktree
     default_model: gpt-5.6-sol
     default_reasoning: medium
+    preferred_execution_environment: cloud
+    default_execution_environment: worktree
+    cloud_environment_name:
+    cloud_readiness: pending
+    cloud_network_access: off
     escalation_reasoning: high
     escalation_requires_packet_category: true
     qa_default_model: gpt-5.6-sol
