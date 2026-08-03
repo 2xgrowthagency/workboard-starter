@@ -110,6 +110,13 @@ cloud_network_access: off
 cloud_env_vars: []
 cloud_secret_names: []
 cloud_blocker:
+cloud_dispatch_status: not_requested
+cloud_task_id:
+cloud_task_url:
+cloud_task_branch:
+cloud_task_commit:
+cloud_task_last_checked_at:
+cloud_dispatch_result:
 root_model:
 root_reasoning:
 root_model_routing_reason_category:

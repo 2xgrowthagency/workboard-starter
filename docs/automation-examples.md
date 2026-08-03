@@ -275,3 +275,28 @@ node scripts/check-workboard-queue.mjs --repo "$PWD" --capacity 8
 cd /path/to/target-project
 # start Claude Code, Codex CLI, or another local worker with the packet prompt
 ```
+
+## Cloud worker dispatch
+
+After the root has claimed a packet, resolved `resolved_execution_environment:
+cloud`, and committed/pushed the target branch, use the Cloud adapter available
+in the operator's environment. The starter does not ship an account-specific
+Cloud API/CLI adapter. Whatever adapter is used must emit or provide the values
+needed for the packet's machine-readable receipt rather than pretending the
+Cloud transcript is the local worker thread:
+
+```bash
+"$CLOUD_ADAPTER" submit \
+  --target-repository "$TARGET_REPOSITORY" \
+  --target-branch "$PUSHED_BRANCH" \
+  --target-commit "$FULL_COMMIT_SHA" \
+  --environment-id "$CODEX_ENVIRONMENT_ID" \
+  --prompt-file "$CLOUD_PROMPT_FILE"
+```
+
+Record the returned task ID, URL, branch, commit, and dispatch status in the
+packet, then use the same adapter's equivalent operations for status, diff, or
+apply. Do not pass the packet to a worker-capable adapter because only the local
+root may mutate packet state. The
+environment ID is an account/runtime input, not a secret; environment-variable
+and secret values stay in Codex settings and never enter the packet or prompt.

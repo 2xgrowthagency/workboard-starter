@@ -4,7 +4,10 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isSupportedTaskDirective } from './task-link.mjs';
-import { validateTaskExecutionProfile } from './check-task-execution-profile.mjs';
+import {
+  validateCloudDispatchProfile,
+  validateTaskExecutionProfile,
+} from './check-task-execution-profile.mjs';
 
 const SCHEMA_VERSION = '2';
 const LANES = ['backlog', 'ready', 'claimed', 'qa', 'blocked', 'review', 'done', 'archive'];
@@ -49,6 +52,8 @@ const REQUIRED_V2_FIELDS = [
   'execution_environment', 'resolved_execution_environment', 'execution_environment_reason',
   'cloud_environment_name', 'cloud_readiness', 'cloud_setup_contract', 'cloud_network_access',
   'cloud_env_vars', 'cloud_secret_names', 'cloud_blocker',
+  'cloud_dispatch_status', 'cloud_task_id', 'cloud_task_url', 'cloud_task_branch',
+  'cloud_task_commit', 'cloud_task_last_checked_at', 'cloud_dispatch_result',
   'task_state_authority', 'linear_issue_key', 'state_update_policy',
   'target_commit', 'immutable_target_type', 'immutable_target', 'target_lock_status',
   'target_lock_project_id', 'target_lock_path', 'target_lock_acquired_at',
@@ -622,13 +627,17 @@ function validateV2(fields, body, lane, previousStatus, errors) {
   requireEnum(fields, 'promotion_policy', ['auto', 'review', 'manual'], errors);
   requireEnum(fields, 'dependency_ready_state', ['review', 'done'], errors);
   requireEnum(fields, 'target_lock_status', ['unlocked', 'held', 'released'], errors);
-  requireEnum(fields, 'execution_environment', ['auto', 'worktree', 'local'], errors);
+  requireEnum(fields, 'execution_environment', ['auto', 'cloud', 'worktree', 'local'], errors);
   requireEnum(
     fields,
     'resolved_execution_environment',
-    ['pending', 'worktree', 'local'],
+    ['pending', 'cloud', 'worktree', 'local'],
     errors,
   );
+  requireEnum(fields, 'cloud_dispatch_status', [
+    'not_requested', 'preflight', 'submitted', 'running', 'completed',
+    'failed', 'blocked', 'applied',
+  ], errors);
   requireEnum(fields, 'dispatch_mode', ['app_native', 'portable_only', 'pending'], errors);
   requireEnum(fields, 'callback_handoff_required', ['true', 'false'], errors);
   requireEnum(fields, 'worker_creation_status', ['pending', 'ambiguous', 'canonical', 'portable_only', 'completed'], errors);
@@ -694,6 +703,7 @@ function validateV2(fields, body, lane, previousStatus, errors) {
     errors.push('resolved_execution_environment must match the explicit execution_environment');
   }
   errors.push(...validateTaskExecutionProfile(fields));
+  errors.push(...validateCloudDispatchProfile(fields));
   const events = parseStateLogs(body, errors);
   if (fields.root_closeout_title_status === 'pending') {
     for (const field of [
