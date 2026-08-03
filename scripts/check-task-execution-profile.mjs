@@ -9,12 +9,18 @@ export const RESOLVED_EXECUTION_ENVIRONMENTS = ['pending', 'cloud', 'worktree', 
 export const CLOUD_READINESS = ['not_required', 'pending', 'ready', 'blocked'];
 export const CLOUD_SETUP_CONTRACTS = ['repository', 'manual', 'unknown'];
 export const CLOUD_NETWORK_ACCESS = ['off', 'limited', 'unrestricted'];
+export const CLOUD_DISPATCH_STATUSES = [
+  'not_requested', 'preflight', 'submitted', 'running', 'completed',
+  'failed', 'blocked', 'applied',
+];
 export const TASK_STATE_AUTHORITIES = ['workboard', 'linear'];
 export const STATE_UPDATE_POLICIES = ['single_writer'];
 
 const ENVIRONMENT_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._ -]{0,127}$/;
 const ENVIRONMENT_VARIABLE = /^[A-Z][A-Z0-9_]*$/;
 const LINEAR_ISSUE_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+const CLOUD_TASK_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const CLOUD_BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -154,6 +160,82 @@ export function validateTaskExecutionProfile(fields) {
     errors.push('linear_issue_key is only valid when task_state_authority=linear');
   }
 
+  return errors;
+}
+
+export function validateCloudDispatchProfile(fields) {
+  const errors = [];
+  const status = text(fields.cloud_dispatch_status);
+  const taskId = text(fields.cloud_task_id);
+  const taskUrl = text(fields.cloud_task_url);
+  const branch = text(fields.cloud_task_branch);
+  const commit = text(fields.cloud_task_commit);
+  const checkedAt = text(fields.cloud_task_last_checked_at);
+  const result = text(fields.cloud_dispatch_result);
+  requireEnum(status, 'cloud_dispatch_status', CLOUD_DISPATCH_STATUSES, errors);
+
+  if (status === 'not_requested') {
+    for (const [field, value] of [
+      ['cloud_task_id', taskId], ['cloud_task_url', taskUrl], ['cloud_task_branch', branch],
+      ['cloud_task_commit', commit], ['cloud_task_last_checked_at', checkedAt],
+      ['cloud_dispatch_result', result],
+    ]) {
+      if (value) errors.push(`${field} must be empty when cloud_dispatch_status=not_requested`);
+    }
+    return errors;
+  }
+
+  if (fields.resolved_execution_environment !== 'cloud') {
+    errors.push('cloud dispatch requires resolved_execution_environment=cloud');
+  }
+
+  // Preflight is intentionally a pre-submission state, so no Cloud task exists
+  // yet. Requiring an ID here would make it impossible to persist the result of
+  // the pushed-branch check before calling the Cloud provider.
+  const taskExists = ['submitted', 'running', 'completed', 'failed', 'applied'].includes(status);
+  if (taskExists && !CLOUD_TASK_ID.test(taskId)) errors.push(`${status} cloud dispatch requires a valid cloud_task_id`);
+  if (taskUrl) {
+    try {
+      const parsedTaskUrl = new URL(taskUrl);
+      if (parsedTaskUrl.protocol !== 'https:' || !parsedTaskUrl.hostname || parsedTaskUrl.username || parsedTaskUrl.password) {
+        errors.push('cloud_task_url must be an HTTPS URL without embedded credentials');
+      }
+    } catch {
+      errors.push('cloud_task_url must be an HTTPS URL without embedded credentials');
+    }
+  }
+  if (branch && !CLOUD_BRANCH.test(branch)) errors.push('cloud_task_branch is invalid');
+  if (commit && !/^[0-9a-f]{40}$/.test(commit)) errors.push('cloud_task_commit must be a lowercase 40-character commit SHA');
+  if (checkedAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(checkedAt)) {
+    errors.push('cloud_task_last_checked_at must be an RFC3339 UTC timestamp');
+  }
+  if (!branch) errors.push(`cloud_dispatch_status=${status} requires cloud_task_branch`);
+  if (!commit) errors.push(`cloud_dispatch_status=${status} requires cloud_task_commit`);
+
+  if (taskExists && !taskUrl) errors.push(`cloud_dispatch_status=${status} requires cloud_task_url`);
+  if (taskExists && !checkedAt) errors.push(`cloud_dispatch_status=${status} requires cloud_task_last_checked_at`);
+  if (status === 'preflight' && !checkedAt) {
+    errors.push('cloud_dispatch_status=preflight requires cloud_task_last_checked_at');
+  }
+  if (status === 'preflight' && !result) {
+    errors.push('cloud_dispatch_status=preflight requires cloud_dispatch_result');
+  }
+
+  // A block can occur before or after submission. Preserve a task identifier
+  // and URL together when it occurs after submission; leave both empty when
+  // preflight itself is blocked.
+  if (status === 'blocked' && Boolean(taskId) !== Boolean(taskUrl)) {
+    errors.push('blocked cloud dispatch must provide both cloud_task_id and cloud_task_url when either is present');
+  }
+  if (status === 'blocked' && taskId && !CLOUD_TASK_ID.test(taskId)) {
+    errors.push('blocked cloud dispatch has an invalid cloud_task_id');
+  }
+  if (status === 'blocked' && !checkedAt) {
+    errors.push('cloud_dispatch_status=blocked requires cloud_task_last_checked_at');
+  }
+  if (['completed', 'failed', 'blocked', 'applied'].includes(status) && !result) {
+    errors.push(`cloud_dispatch_status=${status} requires cloud_dispatch_result`);
+  }
   return errors;
 }
 

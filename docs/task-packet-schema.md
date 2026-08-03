@@ -40,6 +40,12 @@ section. It does not mutate packets.
   (never values).
   `task_state_authority` is `workboard` or `linear`, with a single-writer
   policy; a Linear issue key is required when Linear is authoritative.
+- **Cloud dispatch receipt:** `cloud_dispatch_status` records whether the
+  local root has preflighted, submitted, polled, completed, failed, blocked, or
+  applied a Cloud task. Non-idle states retain the Cloud task ID when known,
+  task URL, branch, target commit, last checked timestamp, and concise result.
+  A dispatcher must verify the branch is pushed before submission. These are
+  receipt fields, not a second state authority.
 
 Ready/backlog packets may leave role routing blank and dispatch pending so they
 do not mask project overrides or assume host capability. Root must resolve and
