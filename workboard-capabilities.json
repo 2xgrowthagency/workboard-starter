@@ -254,7 +254,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "3cc31bf63899a989aaa26e10a8755866cc23b3eb1bad9c08f8dbf6186cf03d45"
+      "evidence_sha256": "3caaf781655a968cadbe85d482ff7be4ec42ca47000f4ee0e28c7ba506126b0b"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",
@@ -273,7 +273,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "d2580e4992df6beef2b53aeb3be17eb8a07f0409cceebb4be5ee90f6a0922417"
+      "evidence_sha256": "b757ec25870640707417516789d8d011cdf46de6b86c25a5286f5599dbc74bf4"
     },
     "upstream_synchronization": {
       "status": "supported",
