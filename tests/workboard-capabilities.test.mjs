@@ -54,12 +54,12 @@ function fixture() {
   return { root: target, manifest };
 }
 
-test('current manifest validates every merged capability through ST-016', () => {
+test('current manifest validates every merged capability through ST-017', () => {
   const manifest = current();
   const result = validateCapabilityManifest({ repo: root, manifest });
   assert.equal(result.valid, true, result.errors.join('\n'));
   assert.deepEqual(CORE_CAPABILITIES.filter((id) => !Object.hasOwn(manifest.capabilities, id)), []);
-  assert.equal(manifest.starter_sync.release, 'ST-016');
+  assert.equal(manifest.starter_sync.release, 'ST-017');
   assert.equal(manifest.starter_sync.commit, null);
   assert.deepEqual(manifest.capabilities.task_finalization_hygiene, {
     status: 'supported',
