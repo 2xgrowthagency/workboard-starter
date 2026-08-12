@@ -210,9 +210,11 @@ Every new packet declares one execution profile alongside its model route:
   names of required variables/secrets only. Values belong in Codex Cloud
   settings; secrets are available to setup but are removed before the agent
   phase.
-- `task_state_authority` is `workboard` until the Linear pilot is approved. A
-  Linear packet must carry a `linear_issue_key`; state is single-writer and
-  Workboard/Linear dual-write is never valid.
+- `task_state_authority` defaults to `workboard`. A Linear-authoritative task
+  must carry a `linear_issue_key`, use a certified concrete adapter, and cannot
+  have a mirrored file in any Workboard task lane. Stable identity, capacity,
+  recovery, callback, and independent-QA rules live in
+  `docs/linear-single-writer.md`.
 
 - This template is compatible with Workboard protocol `1.0.0`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
 - Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.

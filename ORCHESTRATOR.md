@@ -152,9 +152,14 @@ Cloud packets may record required environment-variable and secret names, but
 never values. Codex Cloud secrets are available during setup and removed before
 the agent phase; do not assume an agent can read a secret after bootstrap.
 
-Use `task_state_authority: workboard` until the Linear pilot is explicitly
-approved. A Linear task must carry its `linear_issue_key`; updates have one
-canonical writer. Never mirror status into both systems.
+Use `task_state_authority: workboard` unless a concrete Linear adapter is
+installed and certified against `scripts/linear-single-writer.mjs`. A Linear
+task must carry its `linear_issue_key`; updates have one canonical writer.
+Never mirror status into both systems. Certification requires stable member-ID
+identity binding, serialized admission, fresh capacity and exact target-lock
+readback, incident-bound recovery, canonical worker and verifier readback,
+callback replay protection, and every canary in
+`docs/linear-single-writer.md`. Keep recurring claims disabled until proven.
 
 ## Tool preflight
 

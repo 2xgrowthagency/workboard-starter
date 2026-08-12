@@ -1,17 +1,17 @@
 {
   "$schema": "schemas/workboard-capabilities.schema.json",
   "manifest_schema_version": 1,
-  "protocol_version": "1.1.0",
+  "protocol_version": "1.2.0",
   "compatibility": {
     "classification": "backward-compatible",
     "minimum_reader_schema_version": 1,
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": "ST-018",
+    "release": "ST-019",
     "commit": null,
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/44",
-    "adoption_record": "docs/releases/st-018-cloud-dispatch.md"
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/47",
+    "adoption_record": "docs/releases/st-019-linear-trust-boundaries.md"
   },
   "capabilities": {
     "queue_classifier": {
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "78b3ba05c6751a0963850bf839005527e0186b6604121a46b5ca5ec0d7e740a8"
+      "evidence_sha256": "ade03c31491ed80fb6d5b21f4d106b78d3ba39ce22dd1bbe4ec4d117fd6a509f"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "bc328d5122282e684f9198fc24985d9491467e277816c8fb02b1bbf633ffea22"
+      "evidence_sha256": "389862fb42902cd9ef2f102c72446db22952c59631e775ac950abde8de39c1ed"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +59,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "70727b81b5dd2fb2d670a47379adeff19c330e9d0b112ba1dde63d80f42d6f70"
+      "evidence_sha256": "6085d781749a6ae10f4c8c73c186599f74e62866652ec05bf10085537d52274f"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "89ed0b03896f39a667b33d0eb93d4d1f91717e6d2c3b872321a8d3983d92b9b5"
+      "evidence_sha256": "821da9d02748a9471c5a9f3e312401b4a1157b19ff81ab293a45b1765f38a52d"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "72139fae9b9ed6b0297d2cd98c8e53320341fe3757dc9eaa4128ef03d942b033"
+      "evidence_sha256": "1593f191ed8f542fd77af95afd337b24e56a4e7d66d360e9b7d5b63013d77cdc"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -155,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "2d5a41595571aeb81b9ea19dbf33554ea2d4fd5e9a9d79adf1645ab61965620a"
+      "evidence_sha256": "005d0975e086dfc3524378b89f9a0ce6a2f717ec36e56bc791e7c2301898e189"
     },
     "git_preflight": {
       "status": "supported",
@@ -171,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "596c3ee7441ff4df603f5def7b87908d86c2c680f3d7b8df54d0c37902b80a93"
+      "evidence_sha256": "aa7df1143d3b72f11870c08ba8776d93e5b13ccb1010aabaa777ec1b0b70314f"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -218,7 +218,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "e3901af54f8b39f4ab2205c698e8bfdbfd3d8d2ccd7ae3e252c3586162fe0f4a"
+      "evidence_sha256": "a77f092e3ca706a81e7e68913cca83854a364c258157a85a69286fa36e005a1f"
     },
     "execution_environment_routing": {
       "status": "supported",
@@ -236,7 +236,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "c8e8df225efe51fadcfe2382116d0b000783759a9bd979fa7290a62a32504bef"
+      "evidence_sha256": "54024e2f21ef057e5b8527e5a989f1ebb4d16c4820e02c23250c99d4f427e9cf"
     },
     "task_execution_profile": {
       "status": "supported",
@@ -254,7 +254,23 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "3caaf781655a968cadbe85d482ff7be4ec42ca47000f4ee0e28c7ba506126b0b"
+      "evidence_sha256": "695b153f8abf96c4b8426e832f14fb1475b309f9d26ed81a59aeaeff4437467f"
+    },
+    "linear_single_writer": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "Generic Linear single-writer cycle enforces identity, recovery, locks, canonical starts, callback provenance, and independent QA.",
+      "evidence": {
+        "files": [
+          "scripts/linear-single-writer.mjs",
+          "docs/linear-single-writer.md",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/linear-single-writer.test.mjs"
+        ]
+      },
+      "evidence_sha256": "df661f3f7b6f66c50d07ea08fc3ad0754f7117dda89d35f2580778106d71c1b9"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",
@@ -273,7 +289,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "b757ec25870640707417516789d8d011cdf46de6b86c25a5286f5599dbc74bf4"
+      "evidence_sha256": "a8531c27e783dd0cb0a2dc65d9bde4f34e8709508430f44726133b08a00fe566"
     },
     "upstream_synchronization": {
       "status": "supported",

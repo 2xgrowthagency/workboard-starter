@@ -1,6 +1,6 @@
 # Workboard Orchestrator Protocol
 
-Protocol version: `1.0.0`. Before routing, a clone or automation may validate
+Protocol version: `1.2.0`. Before routing, a clone or automation may validate
 its machine-readable capability inventory with
 `node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>`. Treat a
 missing, rejected, or stale manifest as unknown capability state, not permission
@@ -334,12 +334,26 @@ successful Cloud run.
 
 ### Linear-ready state authority
 
-`task_state_authority: workboard` is the current default. A future Linear task
+`task_state_authority: workboard` is the default. A Linear-authoritative task
 uses `task_state_authority: linear` plus a `linear_issue_key`. The state update
-policy remains `single_writer`: Workboard and Linear are not dual-write peers.
-The Linear adapter may project this packet's execution profile into issue
-metadata, but it must not invent a second model, environment, or secret
-contract.
+policy remains `single_writer`: Workboard and Linear are not dual-write peers,
+and a Linear task must not have a mirrored packet under `tasks/`.
+
+Before recurring Linear claims, install and certify a concrete adapter against
+`scripts/linear-single-writer.mjs` and follow
+`docs/linear-single-writer.md`. Bind the operator and executor to one stable
+Linear member ID through clone configuration; mutable display text is not
+identity proof. Count implementation, independent QA, and recovery-retained
+incidents against one capacity ceiling. Retain capacity and exact project/path
+locks while recovery is open, and reject callbacks until recovery resolves.
+
+The composed cycle must serialize admission, record an incident before worker
+preparation, reread eligibility, capacity, and locks before claim, read back
+every Linear mutation and canonical worker start, and require a separately
+created and read-back verifier task with a bound PASS receipt before Done. A
+manifest, protocol, planner, or test double is not a live adapter. Keep
+`linear_single_writer` `not_implemented` and recurring claims disabled until the
+authenticated adapter and full canary sequence are proven.
 
 ## Polling loop
 
