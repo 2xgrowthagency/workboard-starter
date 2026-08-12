@@ -95,6 +95,16 @@ export function targetIsLocked(target, activeIssues, incidents) {
   return activeIssues.some(matches) || incidents.some((item) => item.resolved !== true && item.targetLockHeld === true && matches(item));
 }
 
+function validateTarget(input) {
+  if (!input || typeof input !== 'object') fail('TARGET_INVALID', 'router target is required');
+  return {
+    ...input,
+    targetProjectId: text(input.targetProjectId, 'target.targetProjectId'),
+    targetPath: text(input.targetPath, 'target.targetPath'),
+    executionEnvironment: text(input.executionEnvironment, 'target.executionEnvironment'),
+  };
+}
+
 export function buildReviewReceipt({ issue, workerTaskId, immutableTarget, tests }) {
   const receipt = {
     version: 1,
@@ -124,7 +134,7 @@ export function buildQaReceipt({ reviewReceipt, verifierTaskId, verifierId, verd
   return { ...receipt, receiptId: hash(receipt) };
 }
 
-export function verifyDoneReceipts(issue, reviewReceipt, qaReceipt) {
+export function verifyDoneReceipts(issue, reviewReceipt, qaReceipt, trustedVerifier) {
   const expectedReview = buildReviewReceipt({
     issue,
     workerTaskId: reviewReceipt?.workerTaskId,
@@ -132,6 +142,9 @@ export function verifyDoneReceipts(issue, reviewReceipt, qaReceipt) {
     tests: reviewReceipt?.tests,
   });
   if (expectedReview.receiptId !== reviewReceipt.receiptId) fail('INVALID_QA_RECEIPT', 'review receipt digest mismatch');
+  if (!trustedVerifier || qaReceipt?.verifierTaskId !== trustedVerifier.taskId || qaReceipt?.verifierId !== trustedVerifier.verifierId) {
+    fail('VERIFIER_IDENTITY_MISMATCH', 'QA receipt provenance does not match the canonical verifier');
+  }
   const expectedQa = buildQaReceipt({
     reviewReceipt,
     verifierTaskId: qaReceipt?.verifierTaskId,
@@ -202,32 +215,69 @@ async function handleCallback(callback, adapters, profile) {
   const workerRecord = await adapters.recovery.getWorker(issue.identifier);
   if (!workerRecord || callback.workerTaskId !== workerRecord.taskId) fail('CALLBACK_IDENTITY_MISMATCH', 'callback does not match the canonical worker');
 
+  const allowedStatus = {
+    REVIEW: profile.statuses.inProgress,
+    BLOCKED: profile.statuses.inProgress,
+    QA_PASS: profile.statuses.inReview,
+    QA_FAIL: profile.statuses.inReview,
+  }[callback.type];
+  if (issue.status === profile.statuses.done || issue.status !== allowedStatus) {
+    fail('CALLBACK_STATE_INVALID', `${callback.type} is not allowed from ${issue.status}`);
+  }
+
+  const callbackIncident = {
+    ...incidentFor(issue, `callback_${callback.type.toLowerCase()}`),
+    callbackId: text(callback.callbackId, 'callback.callbackId'),
+    capacityLockHeld: false,
+    targetLockHeld: false,
+  };
+
   if (callback.type === 'REVIEW') {
     const reviewReceipt = buildReviewReceipt({ issue, workerTaskId: callback.workerTaskId, immutableTarget: callback.immutableTarget, tests: callback.tests });
-    const verifier = await adapters.worker.prepareVerifier({ issue, reviewReceipt });
-    const prepared = await adapters.worker.readTask(verifier.taskId);
-    if (!prepared?.canonical || prepared.role !== 'qa' || prepared.issueIdentifier !== issue.identifier || prepared.immutableTarget !== reviewReceipt.immutableTarget) {
-      fail('VERIFIER_READBACK_FAILED', 'prepared verifier did not read back canonically');
+    const verifierIncident = {
+      ...incidentFor(issue, 'verifier_prepare', workerRecord.target || {}),
+      callbackId: callbackIncident.callbackId,
+      verifierTaskId: null,
+    };
+    await adapters.recovery.recordIncident(callbackIncident);
+    await adapters.recovery.recordIncident(verifierIncident);
+    let currentVerifierIncident = verifierIncident;
+    try {
+      const verifier = await adapters.worker.prepareVerifier({ issue, reviewReceipt });
+      const prepared = await adapters.worker.readTask(verifier.taskId);
+      if (!prepared?.canonical || prepared.role !== 'qa' || prepared.issueIdentifier !== issue.identifier || prepared.immutableTarget !== reviewReceipt.immutableTarget || prepared.verifierId !== verifier.verifierId) {
+        fail('VERIFIER_READBACK_FAILED', 'prepared verifier did not read back canonically');
+      }
+      currentVerifierIncident = { ...verifierIncident, verifierTaskId: verifier.taskId, verifierId: verifier.verifierId };
+      await adapters.recovery.recordIncident(currentVerifierIncident);
+      await adapters.recovery.saveVerifier({ issueIdentifier: issue.identifier, reviewReceipt, taskId: verifier.taskId, verifierId: verifier.verifierId, immutableTarget: reviewReceipt.immutableTarget });
+      await adapters.worker.startVerifier(verifier);
+      const running = await adapters.worker.readTask(verifier.taskId);
+      if (!running?.canonical || running.state !== 'running' || running.verifierId !== verifier.verifierId) fail('VERIFIER_START_AMBIGUOUS', 'verifier start lacks exact running readback');
+      await transition(adapters, issue, profile, profile.statuses.inReview, `Review ${reviewReceipt.receiptId}; verifier ${verifier.taskId}`);
+      await adapters.recovery.recordIncident({ ...currentVerifierIncident, resolved: true, capacityLockHeld: false, targetLockHeld: false, callbackRoutingBlocked: false });
+    } catch (error) {
+      return recoverBlocked(adapters, issue, profile, currentVerifierIncident, error);
     }
-    await adapters.recovery.saveVerifier({ issueIdentifier: issue.identifier, reviewReceipt, taskId: verifier.taskId, verifierId: verifier.verifierId, immutableTarget: reviewReceipt.immutableTarget });
-    await adapters.worker.startVerifier(verifier);
-    const running = await adapters.worker.readTask(verifier.taskId);
-    if (!running?.canonical || running.state !== 'running') fail('VERIFIER_START_AMBIGUOUS', 'verifier start lacks exact running readback');
-    await transition(adapters, issue, profile, profile.statuses.inReview, `Review ${reviewReceipt.receiptId}; verifier ${verifier.taskId}`);
+  } else if (callback.type === 'BLOCKED') {
+    await adapters.recovery.recordIncident(callbackIncident);
+    await transition(adapters, issue, profile, profile.statuses.blocked, `BLOCKED ${text(callback.proof, 'callback.proof')}`);
   } else {
     const verifier = await adapters.recovery.getVerifier(issue.identifier);
     if (!verifier || callback.sourceTaskId !== verifier.taskId || callback.sourceTaskId === callback.workerTaskId) fail('VERIFIER_IDENTITY_MISMATCH', 'callback does not match the independently created verifier');
     const task = await adapters.worker.readTask(verifier.taskId);
-    if (!task?.canonical || task.state !== 'completed' || task.verdict !== callback.qaReceipt?.verdict) fail('VERIFIER_READBACK_FAILED', 'completed verifier readback is missing or mismatched');
+    if (!task?.canonical || task.state !== 'completed' || task.verdict !== callback.qaReceipt?.verdict || task.verifierId !== verifier.verifierId) fail('VERIFIER_READBACK_FAILED', 'completed verifier readback is missing or mismatched');
     if (callback.type === 'QA_PASS') {
-      verifyDoneReceipts(issue, verifier.reviewReceipt, callback.qaReceipt);
+      verifyDoneReceipts(issue, verifier.reviewReceipt, callback.qaReceipt, verifier);
+      await adapters.recovery.recordIncident(callbackIncident);
       await transition(adapters, issue, profile, profile.statuses.done, `QA PASS ${callback.qaReceipt.receiptId}`);
     } else {
-      const next = callback.type === 'QA_FAIL' ? profile.statuses.ready : profile.statuses.blocked;
-      await transition(adapters, issue, profile, next, `${callback.type} ${text(callback.proof, 'callback.proof')}`);
+      await adapters.recovery.recordIncident(callbackIncident);
+      await transition(adapters, issue, profile, profile.statuses.ready, `${callback.type} ${text(callback.proof, 'callback.proof')}`);
     }
   }
   await adapters.recovery.markProcessedCallback(callback.callbackId);
+  await adapters.recovery.recordIncident({ ...callbackIncident, resolved: true, callbackRoutingBlocked: false });
   return { outcome: callback.type.toLowerCase(), issueIdentifier: issue.identifier };
 }
 
@@ -254,11 +304,11 @@ export async function runLinearSingleWriterCycle({ profile, adapters }) {
 
     for (const candidate of ready.issues) {
       if (!isEligibleIssue(candidate, profile)) continue;
-      const target = await adapters.router.resolve(candidate);
+      const target = validateTarget(await adapters.router.resolve(candidate));
       if (!profile.allowedExecutionEnvironments.includes(target.executionEnvironment)) fail('EXECUTION_ENVIRONMENT_REJECTED', `route ${target.executionEnvironment} is not allowed`);
       if (targetIsLocked(target, active.issues, incidents.incidents)) continue;
 
-      const incident = incidentFor(candidate, 'implementation_prepare', target);
+      let incident = incidentFor(candidate, 'implementation_prepare', target);
       await adapters.recovery.recordIncident(incident);
       let prepared;
       try {
@@ -267,6 +317,8 @@ export async function runLinearSingleWriterCycle({ profile, adapters }) {
         if (!preparedReadback?.canonical || preparedReadback.issueIdentifier !== candidate.identifier || preparedReadback.state !== 'prepared') {
           fail('WORKER_PREPARE_AMBIGUOUS', 'prepared worker did not read back canonically');
         }
+        incident = { ...incident, preparedTaskId: prepared.taskId };
+        await adapters.recovery.recordIncident(incident);
         const [freshActive, freshIncidents, freshIssue] = await Promise.all([
           adapters.linear.listActiveIssues(), adapters.recovery.listOpenIncidents(), adapters.linear.getIssue(candidate.identifier),
         ]);

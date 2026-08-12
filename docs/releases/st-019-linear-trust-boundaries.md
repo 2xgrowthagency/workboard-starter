@@ -9,11 +9,12 @@ downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-start
 
 # ST-019: Linear orchestration trust boundaries
 
-Clara's pilot review exposed portable gaps in identity binding, partial-write and
-ambiguous-start recovery, admission serialization, capacity and target-lock
+Production pilot review exposed portable gaps in identity binding, partial-write
+and ambiguous-start recovery, admission serialization, capacity and target-lock
 retention, callback provenance, and independent QA. ST-019 adds one generic,
-configuration-driven cycle and focused failure-injection tests.
+configuration-driven engine and focused failure-injection tests.
 
 This release does not install an authenticated Linear or Codex adapter. Clones
-must keep `linear_single_writer` unimplemented until their concrete adapter and
+inherit the supported `linear_single_writer_engine`, but must keep the operational
+`linear_single_writer` capability unimplemented until their concrete adapter and
 full canary sequence pass.

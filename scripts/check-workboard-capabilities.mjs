@@ -23,6 +23,7 @@ export const CORE_CAPABILITIES = [
   'app_native_codex_routing',
   'model_routing',
   'task_execution_profile',
+  'linear_single_writer_engine',
   'linear_single_writer',
   'git_preflight',
   'known_issues_recovery',
