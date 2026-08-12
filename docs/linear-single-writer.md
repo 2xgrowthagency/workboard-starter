@@ -35,10 +35,11 @@ The composed cycle machine-enforces:
 6. a durable recovery incident before worker preparation;
 7. fresh eligibility, capacity, and lock readback immediately before claim;
 8. state and comment writes with exact readback after each external mutation;
-9. canonical prepared and running worker readback;
-10. callback rejection while recovery owns the issue, plus replay protection;
-11. a separately created, read-back, and started verifier task; and
-12. a receipt-bound independent PASS before Done.
+9. canonical prepared and running worker readback bound to the immutable route tuple;
+10. callback rejection while recovery owns the issue, plus replay-safe transition bookkeeping;
+11. a separately created, durably identified, read-back, and started verifier task;
+12. exact verifier outcome typing: `QA_PASS` to Done, `QA_FAIL` to Ready, and `QA_BLOCKED` to Blocked; and
+13. a receipt-bound independent PASS before Done.
 
 Any partial write, ambiguous readback, failed or ambiguous start, identity drift,
 capacity change, or target-lock change becomes one incident-bound recovery. The

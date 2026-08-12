@@ -270,7 +270,7 @@
           "tests/linear-single-writer.test.mjs"
         ]
       },
-      "evidence_sha256": "ddfc45f77f8255caac8a5ceddbb04f56a9ab56340cdeb75f2ab216909a3c8873"
+      "evidence_sha256": "33c250e616237960aa6965796a38d741155ec8c374a09fc18e39e7d4272cabe7"
     },
     "linear_single_writer": {
       "status": "not_implemented",
@@ -283,7 +283,7 @@
         ],
         "tests": []
       },
-      "evidence_sha256": "e83a3125df77b0c63d123e8756676eff32e2f6de0a16b69082507997cd9c21c8"
+      "evidence_sha256": "bf1556d5dbd770a2fb0b70ea21c6272642045413f0cc0ed0341fe406b42fb65f"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",

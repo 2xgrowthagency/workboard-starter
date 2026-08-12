@@ -20,6 +20,22 @@ const profile = createLinearProfile({
   assigneeId: 'member-stable-id',
   maxActive: 3,
 });
+const canonicalTarget = { targetProjectId: 'recall-radar', targetPath: '/repo/recall-radar', executionEnvironment: 'worktree' };
+const workerRecord = (overrides = {}) => ({ issueIdentifier: '2X-200', taskId: 'worker-1', target: canonicalTarget, ...overrides });
+const verifierRecord = (reviewReceipt, overrides = {}) => ({
+  issueIdentifier: '2X-200', taskId: 'qa-1', verifierId: 'independent-qa',
+  immutableTarget: reviewReceipt.immutableTarget, reviewReceipt, target: canonicalTarget,
+  ...overrides,
+});
+const verifierTask = (verdict, overrides = {}) => ({
+  canonical: true, taskId: 'qa-1', role: 'qa', issueIdentifier: '2X-200',
+  immutableTarget: 'commit:abc123', verifierId: 'independent-qa', state: 'completed',
+  verdict, ...canonicalTarget, ...overrides,
+});
+const completedWorkerTask = (immutableTarget = 'commit:abc123', overrides = {}) => ({
+  canonical: true, taskId: 'worker-1', role: 'implementation', issueIdentifier: '2X-200',
+  state: 'completed', immutableTarget, ...canonicalTarget, ...overrides,
+});
 
 function issue(overrides = {}) {
   return {
@@ -66,14 +82,14 @@ function harness(overrides = {}) {
       ...overrides.linear,
     },
     router: {
-      async resolve() { return { targetProjectId: 'recall-radar', targetPath: '/repo/recall-radar', executionEnvironment: 'worktree' }; },
+      async resolve() { return canonicalTarget; },
       ...overrides.router,
     },
     worker: {
       async listCallbacks() { return { complete: true, callbacks }; },
-      async prepare({ issue: targetIssue }) {
+      async prepare({ issue: targetIssue, target }) {
         const task = { taskId: 'worker-1' };
-        tasks.set(task.taskId, { canonical: true, taskId: task.taskId, role: 'implementation', issueIdentifier: targetIssue.identifier, state: 'prepared' });
+        tasks.set(task.taskId, { canonical: true, taskId: task.taskId, role: 'implementation', issueIdentifier: targetIssue.identifier, state: 'prepared', ...target });
         return task;
       },
       async start(task) {
@@ -81,9 +97,9 @@ function harness(overrides = {}) {
         tasks.set(task.taskId, { ...tasks.get(task.taskId), state: 'running' });
       },
       async readTask(taskId) { return tasks.get(taskId); },
-      async prepareVerifier({ issue: targetIssue, reviewReceipt }) {
+      async prepareVerifier({ issue: targetIssue, reviewReceipt, target }) {
         const task = { taskId: 'qa-1', verifierId: 'independent-qa' };
-        tasks.set(task.taskId, { canonical: true, taskId: task.taskId, role: 'qa', issueIdentifier: targetIssue.identifier, immutableTarget: reviewReceipt.immutableTarget, verifierId: task.verifierId, state: 'prepared' });
+        tasks.set(task.taskId, { canonical: true, taskId: task.taskId, role: 'qa', issueIdentifier: targetIssue.identifier, immutableTarget: reviewReceipt.immutableTarget, verifierId: task.verifierId, state: 'prepared', ...target });
         return task;
       },
       async startVerifier(task) {
@@ -169,6 +185,30 @@ test('ambiguous worker start blocks and retains incident ownership', async () =>
   assert.equal(input.evidence.incidents.some((item) => item.targetLockHeld), true);
 });
 
+test('prepared worker identity is durable before its first readback', async () => {
+  const input = harness({ worker: { async readTask() { throw new Error('prepared readback unavailable'); } } });
+  await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'RECOVERY_BLOCKED');
+  const latest = new Map(input.evidence.incidents.map((record) => [record.incidentId, record]));
+  const incident = [...latest.values()].find((record) => record.phase === 'implementation_prepare');
+  assert.equal(incident.preparedTaskId, 'worker-1');
+});
+
+for (const state of ['prepared', 'running']) {
+  test(`${state} implementation readback is bound to the immutable route tuple`, async () => {
+    let reads = 0;
+    const input = harness({ worker: {
+      async readTask(taskId) {
+        reads += 1;
+        const task = input.tasks.get(taskId);
+        if ((state === 'prepared' && reads === 1) || (state === 'running' && reads === 2)) return { ...task, targetPath: '/repo/wrong' };
+        return task;
+      },
+    } });
+    await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'RECOVERY_BLOCKED');
+    assert.equal(input.getIssue().status, profile.statuses.blocked);
+  });
+}
+
 test('capacity and target locks are reread after preparation', async () => {
   let activeReads = 0;
   const input = harness({ linear: {
@@ -218,8 +258,8 @@ test('uncertified concrete adapter fails closed', async () => {
 
 test('review creates and reads an independent verifier before In Review', async () => {
   const input = harness({ initialIssue: issue({ status: profile.statuses.inProgress }) });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1' });
-  input.tasks.set('worker-1', { canonical: true, taskId: 'worker-1', state: 'completed', issueIdentifier: '2X-200' });
+  input.workers.set('2X-200', workerRecord());
+  input.tasks.set('worker-1', completedWorkerTask());
   input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{
     callbackId: 'review-1', type: 'REVIEW', issueIdentifier: '2X-200', workerTaskId: 'worker-1',
     immutableTarget: 'commit:abc123', tests: 'node --test PASS',
@@ -230,14 +270,73 @@ test('review creates and reads an independent verifier before In Review', async 
   assert.equal(input.verifiers.get('2X-200').taskId, 'qa-1');
 });
 
+for (const phase of ['prepared', 'running']) {
+  for (const [field, wrongValue] of [
+    ['targetProjectId', 'wrong-project'],
+    ['targetPath', '/wrong/path'],
+    ['executionEnvironment', 'local'],
+  ]) {
+    test(`${phase} verifier readback rejects wrong ${field}`, async () => {
+      let reads = 0;
+      const input = harness({
+        initialIssue: issue({ status: profile.statuses.inProgress }),
+        callbacks: [{ callbackId: `review-${phase}-${field}`, type: 'REVIEW', issueIdentifier: '2X-200', workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' }],
+        worker: {
+          async readTask(taskId) {
+            if (taskId === 'worker-1') return completedWorkerTask();
+            reads += 1;
+            const state = reads === 1 ? 'prepared' : 'running';
+            return verifierTask(undefined, { taskId, state, [field]: state === phase ? wrongValue : canonicalTarget[field] });
+          },
+        },
+      });
+      input.workers.set('2X-200', workerRecord());
+      await assert.rejects(
+        () => runLinearSingleWriterCycle({ profile, adapters: input.adapters }),
+        (error) => error.code === 'RECOVERY_BLOCKED',
+      );
+      assert.equal(input.getIssue().status, profile.statuses.blocked);
+    });
+  }
+}
+
+for (const [field, wrongValue] of [
+  ['canonical', false],
+  ['taskId', 'different-task'],
+  ['role', 'qa'],
+  ['issueIdentifier', '2X-OTHER'],
+  ['state', 'running'],
+  ['immutableTarget', 'commit:different'],
+  ['targetProjectId', 'wrong-project'],
+  ['targetPath', '/wrong/path'],
+  ['executionEnvironment', 'local'],
+]) {
+  test(`REVIEW rejects substituted implementation ${field} before QA creation`, async () => {
+    let verifierPrepared = false;
+    const input = harness({
+      initialIssue: issue({ status: profile.statuses.inProgress }),
+      callbacks: [{ callbackId: `review-worker-${field}`, type: 'REVIEW', issueIdentifier: '2X-200', workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' }],
+      worker: { async prepareVerifier() { verifierPrepared = true; } },
+    });
+    input.workers.set('2X-200', workerRecord());
+    input.tasks.set('worker-1', completedWorkerTask('commit:abc123', { [field]: wrongValue }));
+    await assert.rejects(
+      () => runLinearSingleWriterCycle({ profile, adapters: input.adapters }),
+      (error) => error.code === 'WORKER_READBACK_FAILED',
+    );
+    assert.equal(verifierPrepared, false);
+    assert.equal(input.evidence.mutations.length, 0);
+  });
+}
+
 test('Done requires a trusted verifier callback and bound PASS receipt', async () => {
   const reviewIssue = issue({ status: profile.statuses.inReview });
   const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
   const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict: 'PASS', proof: 'suite passed' });
   const input = harness({ initialIssue: reviewIssue });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1' });
-  input.verifiers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'qa-1', verifierId: 'independent-qa', reviewReceipt });
-  input.tasks.set('qa-1', { canonical: true, taskId: 'qa-1', verifierId: 'independent-qa', state: 'completed', verdict: 'PASS' });
+  input.workers.set('2X-200', workerRecord());
+  input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+  input.tasks.set('qa-1', verifierTask('PASS'));
   input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{
     callbackId: 'qa-1-pass', type: 'QA_PASS', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt,
   }] });
@@ -249,7 +348,7 @@ test('Done requires a trusted verifier callback and bound PASS receipt', async (
 
 test('worker cannot forge QA and callbacks cannot replay', async () => {
   const input = harness({ initialIssue: issue({ status: profile.statuses.inReview }) });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1' });
+  input.workers.set('2X-200', workerRecord());
   input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{
     callbackId: 'forged', type: 'QA_PASS', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'worker-1', qaReceipt: {},
   }] });
@@ -265,7 +364,8 @@ test('terminal Done rejects delayed callbacks before side effects', async () => 
     callbacks: [{ callbackId: 'late-review', type: 'REVIEW', issueIdentifier: '2X-200', workerTaskId: 'worker-1', immutableTarget: 'commit:abc', tests: 'PASS' }],
     worker: { async prepareVerifier() { verifierPrepared = true; } },
   });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1' });
+  input.workers.set('2X-200', workerRecord());
+  input.tasks.set('worker-1', completedWorkerTask('commit:abc'));
   await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'CALLBACK_STATE_INVALID');
   assert.equal(verifierPrepared, false);
   assert.equal(input.evidence.mutations.length, 0);
@@ -277,7 +377,8 @@ test('ambiguous verifier start retains exact verifier recovery identity', async 
     callbacks: [{ callbackId: 'review-ambiguous', type: 'REVIEW', issueIdentifier: '2X-200', workerTaskId: 'worker-1', immutableTarget: 'commit:abc', tests: 'PASS' }],
     worker: { async startVerifier() { throw new Error('ambiguous start'); } },
   });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1', target: { targetProjectId: 'recall-radar', targetPath: '/repo/recall-radar' } });
+  input.workers.set('2X-200', workerRecord());
+  input.tasks.set('worker-1', completedWorkerTask('commit:abc'));
   await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'RECOVERY_BLOCKED');
   const latest = new Map(input.evidence.incidents.map((record) => [record.incidentId, record]));
   const incident = [...latest.values()].find((record) => record.phase === 'verifier_prepare');
@@ -285,14 +386,87 @@ test('ambiguous verifier start retains exact verifier recovery identity', async 
   assert.equal(input.getIssue().status, profile.statuses.blocked);
 });
 
+test('prepared verifier identity is durable before its first readback', async () => {
+  const input = harness({
+    initialIssue: issue({ status: profile.statuses.inProgress }),
+    callbacks: [{ callbackId: 'review-readback', type: 'REVIEW', issueIdentifier: '2X-200', workerTaskId: 'worker-1', immutableTarget: 'commit:abc', tests: 'PASS' }],
+    worker: { async readTask(taskId) {
+      if (taskId === 'worker-1') return completedWorkerTask('commit:abc');
+      throw new Error('verifier readback unavailable');
+    } },
+  });
+  input.workers.set('2X-200', workerRecord());
+  await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'RECOVERY_BLOCKED');
+  const latest = new Map(input.evidence.incidents.map((record) => [record.incidentId, record]));
+  const incident = [...latest.values()].find((record) => record.phase === 'verifier_prepare');
+  assert.equal(incident.verifierTaskId, 'qa-1');
+  assert.equal(incident.verifierId, 'independent-qa');
+});
+
+for (const [type, verdict, expectedStatus] of [
+  ['QA_FAIL', 'FAIL', profile.statuses.ready],
+  ['QA_BLOCKED', 'BLOCKED', profile.statuses.blocked],
+]) {
+  test(`${type} requires its exact verifier verdict and routes to ${expectedStatus}`, async () => {
+    const reviewIssue = issue({ status: profile.statuses.inReview });
+    const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
+    const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict, proof: `${verdict} proof` });
+    const input = harness({ initialIssue: reviewIssue });
+    input.workers.set('2X-200', workerRecord());
+    input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+    input.tasks.set('qa-1', verifierTask(verdict));
+    input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{ callbackId: `${type}-1`, type, issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt }] });
+    const result = await runLinearSingleWriterCycle({ profile, adapters: input.adapters });
+    assert.equal(result.outcome, type.toLowerCase());
+    assert.equal(input.getIssue().status, expectedStatus);
+  });
+}
+
+for (const [type, verdict] of [['QA_PASS', 'PASS'], ['QA_FAIL', 'FAIL'], ['QA_BLOCKED', 'BLOCKED']]) {
+  for (const [field, wrongValue] of [
+    ['targetProjectId', 'wrong-project'],
+    ['targetPath', '/wrong/path'],
+    ['executionEnvironment', 'local'],
+  ]) {
+    test(`${type} completed verifier readback rejects wrong ${field}`, async () => {
+      const reviewIssue = issue({ status: profile.statuses.inReview });
+      const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
+      const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict, proof: `${verdict} proof` });
+      const input = harness({ initialIssue: reviewIssue });
+      input.workers.set('2X-200', workerRecord());
+      input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+      input.tasks.set('qa-1', verifierTask(verdict, { [field]: wrongValue }));
+      input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{ callbackId: `${type}-${field}`, type, issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt }] });
+      await assert.rejects(
+        () => runLinearSingleWriterCycle({ profile, adapters: input.adapters }),
+        (error) => error.code === 'VERIFIER_READBACK_FAILED',
+      );
+      assert.equal(input.evidence.mutations.length, 0);
+    });
+  }
+}
+
+test('QA callback type cannot disagree with its verifier receipt verdict', async () => {
+  const reviewIssue = issue({ status: profile.statuses.inReview });
+  const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
+  const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict: 'BLOCKED', proof: 'blocked proof' });
+  const input = harness({ initialIssue: reviewIssue });
+  input.workers.set('2X-200', workerRecord());
+  input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+  input.tasks.set('qa-1', verifierTask('BLOCKED'));
+  input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{ callbackId: 'mismatch', type: 'QA_FAIL', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt }] });
+  await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'VERIFIER_READBACK_FAILED');
+  assert.equal(input.evidence.mutations.length, 0);
+});
+
 test('PASS receipt provenance must match the saved canonical verifier', async () => {
   const reviewIssue = issue({ status: profile.statuses.inReview });
   const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
   const forgedReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'forged-task', verifierId: 'forged-verifier', verdict: 'PASS', proof: 'suite passed' });
   const input = harness({ initialIssue: reviewIssue });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1' });
-  input.verifiers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'qa-1', verifierId: 'independent-qa', reviewReceipt });
-  input.tasks.set('qa-1', { canonical: true, taskId: 'qa-1', verifierId: 'independent-qa', state: 'completed', verdict: 'PASS' });
+  input.workers.set('2X-200', workerRecord());
+  input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+  input.tasks.set('qa-1', verifierTask('PASS'));
   input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [{
     callbackId: 'forged-pass', type: 'QA_PASS', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt: forgedReceipt,
   }] });
@@ -306,11 +480,49 @@ test('callback bookkeeping failure leaves a durable reservation and prevents rep
   const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict: 'PASS', proof: 'suite passed' });
   const callback = { callbackId: 'qa-bookkeeping', type: 'QA_PASS', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt };
   const input = harness({ initialIssue: reviewIssue, callbacks: [callback], recovery: { async markProcessedCallback() { throw new Error('bookkeeping unavailable'); } } });
-  input.workers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'worker-1' });
-  input.verifiers.set('2X-200', { issueIdentifier: '2X-200', taskId: 'qa-1', verifierId: 'independent-qa', reviewReceipt });
-  input.tasks.set('qa-1', { canonical: true, taskId: 'qa-1', verifierId: 'independent-qa', state: 'completed', verdict: 'PASS' });
+  input.workers.set('2X-200', workerRecord());
+  input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+  input.tasks.set('qa-1', verifierTask('PASS'));
   await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), /bookkeeping unavailable/);
   assert.equal(input.evidence.mutations.length, 2);
   await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'CALLBACK_BLOCKED_BY_RECOVERY');
   assert.equal(input.evidence.mutations.length, 2);
+});
+
+test('callback transition fracture reconciles to recovery-owned Blocked', async () => {
+  const reviewIssue = issue({ status: profile.statuses.inReview });
+  const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
+  const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict: 'FAIL', proof: 'failed checks' });
+  const input = harness({ initialIssue: reviewIssue, failMutationAt: 2, callbacks: [{ callbackId: 'qa-fracture', type: 'QA_FAIL', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt }] });
+  input.workers.set('2X-200', workerRecord());
+  input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+  input.tasks.set('qa-1', verifierTask('FAIL'));
+  await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'RECOVERY_BLOCKED');
+  assert.equal(input.getIssue().status, profile.statuses.blocked);
+  const latest = new Map(input.evidence.incidents.map((record) => [record.incidentId, record]));
+  const incident = [...latest.values()].find((record) => record.phase === 'callback_qa_fail');
+  assert.equal(incident.capacityLockHeld, true);
+  assert.equal(incident.targetLockHeld, true);
+});
+
+test('callback incident-resolution failure keeps admission reserved', async () => {
+  const reviewIssue = issue({ status: profile.statuses.inReview });
+  const reviewReceipt = buildReviewReceipt({ issue: reviewIssue, workerTaskId: 'worker-1', immutableTarget: 'commit:abc123', tests: 'PASS' });
+  const qaReceipt = buildQaReceipt({ reviewReceipt, verifierTaskId: 'qa-1', verifierId: 'independent-qa', verdict: 'FAIL', proof: 'failed checks' });
+  const callback = { callbackId: 'qa-resolve', type: 'QA_FAIL', issueIdentifier: '2X-200', workerTaskId: 'worker-1', sourceTaskId: 'qa-1', qaReceipt };
+  const input = harness({ initialIssue: reviewIssue, callbacks: [callback] });
+  input.workers.set('2X-200', workerRecord());
+  input.verifiers.set('2X-200', verifierRecord(reviewReceipt));
+  input.tasks.set('qa-1', verifierTask('FAIL'));
+  const recordIncident = input.adapters.recovery.recordIncident;
+  input.adapters.recovery.recordIncident = async (record) => {
+    if (record.phase === 'callback_qa_fail' && record.resolved === true) throw new Error('incident resolution unavailable');
+    return recordIncident(record);
+  };
+  await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), /incident resolution unavailable/);
+  assert.equal(input.getIssue().status, profile.statuses.ready);
+  input.adapters.worker.listCallbacks = async () => ({ complete: true, callbacks: [] });
+  const result = await runLinearSingleWriterCycle({ profile, adapters: input.adapters });
+  assert.equal(result.outcome, 'nothing_to_claim');
+  assert.deepEqual(input.evidence.started, []);
 });
