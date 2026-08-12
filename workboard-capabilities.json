@@ -256,10 +256,10 @@
       },
       "evidence_sha256": "695b153f8abf96c4b8426e832f14fb1475b309f9d26ed81a59aeaeff4437467f"
     },
-    "linear_single_writer": {
+    "linear_single_writer_engine": {
       "status": "supported",
       "version": "1.0.0",
-      "summary": "Generic Linear single-writer cycle enforces identity, recovery, locks, canonical starts, callback provenance, and independent QA.",
+      "summary": "Portable Linear transaction engine enforces identity, recovery, locks, canonical starts, callback provenance, and independent QA.",
       "evidence": {
         "files": [
           "scripts/linear-single-writer.mjs",
@@ -270,7 +270,20 @@
           "tests/linear-single-writer.test.mjs"
         ]
       },
-      "evidence_sha256": "df661f3f7b6f66c50d07ea08fc3ad0754f7117dda89d35f2580778106d71c1b9"
+      "evidence_sha256": "ddfc45f77f8255caac8a5ceddbb04f56a9ab56340cdeb75f2ab216909a3c8873"
+    },
+    "linear_single_writer": {
+      "status": "not_implemented",
+      "version": null,
+      "summary": "A concrete authenticated Linear and Codex adapter must be installed and certified by each adopting runtime.",
+      "evidence": {
+        "files": [
+          "docs/linear-single-writer.md",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": []
+      },
+      "evidence_sha256": "e83a3125df77b0c63d123e8756676eff32e2f6de0a16b69082507997cd9c21c8"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",
