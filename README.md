@@ -417,11 +417,12 @@ Repository bootstrap is not hosted-environment proof. The companion
 records variable/secret names, while Codex settings still own the hosted
 environment, network policy, and secret values.
 
-`task_state_authority` defaults to `workboard`. The Linear-ready value is
-`linear`, which requires a `linear_issue_key` and keeps state single-writer;
-there is no valid Workboard/Linear dual-write mode. The future Linear adapter
-maps this execution profile to issue metadata without changing the worker's
-model or environment contract.
+`task_state_authority` defaults to `workboard`. The Linear-authoritative value is
+`linear`, which requires a `linear_issue_key`, a concrete adapter certified
+against `scripts/linear-single-writer.mjs`, and single-writer state; there is no
+valid Workboard/Linear dual-write mode. See `docs/linear-single-writer.md` for
+stable identity, transaction recovery, capacity and lock retention, canonical
+worker and verifier readback, callback replay, and required canary proof.
 
 ## Ambiguous task creation
 
