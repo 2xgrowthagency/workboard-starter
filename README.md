@@ -421,7 +421,8 @@ environment, network policy, and secret values.
 `linear`, which requires a `linear_issue_key`, a concrete adapter certified
 against `scripts/linear-single-writer.mjs`, and single-writer state; there is no
 valid Workboard/Linear dual-write mode. See `docs/linear-single-writer.md` for
-stable identity, transaction recovery, capacity and lock retention, canonical
+stable identity, transaction recovery, execution-state capacity classification,
+capacity and lock retention, canonical
 worker and verifier readback, callback replay, and required canary proof.
 
 ## Ambiguous task creation

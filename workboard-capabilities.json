@@ -8,10 +8,10 @@
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": "ST-019",
+    "release": "ST-020",
     "commit": null,
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/47",
-    "adoption_record": "docs/releases/st-019-linear-trust-boundaries.md"
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/49",
+    "adoption_record": "docs/releases/st-020-live-worker-capacity.md"
   },
   "capabilities": {
     "queue_classifier": {
@@ -27,7 +27,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "ade03c31491ed80fb6d5b21f4d106b78d3ba39ce22dd1bbe4ec4d117fd6a509f"
+      "evidence_sha256": "851cecfb6b7686db4e84725d40db5aaec9d83bd5b3ca3bf4e67e9e2e16657161"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +43,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "389862fb42902cd9ef2f102c72446db22952c59631e775ac950abde8de39c1ed"
+      "evidence_sha256": "9812be033114a7937c8c414a012188f1caa8955c3dbbf95b8f7fb6f3775eec15"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -76,7 +76,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "821da9d02748a9471c5a9f3e312401b4a1157b19ff81ab293a45b1765f38a52d"
+      "evidence_sha256": "00bf50b6d47bfb5c94fb293b3f73135bf450ef68074883aab5041b199d83437c"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +92,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "1593f191ed8f542fd77af95afd337b24e56a4e7d66d360e9b7d5b63013d77cdc"
+      "evidence_sha256": "07922f16295656da9be5640cbef4a998d9b2c789ea9433cc07a49707556a18ef"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -155,7 +155,7 @@
           "tests/model-routing.test.mjs"
         ]
       },
-      "evidence_sha256": "005d0975e086dfc3524378b89f9a0ce6a2f717ec36e56bc791e7c2301898e189"
+      "evidence_sha256": "ce9851725273e8de0d4157d946b10a2597e1e366c5cf8a72a73de4dd1b5e4ce7"
     },
     "git_preflight": {
       "status": "supported",
@@ -171,7 +171,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "aa7df1143d3b72f11870c08ba8776d93e5b13ccb1010aabaa777ec1b0b70314f"
+      "evidence_sha256": "9fc5d9182152825583d4d57fba74eb353fa85555891ee10dcbe4360b7e96b56d"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -236,7 +236,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "54024e2f21ef057e5b8527e5a989f1ebb4d16c4820e02c23250c99d4f427e9cf"
+      "evidence_sha256": "83af0d299c26459dfc6df7ba9d9ffef7ffe2147fa3a4a76842f8e66fce51be0d"
     },
     "task_execution_profile": {
       "status": "supported",
@@ -258,8 +258,8 @@
     },
     "linear_single_writer_engine": {
       "status": "supported",
-      "version": "1.0.0",
-      "summary": "Portable Linear transaction engine enforces identity, recovery, locks, canonical starts, callback provenance, and independent QA.",
+      "version": "1.1.0",
+      "summary": "Portable Linear transaction engine counts verified live workers, excludes human review, and enforces recovery, locks, callback provenance, and independent QA.",
       "evidence": {
         "files": [
           "scripts/linear-single-writer.mjs",
@@ -270,7 +270,7 @@
           "tests/linear-single-writer.test.mjs"
         ]
       },
-      "evidence_sha256": "33c250e616237960aa6965796a38d741155ec8c374a09fc18e39e7d4272cabe7"
+      "evidence_sha256": "540e694646128630a43d6ac527cb777c7bb4b3ddea4d634abbfee37c9628c25e"
     },
     "linear_single_writer": {
       "status": "not_implemented",
@@ -283,7 +283,7 @@
         ],
         "tests": []
       },
-      "evidence_sha256": "bf1556d5dbd770a2fb0b70ea21c6272642045413f0cc0ed0341fe406b42fb65f"
+      "evidence_sha256": "6a9e297432cda442a21d2885611aee7efa37ca89a87cfb3f1dfb4dac8029a719"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",
@@ -302,7 +302,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "a8531c27e783dd0cb0a2dc65d9bde4f34e8709508430f44726133b08a00fe566"
+      "evidence_sha256": "39b2d591789c93729611905a6ff5a628a0d1e3d848b58fdaaa43c90717aac749"
     },
     "upstream_synchronization": {
       "status": "supported",

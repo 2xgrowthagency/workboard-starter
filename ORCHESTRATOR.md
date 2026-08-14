@@ -157,7 +157,8 @@ installed and certified against `scripts/linear-single-writer.mjs`. A Linear
 task must carry its `linear_issue_key`; updates have one canonical writer.
 Never mirror status into both systems. Certification requires stable member-ID
 identity binding, serialized admission, fresh capacity and exact target-lock
-readback, incident-bound recovery, canonical worker and verifier readback,
+readback, execution-state classification that excludes human review from worker
+capacity, incident-bound recovery, canonical worker and verifier readback,
 callback replay protection, and every canary in
 `docs/linear-single-writer.md`. Keep recurring claims disabled until proven.
 

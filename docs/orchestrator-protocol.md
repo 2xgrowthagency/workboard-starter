@@ -343,9 +343,13 @@ Before recurring Linear claims, install and certify a concrete adapter against
 `scripts/linear-single-writer.mjs` and follow
 `docs/linear-single-writer.md`. Bind the operator and executor to one stable
 Linear member ID through clone configuration; mutable display text is not
-identity proof. Count implementation, independent QA, and recovery-retained
-incidents against one capacity ceiling. Retain capacity and exact project/path
-locks while recovery is open, and reject callbacks until recovery resolves.
+identity proof. Count verified running implementation, verified running
+independent QA, and recovery-retained incidents against one capacity ceiling.
+Human or owner review consumes no worker slot and owns no target lock. Require
+the adapter to classify every active readback as `implementation_running`,
+`qa_running`, or `human_review`; missing or contradictory classification fails
+closed. Retain capacity and exact project/path locks while recovery is open,
+and reject callbacks until recovery resolves.
 
 The composed cycle must serialize admission, record an incident before worker
 preparation, reread eligibility, capacity, and locks before claim, read back
