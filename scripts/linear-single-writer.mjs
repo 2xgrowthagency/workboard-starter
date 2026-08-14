@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const ACTIVE_STATUSES = new Set(['In Progress', 'In Review']);
+const CAPACITY_STATES = new Set(['implementation_running', 'qa_running', 'human_review']);
 const ALLOWED_CALLBACKS = new Set(['REVIEW', 'QA_PASS', 'QA_FAIL', 'QA_BLOCKED', 'BLOCKED']);
 
 export class LinearSingleWriterError extends Error {
@@ -82,12 +82,21 @@ export function assertNoDualWrite({ stateAuthority, paths = [] }) {
 export function capacityFromReadback(readback, incidents, profile) {
   if (!readback || readback.complete !== true || !Array.isArray(readback.issues)) fail('CAPACITY_UNKNOWN', 'active issue readback must be complete');
   if (!incidents || incidents.complete !== true || !Array.isArray(incidents.incidents)) fail('INCIDENT_READBACK_AMBIGUOUS', 'open incident readback must be complete');
-  if (readback.issues.some((issue) => !ACTIVE_STATUSES.has(issue.status))) fail('ACTIVE_READBACK_AMBIGUOUS', 'active readback contains an unexpected status');
-  const activeIds = new Set(readback.issues.map((issue) => issue.identifier));
+  for (const issue of readback.issues) {
+    if (!CAPACITY_STATES.has(issue.capacityState)) fail('ACTIVE_READBACK_AMBIGUOUS', 'active readback must classify every issue by verified execution state');
+    if (issue.capacityState === 'implementation_running' && issue.status !== profile.statuses.inProgress) {
+      fail('ACTIVE_READBACK_AMBIGUOUS', 'running implementation must be In Progress');
+    }
+    if (['qa_running', 'human_review'].includes(issue.capacityState) && issue.status !== profile.statuses.inReview) {
+      fail('ACTIVE_READBACK_AMBIGUOUS', 'QA or human review must be In Review');
+    }
+  }
+  const activeIssues = readback.issues.filter((issue) => issue.capacityState !== 'human_review');
+  const activeIds = new Set(activeIssues.map((issue) => issue.identifier));
   const retained = incidents.incidents.filter((item) => item.resolved !== true && item.capacityLockHeld === true && !activeIds.has(item.issueIdentifier));
-  const used = readback.issues.length + new Set(retained.map((item) => item.issueIdentifier)).size;
+  const used = activeIssues.length + new Set(retained.map((item) => item.issueIdentifier)).size;
   if (used >= profile.maxActive) fail('CAPACITY_REACHED', `active implementation, QA, and recovery use ${used}/${profile.maxActive}`);
-  return { used, available: profile.maxActive - used, limit: profile.maxActive };
+  return { used, available: profile.maxActive - used, limit: profile.maxActive, activeIssues };
 }
 
 export function targetIsLocked(target, activeIssues, incidents) {
@@ -352,14 +361,14 @@ export async function runLinearSingleWriterCycle({ profile, adapters }) {
     const [active, incidents, ready] = await Promise.all([
       adapters.linear.listActiveIssues(), adapters.recovery.listOpenIncidents(), adapters.linear.listReadyIssues(),
     ]);
-    capacityFromReadback(active, incidents, profile);
+    const capacity = capacityFromReadback(active, incidents, profile);
     if (!ready?.complete || !Array.isArray(ready.issues)) fail('READY_READBACK_AMBIGUOUS', 'Ready issue readback must be complete');
 
     for (const candidate of ready.issues) {
       if (!isEligibleIssue(candidate, profile)) continue;
       const target = validateTarget(await adapters.router.resolve(candidate));
       if (!profile.allowedExecutionEnvironments.includes(target.executionEnvironment)) fail('EXECUTION_ENVIRONMENT_REJECTED', `route ${target.executionEnvironment} is not allowed`);
-      if (targetIsLocked(target, active.issues, incidents.incidents)) continue;
+      if (targetIsLocked(target, capacity.activeIssues, incidents.incidents)) continue;
 
       let incident = incidentFor(candidate, 'implementation_prepare', target);
       await adapters.recovery.recordIncident(incident);
@@ -376,8 +385,8 @@ export async function runLinearSingleWriterCycle({ profile, adapters }) {
           adapters.linear.listActiveIssues(), adapters.recovery.listOpenIncidents(), adapters.linear.getIssue(candidate.identifier),
         ]);
         const otherIncidents = { ...freshIncidents, incidents: freshIncidents.incidents.filter((item) => item.incidentId !== incident.incidentId) };
-        capacityFromReadback(freshActive, otherIncidents, profile);
-        if (!isEligibleIssue(freshIssue, profile) || targetIsLocked(target, freshActive.issues, otherIncidents.incidents)) fail('ADMISSION_CHANGED', 'eligibility, capacity, or target lock changed before claim');
+        const freshCapacity = capacityFromReadback(freshActive, otherIncidents, profile);
+        if (!isEligibleIssue(freshIssue, profile) || targetIsLocked(target, freshCapacity.activeIssues, otherIncidents.incidents)) fail('ADMISSION_CHANGED', 'eligibility, capacity, or target lock changed before claim');
 
         const claimed = await transition(adapters, freshIssue, profile, profile.statuses.inProgress, `Claimed by ${profile.executorLabel}; task ${prepared.taskId}`);
         await adapters.recovery.saveWorker({ issueIdentifier: candidate.identifier, taskId: prepared.taskId, target, claimedVersion: claimed.updatedAt });

@@ -140,12 +140,42 @@ test('Linear authority rejects a mirrored Workboard packet', () => {
 });
 
 test('capacity includes QA and incident-retained slots', () => {
-  const active = { complete: true, issues: [issue({ status: 'In Progress', identifier: '2X-1' }), issue({ status: 'In Review', identifier: '2X-2' })] };
+  const active = { complete: true, issues: [
+    issue({ status: 'In Progress', identifier: '2X-1', capacityState: 'implementation_running' }),
+    issue({ status: 'In Review', identifier: '2X-2', capacityState: 'qa_running' }),
+  ] };
   assert.throws(
     () => capacityFromReadback(active, { complete: true, incidents: [{ issueIdentifier: '2X-3', capacityLockHeld: true, resolved: false }] }, profile),
     (error) => error.code === 'CAPACITY_REACHED',
   );
   assert.throws(() => capacityFromReadback({ complete: false }, { complete: true, incidents: [] }, profile), /readback must be complete/);
+});
+
+test('human review releases worker capacity and target locks', () => {
+  const humanReview = issue({
+    status: 'In Review', identifier: '2X-human', capacityState: 'human_review',
+    targetProjectId: canonicalTarget.targetProjectId, targetPath: canonicalTarget.targetPath,
+  });
+  const capacity = capacityFromReadback(
+    { complete: true, issues: [humanReview] },
+    { complete: true, incidents: [] },
+    profile,
+  );
+  assert.equal(capacity.used, 0);
+  assert.equal(capacity.available, profile.maxActive);
+  assert.deepEqual(capacity.activeIssues, []);
+  assert.equal(targetIsLocked(canonicalTarget, capacity.activeIssues, []), false);
+});
+
+test('capacity fails closed without verified execution classification', () => {
+  assert.throws(
+    () => capacityFromReadback(
+      { complete: true, issues: [issue({ status: 'In Review', identifier: '2X-stale' })] },
+      { complete: true, incidents: [] },
+      profile,
+    ),
+    (error) => error.code === 'ACTIVE_READBACK_AMBIGUOUS',
+  );
 });
 
 test('active work and incidents hold exact target locks', () => {
@@ -216,7 +246,7 @@ test('capacity and target locks are reread after preparation', async () => {
       activeReads += 1;
       return activeReads === 1
         ? { complete: true, issues: [] }
-        : { complete: true, issues: [issue({ identifier: '2X-lock', status: 'In Progress', targetProjectId: 'recall-radar', targetPath: '/repo/recall-radar' })] };
+        : { complete: true, issues: [issue({ identifier: '2X-lock', status: 'In Progress', capacityState: 'implementation_running', targetProjectId: 'recall-radar', targetPath: '/repo/recall-radar' })] };
     },
   } });
   await assert.rejects(() => runLinearSingleWriterCycle({ profile, adapters: input.adapters }), (error) => error.code === 'RECOVERY_BLOCKED');

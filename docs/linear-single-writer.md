@@ -30,7 +30,7 @@ The composed cycle machine-enforces:
 1. one serialized root admission lease;
 2. complete capability, Ready, active, and open-incident readback;
 3. exact operator, executor, stable assignee ID, proof label, and team matching;
-4. capacity counting across implementation, QA, and recovery-retained slots;
+4. capacity counting across verified running implementation, verified running QA, and recovery-retained slots, while human review owns no worker slot or target lock;
 5. exact project/path target locks;
 6. a durable recovery incident before worker preparation;
 7. fresh eligibility, capacity, and lock readback immediately before claim;
@@ -46,6 +46,13 @@ capacity change, or target-lock change becomes one incident-bound recovery. The
 adapter retains capacity and target ownership, blocks callbacks, and reconciles
 the Linear issue to Blocked. If Blocked cannot be proven, the result is
 `RECOVERY_AMBIGUOUS`; do not retry or create a second worker.
+
+The adapter must classify every issue returned by `listActiveIssues()` as
+`implementation_running`, `qa_running`, or `human_review`. Running states require
+canonical task readback on the intended saved project and target. `human_review`
+is valid only for `In Review`, consumes no capacity, and owns no target lock.
+Missing or contradictory classifications fail closed instead of being guessed
+from the Linear workflow state alone.
 
 ## Authority boundary
 
