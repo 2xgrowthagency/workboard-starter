@@ -7,7 +7,7 @@ description: Run a Workboard root orchestrator loop: classify queue state, enfor
 
 Use this skill when asked to run, configure, or explain a Workboard local orchestrator.
 
-This skill implements Workboard protocol `1.2.0`. Read
+This skill implements Workboard protocol `1.3.0`. Read
 `workboard-capabilities.json` for machine-readable capability status and run
 `node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>` before
 relying on that metadata in a customized clone. A rejected manifest means the
@@ -26,6 +26,12 @@ adoption backlink and do not need fork ancestry. The ST-013 gate also requires
 a refreshed, valid capability manifest whenever synchronized evidence changes.
 
 ## Start here
+
+For scheduled or manually triggered polling, begin with
+`skills/workboard-control-cycle/SKILL.md`. It is the host-neutral entrypoint:
+base contract first, adopter profile second, and machine bindings last. A thin
+automation prompt invokes that contract; it must not duplicate or weaken the
+rules below.
 
 1. Read `ORCHESTRATOR.md`.
 2. Run `node scripts/check-workboard-git-preflight.mjs --repo <WORKBOARD_PATH>` with a path resolving to the exact repository root and continue only on `GIT_PREFLIGHT_STATUS=READY` or `GIT_PREFLIGHT_STATUS=UPDATED`. Symlink and `..` aliases to that root are accepted; nested directories are rejected.

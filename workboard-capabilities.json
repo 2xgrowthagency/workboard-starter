@@ -1,19 +1,34 @@
 {
   "$schema": "schemas/workboard-capabilities.schema.json",
   "manifest_schema_version": 1,
-  "protocol_version": "1.2.0",
+  "protocol_version": "1.3.0",
   "compatibility": {
     "classification": "backward-compatible",
     "minimum_reader_schema_version": 1,
     "unknown_capability_policy": "ignore"
   },
   "starter_sync": {
-    "release": "ST-020",
+    "release": "ST-021",
     "commit": null,
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/49",
-    "adoption_record": "docs/releases/st-020-live-worker-capacity.md"
+    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/51",
+    "adoption_record": "docs/releases/st-021-shared-control-cycle.md"
   },
   "capabilities": {
+    "scheduled_control_cycle": {
+      "status": "supported",
+      "version": "1.0.0",
+      "summary": "One host-neutral polling entrypoint layers the base contract, adopter profile, and machine bindings.",
+      "evidence": {
+        "files": [
+          "skills/workboard-control-cycle/SKILL.md",
+          "docs/orchestrator-protocol.md"
+        ],
+        "tests": [
+          "tests/workboard-control-cycle.test.mjs"
+        ]
+      },
+      "evidence_sha256": "6edae0833ce14374e2dd3654d97716b52b08f58a8893b0eeda813da92f1c4c46"
+    },
     "queue_classifier": {
       "status": "supported",
       "version": "1.0.0",
@@ -27,7 +42,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "851cecfb6b7686db4e84725d40db5aaec9d83bd5b3ca3bf4e67e9e2e16657161"
+      "evidence_sha256": "fe5760bc2885538b2332023deaa6b3341f4cb56ebebca1936c88be2b8d8d3f7c"
     },
     "target_locks": {
       "status": "supported",
@@ -43,7 +58,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "9812be033114a7937c8c414a012188f1caa8955c3dbbf95b8f7fb6f3775eec15"
+      "evidence_sha256": "ed1f323a4debed42b8ff39a176cedc28b7db1ec9166d4e53d1eea9037febc1bb"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -59,7 +74,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "6085d781749a6ae10f4c8c73c186599f74e62866652ec05bf10085537d52274f"
+      "evidence_sha256": "7fed6c3e7a7e7a452f4266ae3265cc0846bbacc718583ed16a6e6c7eb8556797"
     },
     "independent_qa": {
       "status": "supported",
@@ -76,7 +91,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "00bf50b6d47bfb5c94fb293b3f73135bf450ef68074883aab5041b199d83437c"
+      "evidence_sha256": "28500652b7aceb69b7f7f4164066bcccb7dcb1a9dc5c536e739366353bd5adf0"
     },
     "qa_publication": {
       "status": "supported",
@@ -92,7 +107,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "07922f16295656da9be5640cbef4a998d9b2c789ea9433cc07a49707556a18ef"
+      "evidence_sha256": "44f26810cacc0e5ed2ffb711006f4897fd8e1300242c2690223e1d43f841bd13"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -171,7 +186,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "9fc5d9182152825583d4d57fba74eb353fa85555891ee10dcbe4360b7e96b56d"
+      "evidence_sha256": "20b6b5bac0737fd7db834d5b8a8aa003587e7675aff7a790aace054993071e9d"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -218,7 +233,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "a77f092e3ca706a81e7e68913cca83854a364c258157a85a69286fa36e005a1f"
+      "evidence_sha256": "5d616c92f6c164ffd710b5275c4172620291683acbf550131f3122a8e31f2cf6"
     },
     "execution_environment_routing": {
       "status": "supported",
@@ -236,7 +251,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "83af0d299c26459dfc6df7ba9d9ffef7ffe2147fa3a4a76842f8e66fce51be0d"
+      "evidence_sha256": "b64092d1fa98d142ee491937f79db59cbf6e6afa590b51f2d367f300e36f581a"
     },
     "task_execution_profile": {
       "status": "supported",
@@ -254,7 +269,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "695b153f8abf96c4b8426e832f14fb1475b309f9d26ed81a59aeaeff4437467f"
+      "evidence_sha256": "62949d349a17e7e3883dbd4e54892927280392261a5e0362922334fdcb1a1768"
     },
     "linear_single_writer_engine": {
       "status": "supported",
@@ -270,7 +285,7 @@
           "tests/linear-single-writer.test.mjs"
         ]
       },
-      "evidence_sha256": "540e694646128630a43d6ac527cb777c7bb4b3ddea4d634abbfee37c9628c25e"
+      "evidence_sha256": "42e3f8734b00c51edee06554ba8518a87089922ff6590364c264a3aeb5fc018f"
     },
     "linear_single_writer": {
       "status": "not_implemented",
@@ -283,7 +298,7 @@
         ],
         "tests": []
       },
-      "evidence_sha256": "6a9e297432cda442a21d2885611aee7efa37ca89a87cfb3f1dfb4dac8029a719"
+      "evidence_sha256": "467f2b13993c7c4befec8b2ff1335cac6639baf78225b6c02944e403cec0bb6f"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",
@@ -302,7 +317,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "39b2d591789c93729611905a6ff5a628a0d1e3d848b58fdaaa43c90717aac749"
+      "evidence_sha256": "277bf2472becca84552cdcc2bb0b0ac747b522c0ab69e3c90a30f10d4b4e5ed1"
     },
     "upstream_synchronization": {
       "status": "supported",

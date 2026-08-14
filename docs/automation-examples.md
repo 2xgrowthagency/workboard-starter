@@ -49,6 +49,17 @@ must stop any automation that depends on a declared optional capability.
 
 ## Generic root-orchestrator prompt
 
+Prefer the shared entrypoint when the host supports installed skills:
+
+```text
+Use $workboard-control-cycle to run one fail-closed Workboard control cycle through the installed adopter profile.
+```
+
+Keep cadence, enabled state, project, target thread, execution environment,
+model, reasoning, host, and notifications in automation metadata. The expanded
+prompt below remains a portable fallback and audit reference, not text to copy
+into every saved automation.
+
 ```text
 Run one Workboard orchestrator polling cycle.
 
