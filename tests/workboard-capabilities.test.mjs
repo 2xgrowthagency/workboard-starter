@@ -54,12 +54,12 @@ function fixture() {
   return { root: target, manifest };
 }
 
-test('current manifest validates every merged capability through ST-020', () => {
+test('current manifest validates every merged capability through ST-021', () => {
   const manifest = current();
   const result = validateCapabilityManifest({ repo: root, manifest });
   assert.equal(result.valid, true, result.errors.join('\n'));
   assert.deepEqual(CORE_CAPABILITIES.filter((id) => !Object.hasOwn(manifest.capabilities, id)), []);
-  assert.equal(manifest.starter_sync.release, 'ST-020');
+  assert.equal(manifest.starter_sync.release, 'ST-021');
   assert.equal(manifest.starter_sync.commit, null);
   assert.deepEqual(manifest.capabilities.task_finalization_hygiene, {
     status: 'supported',
@@ -128,8 +128,8 @@ test('rejects duplicate JSON keys at top level and every nested object depth', (
   const input = fixture();
   const source = readFileSync(join(input.root, 'workboard-capabilities.json'), 'utf8');
   const duplicateTop = source.replace(
-    '  "protocol_version": "1.2.0",',
-    '  "protocol_version": "1.2.0",\n  "protocol_version": "9.9.9",',
+    '  "protocol_version": "1.3.0",',
+    '  "protocol_version": "1.3.0",\n  "protocol_version": "9.9.9",',
   );
   writeFileSync(join(input.root, 'workboard-capabilities.json'), duplicateTop);
   assert.throws(
@@ -146,7 +146,7 @@ test('rejects duplicate JSON keys at top level and every nested object depth', (
   );
   assert.throws(
     () => readCapabilityManifest({ repo: input.root }),
-    /duplicate JSON key \$\["capabilities"\]\["queue_classifier"\]\["status"\]/,
+    /duplicate JSON key \$\["capabilities"\]\["scheduled_control_cycle"\]\["status"\]/,
   );
 
   assert.throws(
@@ -281,7 +281,7 @@ test('rejects aliased and non-directory evidence path components', () => {
 test('CLI emits one machine-readable status and rejects unsupported options', () => {
   const valid = spawnSync(process.execPath, [script, '--repo', root], { encoding: 'utf8' });
   assert.equal(valid.status, 0, valid.stderr);
-  assert.match(valid.stdout, /^CAPABILITY_MANIFEST_STATUS=VALID SCHEMA_VERSION=1 PROTOCOL_VERSION=1\.2\.0 /);
+  assert.match(valid.stdout, /^CAPABILITY_MANIFEST_STATUS=VALID SCHEMA_VERSION=1 PROTOCOL_VERSION=1\.3\.0 /);
 
   const rejected = spawnSync(process.execPath, [script, '--repo', root, '--unknown', 'value'], { encoding: 'utf8' });
   assert.equal(rejected.status, 1);

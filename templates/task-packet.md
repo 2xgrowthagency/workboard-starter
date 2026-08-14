@@ -140,6 +140,10 @@ parallel_safe: false
 
 # Task: <short title>
 
+> Scheduled control-cycle layering changes no packet fields. The shared base,
+> adopter profile, and machine bindings must still produce this exact packet
+> and proof contract.
+
 ## Objective
 
 State the outcome in plain language.

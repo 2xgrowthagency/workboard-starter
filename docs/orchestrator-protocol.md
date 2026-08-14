@@ -1,6 +1,6 @@
 # Workboard Orchestrator Protocol
 
-Protocol version: `1.2.0`. Before routing, a clone or automation may validate
+Protocol version: `1.3.0`. Before routing, a clone or automation may validate
 its machine-readable capability inventory with
 `node scripts/check-workboard-capabilities.mjs --repo <WORKBOARD_PATH>`. Treat a
 missing, rejected, or stale manifest as unknown capability state, not permission
@@ -9,6 +9,17 @@ clone adoption, and evidence-digest rules are defined in
 `docs/capability-manifest.md`.
 
 Use this document as the standing instruction for your local orchestrator, whether it runs in Codex Desktop, Claude Desktop, Claude Code, OpenClaw, or another agent.
+
+## Scheduled control-cycle layering
+
+Scheduled and manually triggered polling use
+`skills/workboard-control-cycle/SKILL.md` as the portable entrypoint. Load
+shared base instructions first, the adopter profile second, and host-specific
+machine bindings last. Adopters may provide identities, tools, paths, routing,
+and stricter local stops; they may not reorder or weaken single-writer,
+capacity, lock, claim-readback, recovery, callback, independent-QA, or proof
+invariants. Automation records retain cadence and runtime metadata and contain
+only the canonical one-line invocation.
 
 ## Roles
 
