@@ -26,7 +26,7 @@ default. High reasoning requires one of four machine-recognized task categories:
 `unusually_complex`. `gpt-5.6-luna` requires exact `bounded_high_volume`
 eligibility and independent verification.
 
-This release declares Workboard protocol `1.0.0`. The portable capability
+This release declares Workboard protocol `1.3.0`. The portable capability
 inventory is `workboard-capabilities.json`; validate it with
 `node scripts/check-workboard-capabilities.mjs --repo "$PWD"`. It records the
 last synchronized starter release or commit and distinguishes supported
@@ -83,6 +83,11 @@ Chat threads are bad source-of-truth. Workboard gives you:
 - a simple Git audit trail.
 
 ## Quick start
+
+For a guided team pilot, begin with
+[`docs/team-onboarding.md`](docs/team-onboarding.md). It separates the safe
+training sandbox from production adopter setup and keeps recurring schedulers
+off until both canaries pass.
 
 For a new organization or named orchestrator deployment, start with
 [`docs/new-workboard-initialization.md`](docs/new-workboard-initialization.md).

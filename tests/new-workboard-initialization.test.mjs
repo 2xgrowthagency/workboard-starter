@@ -16,6 +16,7 @@ const guide = read('docs/new-workboard-initialization.md');
 const operatorTemplate = read('templates/local-operator-setup.md');
 const initializationRecord = read('templates/workboard-initialization-record.md');
 const readme = read('README.md');
+const onboarding = read('docs/team-onboarding.md');
 
 test('initialization guide uses an independent private repository with auditable starter ancestry', () => {
   assert.match(guide, /Create a new private repository from this starter\. Do not fork by default\./);
@@ -25,10 +26,11 @@ test('initialization guide uses an independent private repository with auditable
   assert.match(guide, /check-workboard-capabilities\.mjs/);
 });
 
-test('Orion and Zaid have separate controller and local-operator responsibilities', () => {
-  assert.match(guide, /Orion.*OpenClaw root orchestrator/);
-  assert.match(guide, /Zaid.*local operator/);
-  assert.match(guide, /Never run Orion and a local Codex automation as concurrent Workboard roots/);
+test('initialization keeps controller and local-operator responsibilities generic', () => {
+  assert.match(guide, /Root controller.*owns queue synchronization/);
+  assert.match(guide, /Local operator.*configures local paths/);
+  assert.doesNotMatch(guide, /\b(?:Orion|Zaid|Zain|Dennis|Donna|Clara)\b/);
+  assert.match(guide, /Never run two controllers or a controller and local Codex automation as/);
   assert.match(guide, /paused manual fallback/);
   assert.match(guide, /thread-hygiene automation may remain active/);
   assert.match(operatorTemplate, /fallback queue poll must remain paused/);
@@ -51,4 +53,15 @@ test('first task is a bounded dispatch smoke with duplicate and callback proof',
 
 test('README points new operators to the consolidated initialization guide', () => {
   assert.match(readme, /docs\/new-workboard-initialization\.md/);
+  assert.match(readme, /docs\/team-onboarding\.md/);
+  assert.match(readme, /protocol `1\.3\.0`/);
+});
+
+test('team onboarding separates training from production activation', () => {
+  assert.match(onboarding, /Training sandbox/);
+  assert.match(onboarding, /Use \$workboard-control-cycle/);
+  assert.match(onboarding, /Keep every recurring scheduler paused/);
+  assert.match(onboarding, /Manual dispatch canary/);
+  assert.match(onboarding, /Scheduled-path canary/);
+  assert.match(onboarding, /Exit criteria/);
 });
