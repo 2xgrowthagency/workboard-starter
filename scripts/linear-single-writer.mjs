@@ -71,6 +71,36 @@ export function isEligibleIssue(issue, profile) {
     issue.labels.includes(profile.proofLabel);
 }
 
+function readyPriorityRank(value) {
+  if (!Number.isInteger(value) || value < 0 || value > 4) {
+    fail('READY_ORDER_AMBIGUOUS', 'eligible Ready issues require Linear priority 0-4');
+  }
+  return value === 0 ? 5 : value;
+}
+
+function readyCreatedAt(value) {
+  const timestamp = Date.parse(value);
+  if (typeof value !== 'string' || !Number.isFinite(timestamp)) {
+    fail('READY_ORDER_AMBIGUOUS', 'eligible Ready issues require a valid createdAt timestamp');
+  }
+  return timestamp;
+}
+
+export function orderEligibleReadyIssues(issues, profile) {
+  if (!Array.isArray(issues)) fail('READY_READBACK_AMBIGUOUS', 'Ready issues must be an array');
+  return issues
+    .filter((candidate) => isEligibleIssue(candidate, profile))
+    .map((candidate) => ({
+      candidate,
+      priorityRank: readyPriorityRank(candidate.priority),
+      createdAt: readyCreatedAt(candidate.createdAt),
+    }))
+    .sort((left, right) => left.priorityRank - right.priorityRank ||
+      left.createdAt - right.createdAt ||
+      left.candidate.identifier.localeCompare(right.candidate.identifier))
+    .map(({ candidate }) => candidate);
+}
+
 export function assertNoDualWrite({ stateAuthority, paths = [] }) {
   if (stateAuthority !== 'linear') fail('STATE_AUTHORITY_REQUIRED', 'this runtime requires stateAuthority=linear');
   if (paths.some((value) => typeof value === 'string' && /(^|\/)tasks\/(?:backlog|ready|claimed|qa|blocked|review|done|archive)(?:\/|$)/.test(value))) {
@@ -364,8 +394,7 @@ export async function runLinearSingleWriterCycle({ profile, adapters }) {
     const capacity = capacityFromReadback(active, incidents, profile);
     if (!ready?.complete || !Array.isArray(ready.issues)) fail('READY_READBACK_AMBIGUOUS', 'Ready issue readback must be complete');
 
-    for (const candidate of ready.issues) {
-      if (!isEligibleIssue(candidate, profile)) continue;
+    for (const candidate of orderEligibleReadyIssues(ready.issues, profile)) {
       const target = validateTarget(await adapters.router.resolve(candidate));
       if (!profile.allowedExecutionEnvironments.includes(target.executionEnvironment)) fail('EXECUTION_ENVIRONMENT_REJECTED', `route ${target.executionEnvironment} is not allowed`);
       if (targetIsLocked(target, capacity.activeIssues, incidents.incidents)) continue;

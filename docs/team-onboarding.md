@@ -110,6 +110,12 @@ allows it. A code-complete adopter may still be operationally `NOT_INSTALLED`.
 
 ## Exit criteria
 
+The shared Linear Ready view is ordered by Priority, with older issues first
+inside each priority. The orchestrator uses that same rule and claims the first
+eligible unlocked ticket from the top down. To move work up or down, change its
+Linear priority; manual drag position is not consumed by the approved tool
+binding.
+
 Each participant can explain the state model, identify the one root controller,
 locate the assigned Workboard and target, run the validation commands, invoke
 the one-line manual cycle, show worker/callback proof, and state whether their
