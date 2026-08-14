@@ -356,6 +356,12 @@ Before recurring Linear claims, install and certify a concrete adapter against
 Linear member ID through clone configuration; mutable display text is not
 identity proof. Count verified running implementation, verified running
 independent QA, and recovery-retained incidents against one capacity ceiling.
+Order eligible Ready issues independently of adapter return order: Urgent,
+High, Medium, Low, then No priority; within one priority, oldest created first.
+Claim the first unlocked eligible issue and continue downward past ineligible
+or target-locked issues. Configure the shared Ready view to show the same order.
+Manual drag position is not authoritative because the approved Linear tool
+binding does not expose it; priority changes are the scheduling control.
 Human or owner review consumes no worker slot and owns no target lock. Require
 the adapter to classify every active readback as `implementation_running`,
 `qa_running`, or `human_review`; missing or contradictory classification fails

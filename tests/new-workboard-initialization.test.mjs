@@ -17,6 +17,7 @@ const operatorTemplate = read('templates/local-operator-setup.md');
 const initializationRecord = read('templates/workboard-initialization-record.md');
 const readme = read('README.md');
 const onboarding = read('docs/team-onboarding.md');
+const linearContract = read('docs/linear-single-writer.md');
 
 test('initialization guide uses an independent private repository with auditable starter ancestry', () => {
   assert.match(guide, /Create a new private repository from this starter\. Do not fork by default\./);
@@ -64,4 +65,8 @@ test('team onboarding separates training from production activation', () => {
   assert.match(onboarding, /Manual dispatch canary/);
   assert.match(onboarding, /Scheduled-path canary/);
   assert.match(onboarding, /Exit criteria/);
+  assert.match(onboarding, /ordered by Priority/);
+  assert.match(onboarding, /first\s+eligible unlocked ticket from the top down/);
+  assert.match(linearContract, /Urgent, High, Medium, Low, then No priority/);
+  assert.match(linearContract, /manual drag position.*not an authoritative scheduling signal/s);
 });

@@ -29,17 +29,26 @@ The composed cycle machine-enforces:
 
 1. one serialized root admission lease;
 2. complete capability, Ready, active, and open-incident readback;
-3. exact operator, executor, stable assignee ID, proof label, and team matching;
-4. capacity counting across verified running implementation, verified running QA, and recovery-retained slots, while human review owns no worker slot or target lock;
-5. exact project/path target locks;
-6. a durable recovery incident before worker preparation;
-7. fresh eligibility, capacity, and lock readback immediately before claim;
-8. state and comment writes with exact readback after each external mutation;
-9. canonical prepared and running worker readback bound to the immutable route tuple;
-10. callback rejection while recovery owns the issue, plus replay-safe transition bookkeeping;
-11. a separately created, durably identified, read-back, and started verifier task;
-12. exact verifier outcome typing: `QA_PASS` to Done, `QA_FAIL` to Ready, and `QA_BLOCKED` to Blocked; and
-13. a receipt-bound independent PASS before Done.
+3. deterministic top-down Ready ordering: Urgent, High, Medium, Low, then No priority; oldest created issue first within a priority; stable identifier only as the final tie-breaker;
+4. selection of the first eligible, unlocked issue in that order, independent of adapter return order;
+5. exact operator, executor, stable assignee ID, proof label, and team matching;
+6. capacity counting across verified running implementation, verified running QA, and recovery-retained slots, while human review owns no worker slot or target lock;
+7. exact project/path target locks;
+8. a durable recovery incident before worker preparation;
+9. fresh eligibility, capacity, and lock readback immediately before claim;
+10. state and comment writes with exact readback after each external mutation;
+11. canonical prepared and running worker readback bound to the immutable route tuple;
+12. callback rejection while recovery owns the issue, plus replay-safe transition bookkeeping;
+13. a separately created, durably identified, read-back, and started verifier task;
+14. exact verifier outcome typing: `QA_PASS` to Done, `QA_FAIL` to Ready, and `QA_BLOCKED` to Blocked; and
+15. a receipt-bound independent PASS before Done.
+
+Configure the shared Linear Ready view with the same priority-first ordering so
+its visible top-to-bottom list matches execution. The current approved Linear
+tool binding does not expose Linear's manual drag position, so manually dragging
+an issue is not an authoritative scheduling signal. Change its Linear priority
+to change execution order. Missing or invalid `priority` or `createdAt` on an
+otherwise eligible Ready issue fails closed.
 
 Any partial write, ambiguous readback, failed or ambiguous start, identity drift,
 capacity change, or target-lock change becomes one incident-bound recovery. The

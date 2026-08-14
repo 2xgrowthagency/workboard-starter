@@ -9,6 +9,7 @@ import {
   capacityFromReadback,
   createLinearProfile,
   isEligibleIssue,
+  orderEligibleReadyIssues,
   runLinearSingleWriterCycle,
   targetIsLocked,
 } from '../scripts/linear-single-writer.mjs';
@@ -40,7 +41,8 @@ const completedWorkerTask = (immutableTarget = 'commit:abc123', overrides = {}) 
 function issue(overrides = {}) {
   return {
     identifier: '2X-200', team: profile.team, status: profile.statuses.ready,
-    assigneeId: profile.assigneeId, updatedAt: 'v1', latestComment: '',
+    assigneeId: profile.assigneeId, updatedAt: 'v1', latestComment: '', priority: 3,
+    createdAt: '2026-08-01T00:00:00.000Z',
     labels: [profile.operatorLabel, profile.executorLabel, profile.proofLabel],
     ...overrides,
   };
@@ -131,6 +133,62 @@ test('stable identity and exact eligibility are required', () => {
   assert.equal(isEligibleIssue(issue({ assigneeId: 'display-name-match' }), profile), false);
   assert.equal(isEligibleIssue(issue({ labels: [...issue().labels, 'executor:other'] }), profile), false);
 });
+
+test('eligible Ready issues are ordered by priority, then oldest creation time', () => {
+  const ordered = orderEligibleReadyIssues([
+    issue({ identifier: '2X-204', priority: 0, createdAt: '2026-07-01T00:00:00.000Z' }),
+    issue({ identifier: '2X-203', priority: 2, createdAt: '2026-08-03T00:00:00.000Z' }),
+    issue({ identifier: '2X-202', priority: 1, createdAt: '2026-08-04T00:00:00.000Z' }),
+    issue({ identifier: '2X-201', priority: 2, createdAt: '2026-08-01T00:00:00.000Z' }),
+  ], profile);
+  assert.deepEqual(ordered.map(({ identifier }) => identifier), ['2X-202', '2X-201', '2X-203', '2X-204']);
+});
+
+test('Ready ordering ignores adapter return order and claims the top eligible issue', async () => {
+  const candidates = [
+    issue({ identifier: '2X-older-low', priority: 4, createdAt: '2026-07-01T00:00:00.000Z' }),
+    issue({ identifier: '2X-top', priority: 1, createdAt: '2026-08-10T00:00:00.000Z' }),
+    issue({ identifier: '2X-middle', priority: 2, createdAt: '2026-08-01T00:00:00.000Z' }),
+  ];
+  const input = harness({ initialIssue: candidates[1], linear: {
+    async listReadyIssues() { return { complete: true, issues: candidates }; },
+  } });
+  const result = await runLinearSingleWriterCycle({ profile, adapters: input.adapters });
+  assert.equal(result.issueIdentifier, '2X-top');
+});
+
+test('Ready ordering scans downward past ineligible and target-locked issues', async () => {
+  const top = issue({ identifier: '2X-ineligible', priority: 1, assigneeId: 'someone-else' });
+  const locked = issue({ identifier: '2X-locked', priority: 2 });
+  const available = issue({ identifier: '2X-available', priority: 3 });
+  const input = harness({ initialIssue: available, linear: {
+    async listReadyIssues() { return { complete: true, issues: [available, locked, top] }; },
+    async listActiveIssues() {
+      return { complete: true, issues: [{
+        ...issue({ identifier: '2X-running', status: profile.statuses.inProgress }),
+        capacityState: 'implementation_running', targetProjectId: 'locked', targetPath: '/repo/locked',
+      }] };
+    },
+  }, router: {
+    async resolve(candidate) {
+      if (candidate.identifier === locked.identifier) {
+        return { targetProjectId: 'locked', targetPath: '/repo/locked', executionEnvironment: 'worktree' };
+      }
+      return canonicalTarget;
+    },
+  } });
+  const result = await runLinearSingleWriterCycle({ profile, adapters: input.adapters });
+  assert.equal(result.issueIdentifier, available.identifier);
+});
+
+for (const overrides of [{ priority: 9 }, { createdAt: 'not-a-date' }]) {
+  test(`ambiguous Ready ordering fails closed for ${Object.keys(overrides)[0]}`, () => {
+    assert.throws(
+      () => orderEligibleReadyIssues([issue(overrides)], profile),
+      (error) => error.code === 'READY_ORDER_AMBIGUOUS',
+    );
+  });
+}
 
 test('Linear authority rejects a mirrored Workboard packet', () => {
   assert.throws(

@@ -27,7 +27,7 @@
           "tests/workboard-control-cycle.test.mjs"
         ]
       },
-      "evidence_sha256": "6edae0833ce14374e2dd3654d97716b52b08f58a8893b0eeda813da92f1c4c46"
+      "evidence_sha256": "23ac75c74fe8bc0c70bb522ff99599729cab9f720b6ffc59c0a83849c3fbd68c"
     },
     "queue_classifier": {
       "status": "supported",
@@ -42,7 +42,7 @@
           "tests/check-workboard-queue.test.mjs"
         ]
       },
-      "evidence_sha256": "fe5760bc2885538b2332023deaa6b3341f4cb56ebebca1936c88be2b8d8d3f7c"
+      "evidence_sha256": "9a1a8149e2bf3abcbaeb4f0d41bf7d6e4c5c55ddf4f822edf1a5230613b4ff84"
     },
     "target_locks": {
       "status": "supported",
@@ -58,7 +58,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "ed1f323a4debed42b8ff39a176cedc28b7db1ec9166d4e53d1eea9037febc1bb"
+      "evidence_sha256": "06fd6b5244f3937ec68f2a4065153921d8e4d0d4b43565c2c33d4d093c4a8f17"
     },
     "completion_callbacks": {
       "status": "supported",
@@ -74,7 +74,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "7fed6c3e7a7e7a452f4266ae3265cc0846bbacc718583ed16a6e6c7eb8556797"
+      "evidence_sha256": "4aca4f207b82fec80a35653fa51c68ccf3992e400984a8fffd48f40433bd4166"
     },
     "independent_qa": {
       "status": "supported",
@@ -91,7 +91,7 @@
           "tests/integrated-routing-lifecycle.test.mjs"
         ]
       },
-      "evidence_sha256": "28500652b7aceb69b7f7f4164066bcccb7dcb1a9dc5c536e739366353bd5adf0"
+      "evidence_sha256": "20e90ac8093a2e85882aeb78f43122bc230940856c36fe4e724d489b0124f249"
     },
     "qa_publication": {
       "status": "supported",
@@ -107,7 +107,7 @@
           "tests/live-task-visibility-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "44f26810cacc0e5ed2ffb711006f4897fd8e1300242c2690223e1d43f841bd13"
+      "evidence_sha256": "579fd3297726a1acc98e4a9965ac8e3ede2decd82e5a23a8e7febdcd972351ae"
     },
     "dependency_promotion": {
       "status": "supported",
@@ -186,7 +186,7 @@
           "tests/git-preflight-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "20b6b5bac0737fd7db834d5b8a8aa003587e7675aff7a790aace054993071e9d"
+      "evidence_sha256": "f6598afc4f301735a95cdf8a94160622e5f8f4f4e1f16cbbae1888cc0c5952dc"
     },
     "known_issues_recovery": {
       "status": "supported",
@@ -233,7 +233,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "5d616c92f6c164ffd710b5275c4172620291683acbf550131f3122a8e31f2cf6"
+      "evidence_sha256": "df88be99da86519cf12bf91f291c392f03f5bc8104e1040b52487a8017a7a818"
     },
     "execution_environment_routing": {
       "status": "supported",
@@ -251,7 +251,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "b64092d1fa98d142ee491937f79db59cbf6e6afa590b51f2d367f300e36f581a"
+      "evidence_sha256": "b651905c31ad112d76cc7c6d05ea791ab2e773ffc2b78ee03fd2f07bcb925e22"
     },
     "task_execution_profile": {
       "status": "supported",
@@ -269,7 +269,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "62949d349a17e7e3883dbd4e54892927280392261a5e0362922334fdcb1a1768"
+      "evidence_sha256": "446507ed10a7e1cffb999f1a634deac6a68e651914bdf722347f4d1e156fc6f0"
     },
     "linear_single_writer_engine": {
       "status": "supported",
@@ -285,7 +285,7 @@
           "tests/linear-single-writer.test.mjs"
         ]
       },
-      "evidence_sha256": "42e3f8734b00c51edee06554ba8518a87089922ff6590364c264a3aeb5fc018f"
+      "evidence_sha256": "82ff00eadd950755496825174e5979182f2492dfc5829e74f39556b47446a207"
     },
     "linear_single_writer": {
       "status": "not_implemented",
@@ -298,7 +298,7 @@
         ],
         "tests": []
       },
-      "evidence_sha256": "467f2b13993c7c4befec8b2ff1335cac6639baf78225b6c02944e403cec0bb6f"
+      "evidence_sha256": "8dd77e23fa032e86a2cd175430d54d0bb3dbb5607831e65b0681866399db55c5"
     },
     "cloud_dispatch_receipts": {
       "status": "supported",
@@ -317,7 +317,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "277bf2472becca84552cdcc2bb0b0ac747b522c0ab69e3c90a30f10d4b4e5ed1"
+      "evidence_sha256": "63c3d02191a809d69f1321310d66e44df0111885ac4e8461b6e4e59f32081bdb"
     },
     "upstream_synchronization": {
       "status": "supported",

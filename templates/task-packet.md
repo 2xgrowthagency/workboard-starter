@@ -219,6 +219,11 @@ Every new packet declares one execution profile alongside its model route:
   have a mirrored file in any Workboard task lane. Stable identity, capacity,
   recovery, callback, and independent-QA rules live in
   `docs/linear-single-writer.md`.
+- Linear-authoritative Ready issues are ordered independently of connector
+  return order: Urgent, High, Medium, Low, then No priority; oldest created
+  first within one priority. Root claims the first eligible unlocked issue.
+  Missing ordering fields fail closed. Manual drag position is not authoritative;
+  change Linear Priority to change execution order.
 
 - This template is compatible with Workboard protocol `1.0.0`. In customized clones, validate `workboard-capabilities.json` before assuming an optional capability is present; rejected metadata is unknown state, not proof of support.
 - Validate this packet before every move with `node scripts/check-task-packet.mjs <packet> --lane <destination-lane> --previous-status <current-log-state>`. The destination directory, frontmatter `status`, and latest state log must agree.
