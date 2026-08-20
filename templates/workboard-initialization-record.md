@@ -3,8 +3,8 @@
 ## Source
 
 - Private Workboard repository: `<URL>`
-- Starter repository: `https://github.com/2xgrowthagency/workboard-starter`
-- Adopted starter release or full commit: `<RELEASE_OR_FULL_SHA>`
+- Core repository: `https://github.com/2xgrowthagency/workboard-core`
+- Adopted Core release or full commit: `<RELEASE_OR_FULL_SHA>`
 - Capability validation: `<RESULT_AND_TIMESTAMP>`
 - Full test suite: `<RESULT_AND_TIMESTAMP>`
 

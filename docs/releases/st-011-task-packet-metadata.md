@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-011
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/11
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/11
 compatibility: behavior-change
 migration_impact: Migrate legacy packets to packet_schema_version 2 before their next mutation; use --allow-legacy only for read-only checks.
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/11
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/11
 ---
 
 # ST-011: Normalized Task Packet Metadata

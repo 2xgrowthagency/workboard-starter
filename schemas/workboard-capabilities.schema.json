@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/2xgrowthagency/workboard-starter/blob/main/schemas/workboard-capabilities.schema.json",
+  "$id": "https://github.com/2xgrowthagency/workboard-core/blob/main/schemas/workboard-capabilities.schema.json",
   "title": "Workboard capability manifest",
   "type": "object",
   "additionalProperties": false,

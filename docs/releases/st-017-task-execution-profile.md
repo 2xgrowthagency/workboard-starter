@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-017
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/42
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/42
 compatibility: backward-compatible
 migration_impact: new packets should declare model routing, execution intent, cloud metadata, and one state authority; existing packets may retain pending environment resolution until their next managed transition
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/42
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/42
 ---
 
 # ST-017: Task Execution Profile

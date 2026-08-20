@@ -8,12 +8,12 @@ Last reviewed: 2026-07-16.
 
 These records describe observed platform and runtime failures. The `ST-*` issues below track the portable Workboard mitigations.
 
-- [App-native task calls can stall or time out](https://github.com/2xgrowthagency/workboard-starter/issues/15)
-- [Task creation may succeed after an ambiguous timeout](https://github.com/2xgrowthagency/workboard-starter/issues/16)
-- [Standalone task mutations may not refresh the live Desktop UI](https://github.com/2xgrowthagency/workboard-starter/issues/17)
-- [Completion callbacks may fail after successful work](https://github.com/2xgrowthagency/workboard-starter/issues/18)
-- [Browser, preview, or specialist tooling may be unavailable](https://github.com/2xgrowthagency/workboard-starter/issues/19)
-- [Git authentication or synchronization may fail before classification](https://github.com/2xgrowthagency/workboard-starter/issues/20)
+- [App-native task calls can stall or time out](https://github.com/2xgrowthagency/workboard-core/issues/15)
+- [Task creation may succeed after an ambiguous timeout](https://github.com/2xgrowthagency/workboard-core/issues/16)
+- [Standalone task mutations may not refresh the live Desktop UI](https://github.com/2xgrowthagency/workboard-core/issues/17)
+- [Completion callbacks may fail after successful work](https://github.com/2xgrowthagency/workboard-core/issues/18)
+- [Browser, preview, or specialist tooling may be unavailable](https://github.com/2xgrowthagency/workboard-core/issues/19)
+- [Git authentication or synchronization may fail before classification](https://github.com/2xgrowthagency/workboard-core/issues/20)
 
 ## Already Present
 
@@ -21,7 +21,7 @@ The starter already includes the core folder-state protocol, tool preflight, sep
 
 ## P0: Routing Safety And Duplicate Prevention
 
-### [ST-001: add a queue-first read-only classifier](https://github.com/2xgrowthagency/workboard-starter/issues/1)
+### [ST-001: add a queue-first read-only classifier](https://github.com/2xgrowthagency/workboard-core/issues/1)
 
 Port a parameterized production queue classifier plus tests.
 
@@ -34,7 +34,7 @@ Required behavior:
 - support an optional no-action streak and pause recommendation;
 - test clean, stale, dirty, ahead, diverged, pending-QA, active-QA, and promotion cases.
 
-### [ST-002: replace active-worker monitoring with target locks and callbacks](https://github.com/2xgrowthagency/workboard-starter/issues/2)
+### [ST-002: replace active-worker monitoring with target locks and callbacks](https://github.com/2xgrowthagency/workboard-core/issues/2)
 
 Status: implemented.
 
@@ -50,7 +50,7 @@ Acceptance criteria:
 - [x] capacity is machine-enforced before ready or pending-QA routing;
 - [x] only callbacks matching canonical `worker_thread_id` and `worker_creation_attempt_id` may route; delayed callbacks remain recovery evidence.
 
-### [ST-003: add an ambiguous-creation recovery lane](https://github.com/2xgrowthagency/workboard-starter/issues/3)
+### [ST-003: add an ambiguous-creation recovery lane](https://github.com/2xgrowthagency/workboard-core/issues/3)
 
 Status: implementation complete; pending review and merge.
 
@@ -63,7 +63,7 @@ Acceptance criteria:
 - one canonical task is selected by app-native readback;
 - recovery completion reruns dependency promotion.
 
-### [ST-004: require live task visibility proof](https://github.com/2xgrowthagency/workboard-starter/issues/4)
+### [ST-004: require live task visibility proof](https://github.com/2xgrowthagency/workboard-core/issues/4)
 
 Status: implemented with ST-002/ST-003 integration semantics in the starter
 protocol, examples, skill, packet template, and structural tests.
@@ -77,7 +77,7 @@ Do not present standalone helper or app-server persistence as proof that the run
 
 ## P1: Queue Progress And Cost Control
 
-### [ST-005: add dependency promotion metadata and scanner](https://github.com/2xgrowthagency/workboard-starter/issues/5)
+### [ST-005: add dependency promotion metadata and scanner](https://github.com/2xgrowthagency/workboard-core/issues/5)
 
 Status: implemented.
 
@@ -91,7 +91,7 @@ Rules:
 - only `blocker_type: dependency` blocked packets are scanner-eligible;
 - unresolved human/external conditions are corrected to manual so every poll does not repeat them.
 
-### [ST-006: add idle/no-action pause controls](https://github.com/2xgrowthagency/workboard-starter/issues/6)
+### [ST-006: add idle/no-action pause controls](https://github.com/2xgrowthagency/workboard-core/issues/6)
 
 Status: implemented.
 
@@ -99,7 +99,7 @@ Automation examples support a configurable idle threshold, preserve concise one-
 
 Idle and claimed-only paths must not read packet bodies, project registries, blocked/review/backlog lanes, thread history, or old automation narratives.
 
-### [ST-007: make Git synchronization an explicit root preflight](https://github.com/2xgrowthagency/workboard-starter/issues/7)
+### [ST-007: make Git synchronization an explicit root preflight](https://github.com/2xgrowthagency/workboard-core/issues/7)
 
 Replace generic `git pull` guidance with:
 
@@ -111,7 +111,7 @@ Replace generic `git pull` guidance with:
 Implemented by `scripts/check-workboard-git-preflight.mjs`; the queue classifier
 does not invoke Git or make Git-state judgments.
 
-### [ST-008: add conservative thread finalization and hygiene](https://github.com/2xgrowthagency/workboard-starter/issues/8)
+### [ST-008: add conservative thread finalization and hygiene](https://github.com/2xgrowthagency/workboard-core/issues/8)
 
 Status: implemented.
 
@@ -130,13 +130,13 @@ Required behavior:
 
 ## P1: Defaults And Operator Experience
 
-### [ST-009: standardize Sol Medium model routing](https://github.com/2xgrowthagency/workboard-starter/issues/9)
+### [ST-009: standardize Sol Medium model routing](https://github.com/2xgrowthagency/workboard-core/issues/9)
 
 Default root orchestration, implementation, documentation, tests, and routine QA to `gpt-5.6-sol` at medium reasoning.
 
 Packet/project overrides take precedence. Escalate Sol to high only with a machine-recognized packet category of `high_stakes`, `security_sensitive`, `repeatedly_blocked`, or `unusually_complex`; keep descriptive prose separate. Reserve Luna Medium for exact `bounded_high_volume` eligibility with `independent_verification: true`.
 
-### [ST-010: finish state-first task closeout and links](https://github.com/2xgrowthagency/workboard-starter/issues/10)
+### [ST-010: finish state-first task closeout and links](https://github.com/2xgrowthagency/workboard-core/issues/10)
 
 Status: implemented by the state-first closeout/readback contract and
 `scripts/check-workboard-closeout.mjs`.
@@ -145,7 +145,7 @@ Update automation examples and protocol so titles are applied after the outcome 
 
 Every builder, QA, and canonical recovery response includes the raw task ID and exact same-ID host-supported `::created-thread` directive.
 
-### [ST-011: bring the packet template to production metadata parity](https://github.com/2xgrowthagency/workboard-starter/issues/11)
+### [ST-011: bring the packet template to production metadata parity](https://github.com/2xgrowthagency/workboard-core/issues/11)
 
 Status: implemented by `packet_schema_version: 2`, the normalized task packet
 template and lifecycle contract, `scripts/check-task-packet.mjs`, and the
@@ -160,7 +160,7 @@ Add or normalize:
 - explicit callback source task ID or handoff requirement;
 - clear status logs for ready, active, QA, blocked, review, done, and archive.
 
-### [ST-012: add a known-issues and recovery document](https://github.com/2xgrowthagency/workboard-starter/issues/12)
+### [ST-012: add a known-issues and recovery document](https://github.com/2xgrowthagency/workboard-core/issues/12)
 
 Ship a generic operator guide covering app-native timeouts, ambiguous task creation, stale live UI state, callback failure, missing saved projects versus existing local paths, browser/tool unavailability, and Git-auth failures.
 
@@ -168,13 +168,13 @@ Each issue needs symptoms, impact, safe response, forbidden shortcuts, and evide
 
 ## P2: Distribution And Drift Control
 
-### [ST-013: add an upstream synchronization checklist](https://github.com/2xgrowthagency/workboard-starter/issues/13)
+### [ST-013: add an upstream synchronization checklist](https://github.com/2xgrowthagency/workboard-core/issues/13)
 
 Status: implemented.
 
 Every production-derived upgrade should update the starter protocol, portable skill, template, automation example, and tests together. Add a release checklist that rejects user-specific paths, automation IDs, private names, secrets, and local database assumptions.
 
-### [ST-014: add capability/version metadata](https://github.com/2xgrowthagency/workboard-starter/issues/14)
+### [ST-014: add capability/version metadata](https://github.com/2xgrowthagency/workboard-core/issues/14)
 
 Status: implemented by `workboard-capabilities.json`, its JSON Schema, and
 `scripts/check-workboard-capabilities.mjs`. The manifest records the merged

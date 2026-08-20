@@ -13,7 +13,7 @@ packet or project override applies.
 
 ## App-Native Calls Stall Or Time Out
 
-Related known issue: [#15](https://github.com/2xgrowthagency/workboard-starter/issues/15).
+Related known issue: [#15](https://github.com/2xgrowthagency/workboard-core/issues/15).
 
 ### Symptoms
 
@@ -66,7 +66,7 @@ and [task-creation recovery template](../templates/task-creation-recovery.md).
 
 ## Task Creation Has An Ambiguous Outcome
 
-Related known issue: [#16](https://github.com/2xgrowthagency/workboard-starter/issues/16).
+Related known issue: [#16](https://github.com/2xgrowthagency/workboard-core/issues/16).
 
 ### Symptoms
 
@@ -114,7 +114,7 @@ Use the [ambiguous creation procedure](live-task-visibility.md#ambiguous-creatio
 
 ## Live Desktop UI Is Stale
 
-Related known issue: [#17](https://github.com/2xgrowthagency/workboard-starter/issues/17).
+Related known issue: [#17](https://github.com/2xgrowthagency/workboard-core/issues/17).
 
 ### Symptoms
 
@@ -166,7 +166,7 @@ Apply the [live task visibility contract](live-task-visibility.md) and
 
 ## Completion Callback Fails
 
-Related known issue: [#18](https://github.com/2xgrowthagency/workboard-starter/issues/18).
+Related known issue: [#18](https://github.com/2xgrowthagency/workboard-core/issues/18).
 
 ### Symptoms
 
@@ -209,7 +209,7 @@ and [`check-workboard-callback.mjs`](../scripts/check-workboard-callback.mjs).
 
 ## Saved Project Is Missing But Local Path Exists
 
-Related known issue: [#15](https://github.com/2xgrowthagency/workboard-starter/issues/15).
+Related known issue: [#15](https://github.com/2xgrowthagency/workboard-core/issues/15).
 
 ### Symptoms
 
@@ -255,7 +255,7 @@ Follow [capability modes](live-task-visibility.md#capability-modes) and the
 
 ## Browser Preview Or Specialist Tool Is Unavailable
 
-Related known issue: [#19](https://github.com/2xgrowthagency/workboard-starter/issues/19).
+Related known issue: [#19](https://github.com/2xgrowthagency/workboard-core/issues/19).
 
 ### Symptoms
 
@@ -299,7 +299,7 @@ Apply [tool preflight](orchestrator-protocol.md#tool-and-skill-preflight) and th
 
 ## Git Authentication Or Synchronization Fails
 
-Related known issue: [#20](https://github.com/2xgrowthagency/workboard-starter/issues/20).
+Related known issue: [#20](https://github.com/2xgrowthagency/workboard-core/issues/20).
 
 ### Symptoms
 

@@ -10,7 +10,7 @@
   "starter_sync": {
     "release": "ST-021",
     "commit": null,
-    "source_reference": "https://github.com/2xgrowthagency/workboard-starter/issues/51",
+    "source_reference": "https://github.com/2xgrowthagency/workboard-core/issues/51",
     "adoption_record": "docs/releases/st-021-shared-control-cycle.md"
   },
   "capabilities": {
@@ -200,7 +200,7 @@
           "tests/known-issues-recovery-docs.test.mjs"
         ]
       },
-      "evidence_sha256": "fb9d3842f0b5f9957b3512027037a358762a17f1760e6bab5027780116db1739"
+      "evidence_sha256": "5e028a51d058f92192e3f1b8b768461371533900dbe19e369cd121b338972206"
     },
     "closeout_links": {
       "status": "supported",
@@ -233,7 +233,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "df88be99da86519cf12bf91f291c392f03f5bc8104e1040b52487a8017a7a818"
+      "evidence_sha256": "89049bf0ba18d45c245cfa84b2136ce77c4802bdd60a39c51b2792e1c4460437"
     },
     "execution_environment_routing": {
       "status": "supported",
@@ -251,7 +251,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "b651905c31ad112d76cc7c6d05ea791ab2e773ffc2b78ee03fd2f07bcb925e22"
+      "evidence_sha256": "692656b564733ecb9c180a8a89f909a2b993c30ac1c6b2ebb289cdc574435f0b"
     },
     "task_execution_profile": {
       "status": "supported",
@@ -269,7 +269,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "446507ed10a7e1cffb999f1a634deac6a68e651914bdf722347f4d1e156fc6f0"
+      "evidence_sha256": "53bf9db1a3c7eb8cb66498013e9dd1dc0e9cf84a660a37e8129c72f4d4091d9a"
     },
     "linear_single_writer_engine": {
       "status": "supported",
@@ -317,7 +317,7 @@
           "tests/check-task-packet.test.mjs"
         ]
       },
-      "evidence_sha256": "63c3d02191a809d69f1321310d66e44df0111885ac4e8461b6e4e59f32081bdb"
+      "evidence_sha256": "2ff5549a4dcda50832dde8cd5dbdcf6dd8fb650e8ef5124e74b3b81652cc27b1"
     },
     "upstream_synchronization": {
       "status": "supported",

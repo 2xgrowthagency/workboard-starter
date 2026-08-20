@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-016
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/40
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/40
 compatibility: behavior-change
 migration_impact: add environment fields to new and currently ready packets, raise default active capacity from three to eight, and keep historical active and completed packets unchanged
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/40
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/40
 ---
 
 # ST-016: Local And Worktree Execution Routing
