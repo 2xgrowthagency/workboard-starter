@@ -61,7 +61,7 @@ test('every record has the complete operator schema and mitigation links', () =>
 
 test('guide maps known issues and preserves core contracts', () => {
   for (const issue of [15, 16, 17, 18, 19, 20]) {
-    assert.match(guide, new RegExp(`workboard-starter/issues/${issue}\\b`));
+    assert.match(guide, new RegExp(`workboard-core/issues/${issue}\\b`));
   }
   assert.match(guide, /`gpt-5\.6-sol` medium default/);
   assert.match(guide, /dependency promotion remains root-owned/);

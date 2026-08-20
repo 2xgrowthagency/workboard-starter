@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-019
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/47
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/47
 compatibility: backward-compatible
 migration_impact: Linear-authoritative clones must certify a concrete adapter before recurring claims; Workboard-authoritative clones are unchanged.
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/47
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/47
 ---
 
 # ST-019: Linear orchestration trust boundaries

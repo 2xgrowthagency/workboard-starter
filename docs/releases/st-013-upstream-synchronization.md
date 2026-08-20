@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-013
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/13
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/13
 compatibility: backward-compatible
 migration_impact: none
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/13
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/13
 ---
 
 # ST-013: Upstream Synchronization Gate

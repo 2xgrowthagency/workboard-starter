@@ -19,11 +19,11 @@ const readme = read('README.md');
 const onboarding = read('docs/team-onboarding.md');
 const linearContract = read('docs/linear-single-writer.md');
 
-test('initialization guide uses an independent private repository with auditable starter ancestry', () => {
-  assert.match(guide, /Create a new private repository from this starter\. Do not fork by default\./);
+test('initialization guide uses an independent private repository with auditable Core ancestry', () => {
+  assert.match(guide, /Create a new private repository from Core\. Do not fork by default\./);
   assert.match(guide, /Fork ancestry is not required/);
-  assert.match(guide, /git remote rename origin starter/);
-  assert.match(guide, /starter commit or release/);
+  assert.match(guide, /git remote rename origin core/);
+  assert.match(guide, /Core commit or release/);
   assert.match(guide, /check-workboard-capabilities\.mjs/);
 });
 

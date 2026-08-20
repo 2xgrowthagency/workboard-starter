@@ -232,8 +232,8 @@ test('ST-011 release record declares explicit v2 migration and adoption backlink
   assert.match(record, /^upgrade_id: ST-011$/m);
   assert.match(record, /^compatibility: behavior-change$/m);
   assert.match(record, /^migration_impact: .*packet_schema_version 2.*--allow-legacy.*read-only/m);
-  assert.match(record, /^source_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-starter\/issues\/11)$/m);
-  assert.match(record, /^downstream_adoption_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-starter\/issues\/11)$/m);
+  assert.match(record, /^source_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-core\/issues\/11)$/m);
+  assert.match(record, /^downstream_adoption_reference: (https:\/\/github\.com\/2xgrowthagency\/workboard-core\/issues\/11)$/m);
   assert.match(record, /11b54b41611a429eea406400e5a62f9487fdc360/);
   assert.match(record, /merged ST-008\s+conservative task finalizer/);
   assert.match(record, /packet v2[\s\S]*finalizer classification remains\s+read-only/);
@@ -545,10 +545,10 @@ test('strict schemas reject unknown frontmatter and malformed, duplicate, or mis
 });
 
 test('accepts exact typed publication receipts and rejects malformed provenance', () => {
-  const receipt = 'type=github_pr|destination=2xgrowthagency/workboard-starter#34|' +
-    'url=https://github.com/2xgrowthagency/workboard-starter/pull/34#issuecomment-5000759212';
+  const receipt = 'type=github_pr|destination=2xgrowthagency/workboard-core#34|' +
+    'url=https://github.com/2xgrowthagency/workboard-core/pull/34#issuecomment-5000759212';
   const published = packet({
-    repo: '2xgrowthagency/workboard-starter', github_pr: '34',
+    repo: '2xgrowthagency/workboard-core', github_pr: '34',
     publication_status: 'published', publication_receipts: `[${receipt}]`,
   });
   assert.deepEqual(validateTaskPacket(published, { lane: 'ready' }), []);
@@ -558,14 +558,14 @@ test('accepts exact typed publication receipts and rejects malformed provenance'
     [
       'wrong repository',
       published
-        .replace('destination=2xgrowthagency/workboard-starter', 'destination=other/repo')
-        .replace('url=https://github.com/2xgrowthagency/workboard-starter', 'url=https://github.com/other/repo'),
+        .replace('destination=2xgrowthagency/workboard-core', 'destination=other/repo')
+        .replace('url=https://github.com/2xgrowthagency/workboard-core', 'url=https://github.com/other/repo'),
       /destination repository must equal packet repo/,
     ],
     ['zero destination ID', published.replaceAll('#34', '#0').replace('/34#', '/0#'), /positive-id/],
     ['URL suffix', published.replace('#issuecomment-', '/extra#issuecomment-'), /exact matching public GitHub comment URL/],
-    ['URL case', published.replace('/workboard-starter/pull', '/Workboard-Starter/pull'), /exact matching public GitHub comment URL/],
-    ['destination case', published.replace('2xgrowthagency/workboard-starter#34', '2xgrowthagency/Workboard-Starter#34'), /lowercase owner\/repo/],
+    ['URL case', published.replace('/workboard-core/pull', '/Workboard-Core/pull'), /exact matching public GitHub comment URL/],
+    ['destination case', published.replace('2xgrowthagency/workboard-core#34', '2xgrowthagency/Workboard-Core#34'), /lowercase owner\/repo/],
     ['wrong packet ID', published.replace('github_pr: 34', 'github_pr: 35'), /destination ID must equal packet github_pr/],
   ];
   for (const [name, content, expected] of invalidCases) {
@@ -573,10 +573,10 @@ test('accepts exact typed publication receipts and rejects malformed provenance'
     assert.ok(errors.some((error) => expected.test(error)), `${name}: ${errors.join('; ')}`);
   }
 
-  const issueReceipt = 'type=github_issue|destination=2xgrowthagency/workboard-starter#11|' +
-    'url=https://github.com/2xgrowthagency/workboard-starter/issues/11#issuecomment-5000759213';
+  const issueReceipt = 'type=github_issue|destination=2xgrowthagency/workboard-core#11|' +
+    'url=https://github.com/2xgrowthagency/workboard-core/issues/11#issuecomment-5000759213';
   const publishedIssue = packet({
-    repo: '2xgrowthagency/workboard-starter', github_issue: '11',
+    repo: '2xgrowthagency/workboard-core', github_issue: '11',
     publication_status: 'published', publication_receipts: `[${issueReceipt}]`,
   });
   assert.deepEqual(validateTaskPacket(publishedIssue, { lane: 'ready' }), []);

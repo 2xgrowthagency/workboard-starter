@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-018
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/44
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/44
 compatibility: backward-compatible
 migration_impact: new packets add a Cloud dispatch receipt contract; existing packets remain valid until their next managed transition and are not retrofitted
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/44
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/44
 ---
 
 # ST-018: Cloud dispatch receipts

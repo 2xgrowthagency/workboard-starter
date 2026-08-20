@@ -1,7 +1,7 @@
 # Initialize a New Workboard
 
 Use this guide as the first instruction for an agent or operator creating a
-Workboard from this starter. It covers repository ownership, root-controller
+Workboard from Core. It covers repository ownership, root-controller
 setup, local operator setup, automation boundaries, and the required first-task
 smoke test.
 
@@ -13,32 +13,32 @@ Before setup, assign two deployment roles:
   Codex automations.
 
 Record the real controller and operator names in the private adopter repository.
-The Starter contract stays role-based so a new adopter cannot inherit another
+The Core contract stays role-based so a new adopter cannot inherit another
 person's identity or machine bindings by accident.
 
 ## Recommended Repository Shape
 
-Create a new private repository from this starter. Do not fork by default.
+Create a new private repository from Core. Do not fork by default.
 
 A Workboard contains organization-specific project mappings, packet history,
 and operating state. An independent repository gives that state its own access
 policy and lifecycle. Fork ancestry is not required by the protocol, capability
 manifest, or synchronization validator.
 
-Keep the starter as a read-only remote or source coordinate so upgrades remain
+Keep Core as a read-only remote or source coordinate so upgrades remain
 auditable:
 
 ```bash
-git clone https://github.com/2xgrowthagency/workboard-starter.git <ADOPTER_WORKBOARD_DIRECTORY>
+git clone https://github.com/2xgrowthagency/workboard-core.git <ADOPTER_WORKBOARD_DIRECTORY>
 cd <ADOPTER_WORKBOARD_DIRECTORY>
-git remote rename origin starter
+git remote rename origin core
 git remote add origin <PRIVATE_ADOPTER_WORKBOARD_REPOSITORY_URL>
 git push -u origin main
 ```
 
-A fork is reasonable only when all Workboard state may inherit the starter's
+A fork is reasonable only when all Workboard state may inherit Core's
 visibility and the organization explicitly wants GitHub's fork-based update
-workflow. Copying files without retaining a starter commit or release coordinate
+workflow. Copying files without retaining a Core commit or release coordinate
 is not recommended because future upgrades become difficult to reconcile.
 
 ## One Root Controller
@@ -62,7 +62,7 @@ writers safe.
 
 ## Phase 1: Initialize the Private Board
 
-1. Record the exact starter commit or release used for initialization.
+1. Record the exact Core commit or release used for initialization.
 2. Copy `projects.example.yaml` to `projects.yaml`.
 3. Replace every example project with the real project ID, repository, local
    path, default branch, and worker surface.
@@ -141,9 +141,9 @@ The local operator's setup must include:
 7. Exact automation names, IDs, schedules, state-file locations, active/paused
    status, manual trigger steps, and ownership notes.
 
-The local operator file belongs in the private Workboard, not this public
-starter. Do not put private paths, automation IDs, credentials, or project names
-in starter-derived public adoption records.
+The local operator file belongs in the private Workboard, not public Core. Do
+not put private paths, automation IDs, credentials, or project names in
+Core-derived public adoption records.
 
 ## Phase 4: Required Initial Smoke Test
 

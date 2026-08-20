@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-021
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/51
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/51
 compatibility: backward-compatible
 migration_impact: install the shared entrypoint and replace duplicated automation prose with its canonical one-line invocation; automation records and runtime metadata remain unchanged
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/51
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/51
 ---
 
 # ST-021: Shared control-cycle entrypoint

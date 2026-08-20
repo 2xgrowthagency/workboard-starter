@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-022
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/55
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/55
 compatibility: behavior-change
 migration_impact: adapters must supply priority and createdAt; Ready views should use priority-first ordering; refresh pinned engine, tests, docs, and skill before recurring claims
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/55
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/55
 ---
 
 # ST-022: Linear Ready queue ordering

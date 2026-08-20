@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-020
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/49
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/49
 compatibility: behavior-change
 migration_impact: active Linear readbacks must classify verified execution state; human review no longer consumes worker capacity or target locks
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/49
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/49
 ---
 
 # ST-020: Live worker capacity

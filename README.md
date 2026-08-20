@@ -1,8 +1,11 @@
-# Workboard Starter
+# Workboard Core
 
-A lightweight repo-based queue for coordinating agent work across local orchestrators and parallel worker threads.
+The shared protocol, reusable orchestration files, and capability status for
+Workboard deployments.
 
-Use it when your team has multiple projects, multiple agents, or long-running work that needs proof instead of vibes.
+New Workboards build from this repository and keep it as their upgrade source.
+Each deployed Workboard owns its private project mappings, queue state, worker
+history, and credentials; Core owns the portable behavior they reuse.
 
 ## What this is
 
@@ -29,8 +32,10 @@ eligibility and independent verification.
 This release declares Workboard protocol `1.3.0`. The portable capability
 inventory is `workboard-capabilities.json`; validate it with
 `node scripts/check-workboard-capabilities.mjs --repo "$PWD"`. It records the
-last synchronized starter release or commit and distinguishes supported
-features from tracked but unimplemented work.
+current Core release, reusable capabilities, and implementation status so an
+adopter can distinguish supported behavior from tracked but unimplemented work.
+The manifest field remains named `starter_sync` in protocol 1.x for downstream
+compatibility; its source of truth is now Workboard Core.
 
 ## How the roles fit together
 
@@ -159,7 +164,7 @@ docs/
   codex-task-finalization.md # optional local Codex task hygiene
   known-issues-and-recovery.md # operator symptoms, stops, evidence, recovery
   upstream-synchronization.md # production-derived upgrade and release gate
-  pending-improvements.md   # production hardening backlog for the starter
+  pending-improvements.md   # production hardening backlog for Core
   releases/                 # compatibility, migration, and adoption records
 CONTRIBUTING.md              # contribution workflow and portability boundary
 RELEASE.md                   # release checklist
@@ -302,8 +307,8 @@ node --test tests/*.test.mjs
 Operational improvements must be generalized without copying host-specific
 state. Update the protocol, portable skill, task packet template, automation
 examples, focused tests, and one compatibility/migration record together. The
-record links each customized clone's adoption back to the originating public
-starter issue or release; no fork relationship or remote naming convention is
+record links each customized Workboard's adoption back to the originating public
+Core issue or release; no fork relationship or remote naming convention is
 required.
 
 Follow [`docs/upstream-synchronization.md`](docs/upstream-synchronization.md),
@@ -311,7 +316,7 @@ then validate the actual change set against an explicit local base ref:
 
 ```bash
 node scripts/check-upstream-sync.mjs \
-  --repo <WORKBOARD_STARTER_ROOT> \
+  --repo <WORKBOARD_CORE_ROOT> \
   --base <LOCAL_BASE_REF> \
   --record docs/releases/<UPGRADE_RECORD>.md
 ```
@@ -324,7 +329,7 @@ assumptions. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 
 The ST-013 gate also requires a changed, valid capability manifest. Follow
 [`docs/capability-manifest.md`](docs/capability-manifest.md) to reconcile clone
-status, set the portable starter release or commit coordinate, refresh evidence
+status, set the portable Core release or commit coordinate, refresh evidence
 digests, and inspect the manifest diff before running the upstream gate.
 
 When ready work and active locks coexist, check each candidate with:

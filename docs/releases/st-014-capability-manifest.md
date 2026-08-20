@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 upgrade_id: ST-014
-source_reference: https://github.com/2xgrowthagency/workboard-starter/issues/14
+source_reference: https://github.com/2xgrowthagency/workboard-core/issues/14
 compatibility: backward-compatible
 migration_impact: adopt and reconcile the manifest when a customized clone wants machine-readable capability metadata
-downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-starter/issues/14
+downstream_adoption_reference: https://github.com/2xgrowthagency/workboard-core/issues/14
 ---
 
 # ST-014: Protocol Capability And Version Metadata
