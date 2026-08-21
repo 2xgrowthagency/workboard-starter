@@ -25,6 +25,7 @@ export const CORE_CAPABILITIES = [
   'task_execution_profile',
   'linear_single_writer_engine',
   'linear_single_writer',
+  'linear_issue_first_thread_titles',
   'git_preflight',
   'known_issues_recovery',
   'closeout_links',
