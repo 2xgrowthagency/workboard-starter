@@ -29,7 +29,7 @@ default. High reasoning requires one of four machine-recognized task categories:
 `unusually_complex`. `gpt-5.6-luna` requires exact `bounded_high_volume`
 eligibility and independent verification.
 
-This release declares Workboard protocol `1.3.0`. The portable capability
+This release declares Workboard protocol `1.4.0`. The portable capability
 inventory is `workboard-capabilities.json`; validate it with
 `node scripts/check-workboard-capabilities.mjs --repo "$PWD"`. It records the
 current Core release, reusable capabilities, and implementation status so an
@@ -145,7 +145,7 @@ source `worker_creation_status: canonical` and `completion_callback_status: pend
 rejection. Callback failure emits
 `ROOT_RECONCILIATION_REQUIRED` with the same immutable proof and attempt ID.
 
-QA companions are inspectors. They run as separate `[qa] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
+QA companions are inspectors. Linear-backed QA runs use separate `[qa][TEAM-123] <short label>` tasks inside the existing target project. They get the acceptance criteria, a pinned commit or immutable artifact, the required verification tools, and a local artifact directory. They report `PASS`, `FAIL`, or `BLOCKED`; they do not quietly fix the builder's work.
 
 Do not turn the root orchestrator into a roaming implementation agent. That is how boards become soup.
 
@@ -177,7 +177,8 @@ scripts/
   check-workboard-callback.mjs # canonical callback status/identity/role/lane check
   check-task-packet.mjs # fail-closed packet schema and lifecycle validator
   check-task-creation-recovery.mjs # validate recovery state and proof
-  check-workboard-closeout.mjs # validate state-first title and task-link proof
+  check-workboard-closeout.mjs # validate root state title and task-link proof
+  check-workboard-thread-title.mjs # validate Linear-key-first builder and QA titles
   reconcile-task-creation-recovery.mjs # write canonical worker and gate callbacks
   check-upstream-sync.mjs # validate synchronized production-derived upgrades
 skills/
@@ -482,7 +483,8 @@ portable packet metadata, policy semantics, output encoding, and bounded review.
 - Each builder/QA task sends exactly one final callback to persistent `root_task_id`. Only callback `worker_task_id` matching canonical `worker_thread_id` and matching `worker_creation_attempt_id` can route; noncanonical callbacks are recovery evidence. Callback failure emits `ROOT_RECONCILIATION_REQUIRED`.
 - A task-creation timeout is ambiguous; no replacement is allowed without live app-native absence or unusability proof.
 - QA runs in a separate task and does not inherit the builder's conclusions as truth.
-- Every task title starts with its current Workboard state, including `[claimed]`, `[qa]`, `[review]`, and `[blocked]`.
+- Every Linear-backed implementation title starts with its immutable issue key: `[TEAM-123] <short label>`. Dedicated QA is the only role prefix: `[qa][TEAM-123] <short label>`. State belongs in Linear and packet metadata, so it never replaces the issue key in an issue-bound title.
+- Validate each requested title and exact app-native readback with `scripts/check-workboard-thread-title.mjs` before recording a builder or QA thread as canonical.
 - Root closeout titles are applied only after the final outcome is known, use `[idle|claimed|qa|review|blocked|done] <useful project or task label>`, and are app-native read back before success is claimed. Final `[poll]` titles are invalid. Token/phrase-aware validation rejects leading `WB`, `Workboard`, `poll`/`polling`, `queue check`, and `manual Workboard`, plus generic-only closeout/check/status labels, while permitting those character sequences inside larger real names. Unavailable or unverified title changes report the exact failed call, timeout/error, or requested-versus-observed mismatch.
 - Every verified builder, QA, and canonical task-creation recovery response reports both the raw canonical task ID and exactly the clickable `::created-thread{threadId="<RAW_TASK_ID>"}` directive with that same ID; other directive/link forms are unsupported.
 - Standalone closeout obtains its current root task UUID only from `process.env.CODEX_THREAD_ID`, rejects missing/malformed/mismatched identity, and never uses task list/search or history discovery. Persistent-root heartbeats are exempt.

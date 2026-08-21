@@ -242,6 +242,23 @@ and exact app-native readback; this does not authorize worker heartbeats.
 
 Use `node scripts/check-workboard-closeout.mjs` to reject early/generic titles,
 unverified title claims, vague title blockers, and mismatched delegation links.
+Before recording a Linear-backed implementation or QA task as canonical, also
+validate its immutable issue-first title and exact app-native readback:
+
+```bash
+node scripts/check-workboard-thread-title.mjs \
+  --linear-key "<TEAM-123>" \
+  --role "<implementation|qa>" \
+  --label "<SHORT_LABEL>" \
+  --title "<REQUESTED_TITLE>" \
+  --title-readback "<EXACT_APP_NATIVE_READBACK>"
+```
+
+Implementation uses `[TEAM-123] <short label>`; QA uses
+`[qa][TEAM-123] <short label>`. Do not create a replacement task solely to fix
+a title; rename the canonical task in place when app-native mutation and exact
+readback are available.
+
 For example, a verified delegation closeout can be checked with:
 
 ```bash

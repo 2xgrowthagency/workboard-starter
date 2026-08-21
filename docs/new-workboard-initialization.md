@@ -177,8 +177,10 @@ The packet acceptance criteria are:
 8. The local operator or designated reviewer verifies the smoke evidence, records the
    review transition, and only then moves the packet to `tasks/done/`.
 9. A second poll while the task is claimed creates no duplicate worker.
-10. The completed root and worker tasks use useful state-first titles and expose
-   the canonical task link or portable session proof.
+10. The completed root uses a useful state-first title; each Linear-backed
+   implementation worker uses `[TEAM-123] <short label>` and QA uses
+   `[qa][TEAM-123] <short label>`. Every task exposes the canonical task link or
+   portable session proof.
 11. Git history contains the claim, review, and done transitions on the private
     remote.
 

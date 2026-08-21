@@ -19,7 +19,7 @@ Use the source packet's existing names throughout the visibility flow:
   decision;
 - `execution_environment_reason`: required rationale for explicit or resolved
   Local;
-- `worker_task_title`: exact state-first task title;
+- `worker_task_title`: exact task title, using `[TEAM-123] <short label>` for implementation or `[qa][TEAM-123] <short label>` for QA;
 - `worker_creation_surface`: exact `app-native task tools` for live app-native creation/readback, or exact `portable_only` for portable creation;
 - `worker_creation_attempt_id`: immutable ID generated before the current
   creation or authorized replacement attempt;
@@ -135,6 +135,26 @@ For `app_native` delegation:
 
 Creation success alone is not enough. List success without exact readback is not
 enough. A Desktop delegation is not successful until canonical writeback.
+
+## Issue-first worker titles
+
+Linear-backed implementation and QA tasks use the immutable Linear issue key as
+their retrieval anchor. Implementation titles are `[TEAM-123] <short label>`.
+QA titles are `[qa][TEAM-123] <short label>`; QA is the only role prefix before
+the key. Do not replace the key with `[claimed]`, `[review]`, `[blocked]`, or any
+other mutable state. State remains authoritative in Linear and packet metadata.
+
+Before canonical writeback, validate the requested title and exact app-native
+readback:
+
+```bash
+node scripts/check-workboard-thread-title.mjs \
+  --linear-key "<TEAM-123>" \
+  --role "<implementation|qa>" \
+  --label "<SHORT_LABEL>" \
+  --title "<REQUESTED_TITLE>" \
+  --title-readback "<EXACT_APP_NATIVE_READBACK>"
+```
 
 ## State-first root closeout
 
